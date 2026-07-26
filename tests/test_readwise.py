@@ -195,6 +195,48 @@ def test_split_series_ignores_non_numbered_parenthetical():
     assert series is None and index is None
 
 
+def test_readwise_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
+    from booktools import config
+
+    vault = tmp_path / "Vault"
+    folder = vault / ".imports" / "readwise"
+    folder.mkdir(parents=True)
+    (folder / "export.csv").write_text(HEADER + ROWS, encoding="utf-8")
+    monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
+    monkeypatch.setattr(config, "resolve_imports",
+                        lambda name, output=None: vault / ".imports" / name)
+
+    app = typer.Typer()
+    rw.register(app)
+    result = CliRunner().invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    assert (vault / "Books" / "Stalin - Stephen Kotkin.md").exists()
+
+
+def test_readwise_folder_arg_picks_newest(monkeypatch, tmp_path):
+    import os
+
+    from booktools import config
+
+    vault = tmp_path / "Vault"
+    folder = tmp_path / "exports"
+    folder.mkdir()
+    old = folder / "old.csv"
+    old.write_text(HEADER, encoding="utf-8")
+    (folder / "new.csv").write_text(HEADER + ROWS, encoding="utf-8")
+    os.utime(old, (1000, 1000))
+    os.utime(folder / "new.csv", (2000, 2000))
+    monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
+
+    app = typer.Typer()
+    rw.register(app)
+    result = CliRunner().invoke(app, ["--csv", str(folder), "--output", str(vault)])
+
+    assert result.exit_code == 0, result.output
+    assert (vault / "Books" / "Stalin - Stephen Kotkin.md").exists()
+
+
 def test_convert_empty_csv_creates_nothing(tmp_path):
     out = tmp_path / "Obsidian"
     csv = tmp_path / "rw.csv"

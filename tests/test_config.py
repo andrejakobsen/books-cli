@@ -170,6 +170,45 @@ def test_newest_csv_missing_folder_raises(tmp_path):
         config.newest_csv(tmp_path / "nope")
 
 
+def test_resolve_csv_arg_none_uses_imports_newest(tmp_path, monkeypatch):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('obsidian_path = "%s"\nvault = "V"\nimports = ".imports"\n'
+                        % tmp_path)
+    monkeypatch.setattr(config, "config_path", lambda: cfg_file)
+    folder = tmp_path / "V" / ".imports" / "readwise"
+    folder.mkdir(parents=True)
+    (folder / "a.csv").write_text("x")
+    assert config.resolve_csv_arg(None, "readwise", None) == folder / "a.csv"
+
+
+def test_resolve_csv_arg_file_returned_resolved(tmp_path, monkeypatch):
+    monkeypatch.setattr(Path, "cwd", classmethod(lambda cls: tmp_path))
+    f = tmp_path / "export.csv"
+    f.write_text("x")
+    assert config.resolve_csv_arg(Path("export.csv"), "goodreads", None) == f
+
+
+def test_resolve_csv_arg_folder_picks_newest(tmp_path, monkeypatch):
+    import os
+    folder = tmp_path / "exports"
+    folder.mkdir()
+    (folder / "old.csv").write_text("a")
+    (folder / "new.csv").write_text("b")
+    os.utime(folder / "old.csv", (1000, 1000))
+    os.utime(folder / "new.csv", (2000, 2000))
+    assert config.resolve_csv_arg(folder, "goodreads", None) == folder / "new.csv"
+
+
+def test_resolve_csv_arg_missing_raises(tmp_path, monkeypatch):
+    import pytest
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('obsidian_path = "%s"\nvault = "V"\nimports = ".imports"\n'
+                        % tmp_path)
+    monkeypatch.setattr(config, "config_path", lambda: cfg_file)
+    with pytest.raises(FileNotFoundError):
+        config.resolve_csv_arg(None, "readwise", None)
+
+
 def test_importer_writes_to_configured_vault_without_output(monkeypatch, tmp_path):
     """An importer invoked without --output writes into the configured vault.
 

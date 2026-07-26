@@ -20,7 +20,7 @@ from pathlib import Path
 
 import typer
 
-from booktools import config, resolve_path
+from booktools import config
 from booktools.obsidian import (
     BOOK_PROPERTY_ORDER,
     BookRef,
@@ -261,18 +261,10 @@ def goodreads_to_obsidian(
     book note under a '## Review' heading. Books are matched to existing notes by
     ISBN, then by a strict Author/Title comparison.
     """
-    if csv is None:
-        try:
-            csv = config.newest_csv(config.resolve_imports("goodreads", output))
-        except FileNotFoundError as exc:
-            raise typer.BadParameter(str(exc), param_hint="--csv")
-    else:
-        csv = resolve_path(csv, Path.cwd())
-        if csv.is_dir():
-            try:
-                csv = config.newest_csv(csv)
-            except FileNotFoundError as exc:
-                raise typer.BadParameter(str(exc), param_hint="--csv")
+    try:
+        csv = config.resolve_csv_arg(csv, "goodreads", output)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--csv")
     output = config.resolve_vault(output)
 
     if not csv.is_file():

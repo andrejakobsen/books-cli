@@ -22,7 +22,7 @@ from pathlib import Path
 
 import typer
 
-from booktools import config, resolve_path
+from booktools import config
 from booktools.highlights import Highlight, render_highlights, split_tag_column
 from booktools.obsidian import (
     BookRef,
@@ -144,10 +144,12 @@ def convert(csv_path: Path, output: Path) -> dict:
 
 
 def readwise_to_obsidian(
-    csv: Path = typer.Option(
-        ...,
+    csv: Path | None = typer.Option(
+        None,
         "--csv", "-c",
-        help="Path to the Readwise CSV export. Relative paths resolve against the current directory.",
+        help="Path to a Readwise CSV export, or a folder of exports (the newest "
+             "*.csv is used). Defaults to <vault>/.imports/readwise. Relative "
+             "paths resolve against the current directory.",
     ),
     output: Path | None = typer.Option(
         None,
@@ -164,7 +166,10 @@ def readwise_to_obsidian(
     then by a strict Author/Title comparison (using the title with any
     '(Series #N)' suffix removed). Existing notes are never overwritten.
     """
-    csv = resolve_path(csv, Path.cwd())
+    try:
+        csv = config.resolve_csv_arg(csv, "readwise", output)
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(str(exc), param_hint="--csv")
     output = config.resolve_vault(output)
 
     if not csv.is_file():

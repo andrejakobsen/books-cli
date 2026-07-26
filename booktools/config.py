@@ -125,3 +125,22 @@ def newest_csv(folder: Path) -> Path:
     if not csvs:
         raise FileNotFoundError(f"no CSV found in {folder}")
     return max(csvs, key=lambda p: p.stat().st_mtime)
+
+
+def resolve_csv_arg(csv: Path | None, name: str, output: Path | None = None) -> Path:
+    """Resolve a ``--csv`` option (unset, a folder, or a file) to one CSV file.
+
+    - ``None`` → newest CSV in ``<vault>/.imports/<name>``.
+    - a directory → newest CSV in it.
+    - a file → returned resolved against the cwd.
+
+    Raises ``FileNotFoundError`` when no CSV is found (unset/folder cases). The
+    caller is responsible for turning that into a user-facing error and for any
+    final ``is_file`` check on an explicit path.
+    """
+    if csv is None:
+        return newest_csv(resolve_imports(name, output))
+    csv = resolve_path(csv, Path.cwd())
+    if csv.is_dir():
+        return newest_csv(csv)
+    return csv
