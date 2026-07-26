@@ -347,6 +347,7 @@ def apple_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
 
 # The API-backed sources, in priority order; amazon is URL-only (no fetch).
 _API_SOURCES = (
+    ("apple", apple_books_candidates),
     ("google", google_books_candidates),
     ("openlibrary", openlibrary_candidates),
 )
@@ -356,7 +357,7 @@ def gather_with_errors(book: MissingBook, fetch_json):
     """Gather candidates and report which sources errored outright.
 
     Returns ``(candidates, errored)`` where *candidates* are in source-priority
-    order (Google, Open Library, Amazon) and *errored* is the list of source
+    order (Apple, Google, Open Library, Amazon) and *errored* is the list of source
     names that raised (e.g. a rate-limit / network failure) — distinct from a
     source that simply found nothing.
     """
@@ -372,7 +373,7 @@ def gather_with_errors(book: MissingBook, fetch_json):
 
 
 def gather_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
-    """All candidates in source-priority order: Google, Open Library, Amazon."""
+    """All candidates in source-priority order: Apple, Google, Open Library, Amazon."""
     return gather_with_errors(book, fetch_json)[0]
 
 
@@ -572,8 +573,8 @@ def run(vault, *, interactive, dry_run, limit,
         "processed": 0,
         "fetched": 0,
         "not_found": 0,
-        "by_source": {"google": 0, "openlibrary": 0, "amazon": 0},
-        "errored": {"google": 0, "openlibrary": 0, "amazon": 0},
+        "by_source": {"apple": 0, "google": 0, "openlibrary": 0, "amazon": 0},
+        "errored": {"apple": 0, "google": 0, "openlibrary": 0, "amazon": 0},
     }
     todo = missing if (book_path is not None or limit is None) else missing[:limit]
     for book in todo:
@@ -671,7 +672,8 @@ def covers_command(
     typer.echo(
         f"Scanned {stats['scanned']} notes, {stats['missing']} missing covers → "
         f"{stats['fetched']} fetched "
-        f"(google {bs['google']}, openlibrary {bs['openlibrary']}, amazon {bs['amazon']}), "
+        f"(apple {bs['apple']}, google {bs['google']}, "
+        f"openlibrary {bs['openlibrary']}, amazon {bs['amazon']}), "
         f"{stats['not_found']} not found."
     )
     errored = {src: n for src, n in stats.get("errored", {}).items() if n}

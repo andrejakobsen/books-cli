@@ -910,3 +910,25 @@ def test_apple_books_skips_results_without_artwork():
         note_path=None, title="X", authors=["Y"], isbn=None, amazon=None)
     data = {"results": [{"trackName": "X", "artistName": "Y"}]}
     assert covers.apple_books_candidates(book, lambda url: data) == []
+
+
+def test_gather_candidates_apple_first():
+    book = covers.MissingBook(
+        note_path=None, title="The Deluge", authors=["Adam Tooze"],
+        isbn=None, amazon="B00ABCDEFG")
+
+    def fake_fetch(url):
+        if "itunes.apple.com" in url:
+            return ITUNES_RESULTS
+        if "googleapis" in url:
+            return GOOGLE_VOLUME
+        if "editions.json" in url:
+            return OL_EDITIONS
+        return OL_SEARCH
+
+    cands = covers.gather_candidates(book, fake_fetch)
+    sources = [c.source for c in cands]
+    assert sources[0] == "apple"
+    assert sources[-1] == "amazon"
+    assert (sources.index("apple") < sources.index("google")
+            < sources.index("openlibrary") < sources.index("amazon"))
