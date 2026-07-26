@@ -232,10 +232,12 @@ def convert(csv_path: Path, output: Path, shelf: str = DEFAULT_SHELVES) -> dict:
 
 
 def goodreads_to_obsidian(
-    csv: Path = typer.Option(
-        ...,
+    csv: Path | None = typer.Option(
+        None,
         "--csv", "-c",
-        help="Path to the Goodreads library CSV export. Relative paths resolve against the current directory.",
+        help="Path to a Goodreads CSV export, or a folder of exports (the newest "
+             "*.csv is used). Defaults to <vault>/.imports/goodreads. Relative "
+             "paths resolve against the current directory.",
     ),
     output: Path | None = typer.Option(
         None,
@@ -259,7 +261,18 @@ def goodreads_to_obsidian(
     book note under a '## Review' heading. Books are matched to existing notes by
     ISBN, then by a strict Author/Title comparison.
     """
-    csv = resolve_path(csv, Path.cwd())
+    if csv is None:
+        try:
+            csv = config.newest_csv(config.resolve_imports("goodreads", output))
+        except FileNotFoundError as exc:
+            raise typer.BadParameter(str(exc), param_hint="--csv")
+    else:
+        csv = resolve_path(csv, Path.cwd())
+        if csv.is_dir():
+            try:
+                csv = config.newest_csv(csv)
+            except FileNotFoundError as exc:
+                raise typer.BadParameter(str(exc), param_hint="--csv")
     output = config.resolve_vault(output)
 
     if not csv.is_file():
