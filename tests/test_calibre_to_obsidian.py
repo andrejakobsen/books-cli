@@ -165,6 +165,29 @@ def test_rerun_preserves_user_files(tmp_path):
     assert "My notes on Roberts." in author_stub.read_text()
 
 
+def test_calibre_defaults_library_to_output_vault_imports(monkeypatch, tmp_path):
+    import typer
+    from typer.testing import CliRunner
+    from booktools import calibre_obsidian as cal, config
+
+    # Real config with the default imports folder; only the config path is faked.
+    cfg = tmp_path / "config.toml"
+    cfg.write_text('imports = ".imports"\n', encoding="utf-8")
+    monkeypatch.setattr(config, "config_path", lambda: cfg)
+
+    vault = tmp_path / "Vault"
+    lib = vault / ".imports" / "calibre"
+    lib.mkdir(parents=True)  # empty library -> convert() finds no books
+
+    app = typer.Typer()
+    cal.register(app)
+    result = CliRunner().invoke(app, ["--output", str(vault)])
+
+    # The default library must track the explicit --output vault.
+    assert result.exit_code == 0, result.output
+    assert "0 books" in result.output
+
+
 def test_html_to_markdown_list():
     html = "<p>Intro</p><ul><li>one</li><li>two</li></ul>"
     md = c2o.html_to_markdown(html)
