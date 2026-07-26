@@ -131,20 +131,14 @@ def test_google_books_no_images_returns_empty():
     assert cands == []
 
 
-# Open Library search.json shape (title/author path)
-OL_SEARCH = {
-    "docs": [
-        {
-            "title": "Napoleon",
-            "author_name": ["Andrew Roberts"],
-            "cover_i": 8231856,
-            "editions": {
-                "docs": [
-                    {"physical_format": "Hardcover", "cover_i": 111},
-                    {"physical_format": "Paperback", "cover_i": 222},
-                ]
-            },
-        }
+# Open Library search.json shape (title/author path): yields a work key.
+OL_SEARCH = {"docs": [{"key": "/works/OL1W", "cover_i": 999}]}
+
+# Open Library works/<id>/editions.json shape: per-edition format + covers.
+OL_EDITIONS = {
+    "entries": [
+        {"physical_format": "Hardcover", "covers": [111]},
+        {"physical_format": "Paperback", "covers": [222]},
     ]
 }
 
@@ -156,7 +150,9 @@ def test_openlibrary_title_author_paperback_first():
     captured = {}
 
     def fake_fetch(url):
-        captured["url"] = url
+        captured.setdefault("urls", []).append(url)
+        if "editions.json" in url:
+            return OL_EDITIONS
         return OL_SEARCH
 
     cands = covers.openlibrary_candidates(book, fake_fetch)
@@ -168,8 +164,27 @@ def test_openlibrary_title_author_paperback_first():
     # paperback candidate points at its own cover id
     pb = next(c for c in cands if c.fmt == "paperback")
     assert "222-L.jpg" in pb.image_url
-    assert "title=Napoleon" in captured["url"]
-    assert "author=Andrew+Roberts" in captured["url"] or "author=Andrew%20Roberts" in captured["url"]
+    urls = captured["urls"]
+    search_url = next(u for u in urls if "search.json" in u)
+    assert "title=Napoleon" in search_url
+    assert "author=Andrew+Roberts" in search_url or "author=Andrew%20Roberts" in search_url
+    assert any("/works/OL1W/editions.json" in u for u in urls)
+
+
+def test_openlibrary_falls_back_to_search_cover_when_no_editions():
+    book = covers.MissingBook(
+        note_path=None, title="Napoleon", authors=["Andrew Roberts"],
+        isbn=None, amazon=None)
+
+    def fake_fetch(url):
+        if "editions.json" in url:
+            return {"entries": []}
+        return OL_SEARCH
+
+    cands = covers.openlibrary_candidates(book, fake_fetch)
+    assert len(cands) == 1
+    assert cands[0].fmt is None
+    assert "999-L.jpg" in cands[0].image_url
 
 
 def test_openlibrary_isbn_path_builds_isbn_cover_url():
@@ -217,6 +232,8 @@ def test_gather_candidates_source_order():
     def fake_fetch(url):
         if "googleapis" in url:
             return GOOGLE_VOLUME
+        if "editions.json" in url:
+            return OL_EDITIONS
         return OL_SEARCH
 
     cands = covers.gather_candidates(book, fake_fetch)

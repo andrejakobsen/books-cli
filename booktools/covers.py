@@ -150,6 +150,7 @@ OL_SEARCH_API = "https://openlibrary.org/search.json"
 OL_ISBN_API = "https://openlibrary.org/isbn/{isbn}.json"
 OL_COVER_ID = "https://covers.openlibrary.org/b/id/{cid}-L.jpg?default=false"
 OL_COVER_ISBN = "https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg?default=false"
+OL_WORK_EDITIONS = "https://openlibrary.org{work}/editions.json?limit=50"
 
 
 def _norm_fmt(raw: str | None) -> str | None:
@@ -188,24 +189,39 @@ def openlibrary_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
     params = f"title={quote(book.title)}"
     if book.authors:
         params += f"&author={quote(book.authors[0])}"
-    url = f"{OL_SEARCH_API}?{params}&fields=title,author_name,cover_i,editions&limit=5"
+    url = f"{OL_SEARCH_API}?{params}&fields=key,cover_i&limit=5"
     try:
         data = fetch_json(url) or {}
     except Exception:
         return []
-    for doc in data.get("docs", []):
-        editions = doc.get("editions", {}).get("docs", [])
-        for ed in editions:
-            cid = ed.get("cover_i")
-            if cid:
-                out.append(Candidate(
-                    source="openlibrary", label=label,
-                    image_url=OL_COVER_ID.format(cid=cid),
-                    fmt=_norm_fmt(ed.get("physical_format"))))
-        if not editions and doc.get("cover_i"):
+    docs = data.get("docs", [])
+    for doc in docs:
+        work_key = doc.get("key")
+        if not work_key:
+            continue
+        try:
+            eds = fetch_json(OL_WORK_EDITIONS.format(work=work_key)) or {}
+        except Exception:
+            eds = {}
+        seen: set[int] = set()
+        for ed in eds.get("entries", []):
+            covers_list = ed.get("covers") or []
+            cid = next((c for c in covers_list if isinstance(c, int) and c > 0), None)
+            if cid is None or cid in seen:
+                continue
+            seen.add(cid)
             out.append(Candidate(
                 source="openlibrary", label=label,
-                image_url=OL_COVER_ID.format(cid=doc["cover_i"]), fmt=None))
+                image_url=OL_COVER_ID.format(cid=cid),
+                fmt=_norm_fmt(ed.get("physical_format"))))
+        if out:
+            break
+    if not out:
+        for doc in docs:
+            if doc.get("cover_i"):
+                out.append(Candidate(
+                    source="openlibrary", label=label,
+                    image_url=OL_COVER_ID.format(cid=doc["cover_i"]), fmt=None))
     out.sort(key=lambda c: _fmt_rank(c.fmt))
     return out
 
