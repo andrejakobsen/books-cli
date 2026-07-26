@@ -26,7 +26,11 @@ compose without clobbering each other on re-runs.
 - **Create + merge:** among the filtered rows, Goodreads creates new notes for
   books not in the vault and merges into existing ones.
 - **Match order:** existing note is found by normalized ISBN/ISBN13 first, then
-  by the sanitized Author/Title identity; otherwise the row is new.
+  by a **strict** Author/Title match; otherwise the row is new. The fallback
+  tolerates only punctuation and author middle-name/initial differences —
+  everything else must match. This keeps genuinely distinct books apart (e.g.
+  *The Soviet Century* by Moshe Lewin vs *The Soviet Century: Archaeology of a
+  Lost World* by Karl Schlögel remain separate).
 - **Status + shelves:** import Goodreads `Exclusive Shelf` as `status` and
   `Bookshelves` as a `shelves` list.
 - **Review file:** write `My Review` (and `Private Notes`, if present) to a
@@ -113,8 +117,18 @@ Holds everything both importers need, so they agree on format:
   5. Create author stubs under `Authors/` (`write_if_absent`).
   6. If a review/notes exists, `write_if_absent(book_folder /
      "<Title> - Review.md", ...)`.
-- Normalization for matching: lowercase + strip non-alphanumerics for
-  title/author; digits-only for ISBN.
+- Matching keys / normalization:
+  - **ISBN:** digits-only (also handles the trailing `X` check digit); compare
+    ISBN and ISBN13.
+  - **Title:** lowercase, fold accents (Unicode NFKD + drop combining marks),
+    collapse whitespace, strip punctuation → require **exact** equality. No
+    subtitle trimming.
+  - **Author (strict fuzzy):** same normalization, then compare only the
+    **first + last name tokens**, ignoring middle names/initials. So
+    `Terry Martin` ≡ `Terry L. Martin` and `Robert Tucker` ≡ `Robert C. Tucker`,
+    but different first/last names never match. Handles both Goodreads `Author`
+    and `Author l-f` orderings by reducing each to a `{first, last}` pair.
+  - A fallback match requires **title exact AND author first/last** to agree.
 
 ### `booktools/cli.py`
 
@@ -157,7 +171,11 @@ Goodreads-only books and are filled by Calibre / manual editing.
 - Merge into an existing Calibre note: fills empty `status`/`pages`/`shelves`/
   `date_read`, preserves existing `title`/`publisher`/`rating`, and leaves the
   body (description + cover embed) untouched.
-- Matching by ISBN and by Author/Title fallback (no duplicate note created).
+- Matching by ISBN and by strict Author/Title fallback (no duplicate note
+  created), including: punctuation-only title difference merges; author
+  middle-name/initial difference merges (`Terry Martin` ≡ `Terry L. Martin`);
+  but a different subtitle or different author does **not** merge (the two
+  *Soviet Century* books stay separate).
 - Review file written to the book folder and **not** overwritten on re-run.
 - Idempotent: a second full run changes nothing.
 
