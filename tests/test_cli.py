@@ -56,13 +56,13 @@ def _goodreads_csv(tmp_path: Path) -> Path:
 def test_all_capabilities_registered():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("calibre", "goodreads", "highlighted", "kobo"):
+    for command in ("calibre", "goodreads", "highlighted", "kobo", "readwise"):
         assert command in result.output
 
 
 def test_capabilities_count_matches_module_list():
     # One command name per registered capability module.
-    assert len(CAPABILITIES) == 4
+    assert len(CAPABILITIES) == 5
 
 
 def test_no_args_shows_help():
@@ -72,7 +72,7 @@ def test_no_args_shows_help():
 
 
 def test_subcommand_help():
-    for command in ("calibre", "goodreads", "highlighted", "kobo"):
+    for command in ("calibre", "goodreads", "highlighted", "kobo", "readwise"):
         result = runner.invoke(app, [command, "--help"])
         assert result.exit_code == 0, command
         assert command in result.output or "Usage" in result.output
@@ -188,3 +188,22 @@ def test_highlighted_end_to_end(tmp_path):
     hl = (out / "Exports" / "Stephen Kotkin" / "Stalin" / "Highlights.md").read_text()
     assert "> [!quote]+ p. 45–49" in hl
     assert "^p45-49" in hl
+
+
+def _readwise_csv(tmp_path: Path) -> Path:
+    p = tmp_path / "readwise-data.csv"
+    p.write_text(
+        "Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
+        "Location Type,Location,Highlighted at,Document tags\n"
+        '"A passage.","Stalin (Stalin #1)",Stephen Kotkin,B00INIXPYE,,,,'
+        "page,3,2026-07-17 14:00:25+00:00,\n",
+        encoding="utf-8")
+    return p
+
+
+def test_readwise_end_to_end(tmp_path):
+    csv_path = _readwise_csv(tmp_path)
+    out = tmp_path / "Obsidian"
+    result = runner.invoke(app, ["readwise", "--csv", str(csv_path), "--output", str(out)])
+    assert result.exit_code == 0, result.output
+    assert (out / "Books" / "Stalin.md").exists()

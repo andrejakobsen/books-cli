@@ -24,6 +24,7 @@ class Highlight:
     block: str | None = None           # stable location component (e.g. KoboSpan block)
     segment: str | None = None         # secondary location component
     page: str | None = None            # human page/location (physical books), e.g. "45-49"
+    location_label: str | None = None  # display prefix for `page`; defaults to "p." when None
     date: str | None = None
     tags: list[str] = field(default_factory=list)
 
@@ -81,7 +82,8 @@ def _label(h: Highlight) -> str:
     elif h.chapter_title:
         parts.append(h.chapter_title)
     if h.page:
-        parts.append(f"p. {h.page.replace('-', '–')}")
+        prefix = h.location_label or "p."
+        parts.append(f"{prefix} {h.page.replace('-', '–')}")
     if h.progress is not None:
         parts.append(f"{round(h.progress * 100)}%")
     return " · ".join(parts)

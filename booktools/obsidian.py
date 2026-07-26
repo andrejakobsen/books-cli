@@ -280,6 +280,7 @@ class BookRef:
     title: str
     authors: list[str] = field(default_factory=list)
     isbn: str | None = None
+    amazon: str | None = None
 
 
 @dataclass
@@ -290,13 +291,14 @@ class BookNote:
     created: bool        # True if the note was created by this call
 
 
-def build_index(vault: Path) -> tuple[dict[str, Path], dict[tuple, Path]]:
-    """Index existing flat book notes by normalized ISBN and (title, author)."""
+def build_index(vault: Path) -> tuple[dict[str, Path], dict[tuple, Path], dict[str, Path]]:
+    """Index existing flat book notes by normalized ISBN, (title, author), and amazon."""
     by_isbn: dict[str, Path] = {}
     by_title_author: dict[tuple, Path] = {}
+    by_amazon: dict[str, Path] = {}
     books_dir = vault / BOOKS_DIRNAME
     if not books_dir.is_dir():
-        return by_isbn, by_title_author
+        return by_isbn, by_title_author, by_amazon
     for md in sorted(books_dir.glob("*.md")):
         try:
             text = md.read_text(encoding="utf-8")
@@ -308,11 +310,14 @@ def build_index(vault: Path) -> tuple[dict[str, Path], dict[tuple, Path]]:
         isbn = norm_isbn(unquote(fm.get("isbn", "")))
         if isbn:
             by_isbn.setdefault(isbn, md)
+        amazon = norm_amazon(unquote(fm.get("amazon", "")))
+        if amazon:
+            by_amazon.setdefault(amazon, md)
         title = unquote(fm.get("title", ""))
         authors = extract_wikilinks(fm.get("authors", ""))
         if title and authors:
             by_title_author.setdefault((norm_title(title), author_key(authors[0])), md)
-    return by_isbn, by_title_author
+    return by_isbn, by_title_author, by_amazon
 
 
 class VaultIndex:
@@ -325,7 +330,7 @@ class VaultIndex:
 
     def __init__(self, vault: Path) -> None:
         self.vault = vault
-        self.by_isbn, self.by_ta = build_index(vault)
+        self.by_isbn, self.by_ta, self.by_amazon = build_index(vault)
         books_dir = vault / BOOKS_DIRNAME
         self.used_stems: set[str] = (
             {p.stem.lower() for p in books_dir.glob("*.md")}
@@ -336,6 +341,9 @@ class VaultIndex:
         isbn = norm_isbn(ref.isbn)
         if isbn and isbn in self.by_isbn:
             return self.by_isbn[isbn]
+        amazon = norm_amazon(ref.amazon)
+        if amazon and amazon in self.by_amazon:
+            return self.by_amazon[amazon]
         if ref.title and ref.authors:
             key = (norm_title(ref.title), author_key(ref.authors[0]))
             if key in self.by_ta:
@@ -346,6 +354,9 @@ class VaultIndex:
         isbn = norm_isbn(ref.isbn)
         if isbn:
             self.by_isbn.setdefault(isbn, note)
+        amazon = norm_amazon(ref.amazon)
+        if amazon:
+            self.by_amazon.setdefault(amazon, note)
         if ref.title and ref.authors:
             self.by_ta.setdefault(
                 (norm_title(ref.title), author_key(ref.authors[0])), note)
@@ -516,6 +527,13 @@ def norm_isbn(isbn: str | None) -> str | None:
     if not isbn:
         return None
     return re.sub(r"[^0-9x]", "", fold(isbn)).upper() or None
+
+
+def norm_amazon(amazon: str | None) -> str | None:
+    """Alphanumeric-only, uppercased Amazon id (ASIN); None if empty."""
+    if not amazon:
+        return None
+    return re.sub(r"[^a-z0-9]", "", fold(amazon)).upper() or None
 
 
 def author_key(name: str) -> tuple[str, str]:
