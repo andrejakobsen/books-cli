@@ -1,8 +1,8 @@
-"""Tests for the `books covers` capability (booktools.covers)."""
+"""Tests for the `books covers` capability (books.covers)."""
 
 from pathlib import Path
 
-from booktools import covers
+from books import covers
 
 
 def test_dataclasses_exist():
@@ -232,7 +232,7 @@ def test_google_books_captures_isbn13_from_identifiers():
 
 
 def test_apply_cover_backfills_isbn_when_learned(tmp_path):
-    from booktools.obsidian import VaultIndex
+    from books.obsidian import VaultIndex
 
     note = _write_note(tmp_path, "Deluge - Adam Tooze.md",
         '---\ntype: book\ntitle: "The Deluge"\n'
@@ -249,7 +249,7 @@ def test_apply_cover_backfills_isbn_when_learned(tmp_path):
 
 
 def test_apply_cover_does_not_overwrite_existing_isbn(tmp_path):
-    from booktools.obsidian import VaultIndex
+    from books.obsidian import VaultIndex
 
     note = _write_note(tmp_path, "Deluge - Adam Tooze.md",
         '---\ntype: book\ntitle: "The Deluge"\n'
@@ -650,7 +650,7 @@ def test_pick_cover_interactive_quit_raises():
 
 
 def test_apply_cover_writes_file_and_frontmatter(tmp_path):
-    from booktools.obsidian import VaultIndex
+    from books.obsidian import VaultIndex
 
     note = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
         '---\ntype: book\ntitle: "Napoleon"\n'
@@ -675,7 +675,7 @@ def test_apply_cover_writes_file_and_frontmatter(tmp_path):
 
 
 def test_apply_cover_idempotent(tmp_path):
-    from booktools.obsidian import VaultIndex
+    from books.obsidian import VaultIndex
 
     note = _write_note(tmp_path, "N - A.md",
         '---\ntype: book\ntitle: "N"\nauthors: ["[[A]]"]\ncover:\n---\n')
@@ -849,7 +849,7 @@ def test_run_single_book_ignores_limit(tmp_path):
 
 def test_cli_covers_dry_run(tmp_path, monkeypatch):
     from typer.testing import CliRunner
-    from booktools.cli import app
+    from books.cli import app
 
     _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
         '---\ntype: book\ntitle: "Napoleon"\n'
@@ -869,7 +869,7 @@ def test_cli_covers_dry_run(tmp_path, monkeypatch):
 
 def test_cli_covers_reports_errored_sources(tmp_path, monkeypatch):
     from typer.testing import CliRunner
-    from booktools.cli import app
+    from books.cli import app
 
     _write_note(tmp_path, "X - Y.md",
         '---\ntype: book\ntitle: "X"\nauthors: ["[[Y]]"]\namazon: "B00ABCDEFG"\ncover:\n---\n')
@@ -891,14 +891,14 @@ def test_cli_covers_reports_errored_sources(tmp_path, monkeypatch):
 
 
 def test_cli_covers_registered():
-    from booktools.cli import app
+    from books.cli import app
     names = {c.name for c in app.registered_commands}
     assert "covers" in names
 
 
 def test_cli_covers_single_book_interactive_by_default(tmp_path, monkeypatch):
     from typer.testing import CliRunner
-    from booktools.cli import app
+    from books.cli import app
 
     note = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
         '---\ntype: book\ntitle: "Napoleon"\n'
@@ -921,7 +921,7 @@ def test_cli_covers_single_book_interactive_by_default(tmp_path, monkeypatch):
 
 def test_cli_covers_single_book_rejects_note_outside_books(tmp_path):
     from typer.testing import CliRunner
-    from booktools.cli import app
+    from books.cli import app
 
     stray = tmp_path / "stray.md"
     stray.write_text('---\ntype: book\ntitle: "S"\ncover:\n---\n', encoding="utf-8")

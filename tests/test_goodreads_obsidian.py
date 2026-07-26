@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from booktools import goodreads_obsidian as gr
+from books import goodreads_obsidian as gr
 
 
 HEADER = (
@@ -58,7 +58,7 @@ def test_parse_csv_fields(tmp_path):
 
 
 def test_normalization_helpers():
-    from booktools import obsidian as ob
+    from books import obsidian as ob
     assert ob.norm_isbn('="9780698176287"') == "9780698176287"
     assert ob.norm_title("The Cold War: A New History") == \
         ob.norm_title("The Cold War - A New History")
@@ -217,7 +217,7 @@ def _minimal_goodreads_csv(path):
 def test_goodreads_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import goodreads_obsidian as gr, config
+    from books import goodreads_obsidian as gr, config
 
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "goodreads"
@@ -239,7 +239,7 @@ def test_goodreads_folder_arg_picks_newest(monkeypatch, tmp_path):
     import os
     import typer
     from typer.testing import CliRunner
-    from booktools import goodreads_obsidian as gr, config
+    from books import goodreads_obsidian as gr, config
 
     vault = tmp_path / "Vault"
     folder = tmp_path / "exports"

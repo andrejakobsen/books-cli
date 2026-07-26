@@ -10,7 +10,7 @@ URL — no scraping). When a note has an ISBN it drives the Google/Open Library
 lookup directly (Google `isbn:` query / Open Library `/b/isbn/` cover); Apple is
 always queried by title+author because its ISBN-term search is unreliable. All
 network I/O is injected so the logic is unit-testable; vault writing reuses
-booktools.obsidian.
+books.obsidian.
 
 Robustness: HTTP fetches retry transient failures (403/429/5xx — 403 covers
 iTunes throttling) with exponential backoff, giving up on a persistently throttled
@@ -38,8 +38,8 @@ from urllib.request import Request, urlopen
 
 import typer
 
-from booktools import config, resolve_path
-from booktools.obsidian import (
+from books import config, resolve_path
+from books.obsidian import (
     BOOKS_DIRNAME,
     VaultIndex,
     cover_path,
@@ -516,7 +516,7 @@ def apply_cover(index: VaultIndex, book: MissingBook, image: bytes,
     book.note_path.write_text(text, encoding="utf-8")
 
 
-USER_AGENT = "booktools-covers/1.0 (+https://github.com/)"
+USER_AGENT = "books-covers/1.0 (+https://github.com/)"
 HTTP_TIMEOUT = 15
 HTTP_RETRIES = 10          # attempt cap; the time budget below usually binds first
 HTTP_BACKOFF = 1.0         # base seconds; doubles each attempt (1s, 2s, 4s, …)
@@ -653,7 +653,7 @@ def covers_command(
         None,
         "--output", "-o",
         help="Obsidian vault to scan. Defaults to the vault from your config file "
-             "(~/.config/booktools/config.toml). Relative paths resolve against the current directory.",
+             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
     book: Path | None = typer.Option(
         None, "--book", "-b",

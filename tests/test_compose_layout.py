@@ -9,9 +9,9 @@ import order.
 
 from pathlib import Path
 
-from booktools import calibre_obsidian as c2o
-from booktools import goodreads_obsidian as gr
-from booktools import highlighted_obsidian as hi
+from books import calibre_obsidian as c2o
+from books import goodreads_obsidian as gr
+from books import highlighted_obsidian as hi
 
 ISBN13 = "9780141032016"
 

@@ -21,7 +21,7 @@ from pathlib import Path
 
 import typer
 
-from booktools import (
+from books import (
     calibre_obsidian,
     config,
     goodreads_obsidian,
@@ -258,7 +258,7 @@ def sync(
         None,
         "--output", "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/booktools/config.toml). Relative paths resolve against the current directory.",
+             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
     dry_run: bool = typer.Option(
         False,

@@ -34,7 +34,7 @@ parses to: clean note `Great chapter.`, links `["One Two"]`, tags `["history", "
 
 ## Design
 
-### 1. Model — `booktools/highlights.py`
+### 1. Model — `books/highlights.py`
 
 - Add `links: list[str] = field(default_factory=list)` to the `Highlight`
   dataclass, alongside `tags`.
@@ -51,7 +51,7 @@ parses to: clean note `Great chapter.`, links `["One Two"]`, tags `["history", "
 
   The line is emitted when either `h.links` or `h.tags` is non-empty.
 
-### 2. Shared marker parser — `booktools/highlights.py`
+### 2. Shared marker parser — `books/highlights.py`
 
 - `parse_markers(text) -> tuple[str | None, list[str], list[str]]` returning
   `(clean_text, links, tags)`:

@@ -8,7 +8,7 @@
 Add a `readwise` capability that reads a Readwise CSV export and writes the
 highlights into an Obsidian vault in exactly the same shape as the existing
 `highlighted` importer: a per-book `Highlights.md` (rendered by the shared
-`booktools/highlights.py`) written under `Exports/<Author>/<Title>/` and embedded
+`books/highlights.py`) written under `Exports/<Author>/<Title>/` and embedded
 into the flat book note under a `## Highlights` heading, with frontmatter filled
 under the "never overwrite" rule.
 
@@ -29,8 +29,8 @@ Location Type, Location, Highlighted at, Document tags
 
 ## Architecture
 
-A new capability module `booktools/readwise_obsidian.py`, following the exact
-pattern of `booktools/highlighted_obsidian.py`:
+A new capability module `books/readwise_obsidian.py`, following the exact
+pattern of `books/highlighted_obsidian.py`:
 
 1. `parse_csv(path)` — `csv.DictReader`, `utf-8-sig`.
 2. Group rows by book, preserving CSV order. Grouping key: Amazon Book ID when
@@ -40,7 +40,7 @@ pattern of `booktools/highlighted_obsidian.py`:
    `write_leaf_with_embed(..., with_source("readwise", render_highlights(...)),
    "Highlights")`, then `write_stub` for the author.
 4. `register(app)` attaches an `@app.command("readwise")`; add the module to
-   `CAPABILITIES` in `booktools/cli.py`.
+   `CAPABILITIES` in `books/cli.py`.
 5. `scripts/readwise_obsidian.py` shim that imports and calls `main()`, matching
    the other capabilities.
 
@@ -69,7 +69,7 @@ Frontmatter written via `update_frontmatter` (never overwrites non-empty values)
 
 ## Type-aware location
 
-Extend the shared `Highlight` model (`booktools/highlights.py`) with one new
+Extend the shared `Highlight` model (`books/highlights.py`) with one new
 optional field:
 
 ```python

@@ -1,7 +1,7 @@
 # Highlighted: folder-of-CSVs import
 
 **Date:** 2026-07-26
-**Capability:** `booktools/highlighted_obsidian.py` → `highlighted`
+**Capability:** `books/highlighted_obsidian.py` → `highlighted`
 
 ## Goal
 
@@ -66,7 +66,7 @@ are de-duplicated across files (a set, as today).
 ## Out of scope / unchanged
 
 - `scripts/highlighted_obsidian.py` shim (calls `main()`), unchanged.
-- `booktools/highlights.py`, `booktools/obsidian.py`, and other capabilities.
+- `books/highlights.py`, `books/obsidian.py`, and other capabilities.
 - Recursion into subfolders.
 - Any change to how a single CSV is parsed or rendered.
 

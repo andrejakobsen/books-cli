@@ -17,8 +17,8 @@ from xml.etree import ElementTree as ET
 
 import typer
 
-from booktools import config, resolve_path
-from booktools.obsidian import (
+from books import config, resolve_path
+from books.obsidian import (
     AUTHORS_DIRNAME,
     TOPICS_DIRNAME,
     BookRef,
@@ -281,7 +281,7 @@ def calibre_to_obsidian(
         None,
         "--output", "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/booktools/config.toml). Relative paths resolve against the current directory.",
+             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
 ) -> None:
     """Convert a Calibre library into an Obsidian markdown vault.

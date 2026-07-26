@@ -1,6 +1,6 @@
 """User configuration for the ``books`` CLI.
 
-Reads ``~/.config/booktools/config.toml`` (respecting ``$XDG_CONFIG_HOME``),
+Reads ``~/.config/books/config.toml`` (respecting ``$XDG_CONFIG_HOME``),
 auto-creating it with commented defaults on first run. Supplies the default
 Obsidian vault directory so most commands need no ``--output``.
 """
@@ -12,14 +12,14 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from booktools import resolve_path
+from books import resolve_path
 
 DEFAULT_OBSIDIAN_PATH = "~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian"
 DEFAULT_VAULT = "History"
 DEFAULT_IMPORTS = ".imports"
 
 _DEFAULT_FILE = (
-    "# booktools configuration\n"
+    "# books configuration\n"
     f'obsidian_path = "{DEFAULT_OBSIDIAN_PATH}"\n'
     f'vault = "{DEFAULT_VAULT}"\n'
     "# Folder (inside the vault) holding raw import sources, hidden from Obsidian.\n"
@@ -40,7 +40,7 @@ def config_path() -> Path:
     """Location of the config file, honouring ``$XDG_CONFIG_HOME``."""
     base = os.environ.get("XDG_CONFIG_HOME")
     root = Path(base).expanduser() if base else Path.home() / ".config"
-    return root / "booktools" / "config.toml"
+    return root / "books" / "config.toml"
 
 
 def load_config(path: Path | None = None) -> Config:

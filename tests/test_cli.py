@@ -1,4 +1,4 @@
-"""Tests for the shared `books` Typer CLI (booktools.cli).
+"""Tests for the shared `books` Typer CLI (books.cli).
 
 Exercises the command surface: that every capability is registered, that
 `--help` works for the app and each subcommand, that argument/error paths exit
@@ -9,7 +9,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from booktools.cli import CAPABILITIES, app
+from books.cli import CAPABILITIES, app
 
 runner = CliRunner()
 

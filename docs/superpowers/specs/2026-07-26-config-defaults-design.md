@@ -28,13 +28,13 @@ supplies a real default vault, so `--output` becomes an override you rarely need
 
 ## Config file
 
-- **Location:** `~/.config/booktools/config.toml`, respecting `$XDG_CONFIG_HOME`
-  when set (i.e. `${XDG_CONFIG_HOME:-~/.config}/booktools/config.toml`).
+- **Location:** `~/.config/books/config.toml`, respecting `$XDG_CONFIG_HOME`
+  when set (i.e. `${XDG_CONFIG_HOME:-~/.config}/books/config.toml`).
 - **Auto-creation:** if the file (or its parent directory) is missing, it is
   created on first run with commented defaults:
 
   ```toml
-  # booktools configuration
+  # books configuration
   obsidian_path = "~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian"
   vault = "History"
   ```
@@ -54,7 +54,7 @@ The resolved default vault directory is `expanduser(obsidian_path) / vault`
 old `Path("Obsidian")` default. It is a real Obsidian vault folder — the same thing
 the existing `--output` already points at (commands look for `Books/` inside it).
 
-## New module: `booktools/config.py`
+## New module: `books/config.py`
 
 - `load_config() -> Config` — reads the TOML, auto-creating it with defaults when
   absent, and returns a small dataclass with `obsidian_path: str` and `vault: str`.

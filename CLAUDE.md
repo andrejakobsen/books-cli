@@ -24,9 +24,9 @@ branch" behavior. Run `uv run pytest -q` before committing.
 ## Architecture
 
 Single Typer CLI (`books`) that fans out to independent capability modules. The
-entry point is `booktools/cli.py`, which builds one shared `Typer` app and calls
+entry point is `books/cli.py`, which builds one shared `Typer` app and calls
 `register(app)` on every module listed in `CAPABILITIES`. **To add a capability:**
-create `booktools/<feature>.py` with a `register(app)` function that attaches its
+create `books/<feature>.py` with a `register(app)` function that attaches its
 `@app.command(...)`, then add the module to `CAPABILITIES`.
 
 Seven capabilities exist today. **Two of them create book notes (`calibre`, `goodreads`);
@@ -35,18 +35,18 @@ notes and never create them** — a book with no matching note is skipped and co
 (run `calibre`/`goodreads` first to establish book identity). This is enforced in code
 via `VaultIndex.find` (match-only) vs `VaultIndex.find_or_create` (creates). A seventh
 (`sync`) is an orchestrator that runs the importers in order and creates nothing itself.
-- `booktools/calibre_obsidian.py` → `calibre` — reads a Calibre library's `metadata.opf` (XML) + `cover.jpg` per book and writes Obsidian notes (creates notes via `find_or_create`). `--library` defaults to `~/Calibre Library`.
-- `booktools/goodreads_obsidian.py` → `goodreads` — reads a Goodreads CSV export and writes/merges Obsidian notes (creates notes via `find_or_create`). A review is written once into a write-once `## Review` section of the book note (never clobbered on re-runs). `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/goodreads`.
-- `booktools/kobo_export.py` → `kobo` — reads `KoboReader.sqlite` (opened **read-only** via `file:...?mode=ro`) and exports per-book highlight CSVs into a zip. Has a `--csv` flag (the default output mode) and an `--obsidian` flag that renders highlights (via the shared `booktools/highlights.py`) into a marker-wrapped `## Highlights` section of an **existing** book note (matched via `VaultIndex.find`; unmatched books are skipped and counted). Note markers follow the `#tag` / `@link` convention (parsed via `highlights.parse_markers`). When no DB path is given, a mounted Kobo (`/Volumes/KOBOeReader/.kobo/KoboReader.sqlite`) is safely snapshotted into `<vault>/.imports/kobo/` via SQLite's read-only backup API (the device file is never modified) and read from there; otherwise the existing copy (or newest `*.sqlite`) in that folder is used.
-- `booktools/highlighted_obsidian.py` → `highlighted` — reads a Highlighted app CSV export (highlights from physical books, page-located) and renders highlights (via the shared `booktools/highlights.py`) into a marker-wrapped `## Highlights` section of an **existing** book note (matched via `VaultIndex.find`; unmatched books are skipped and counted). `--csv` accepts a single CSV file or a folder of CSV exports (every top-level `*.csv` is imported in sorted order; a file that fails to parse is skipped and reported), defaulting to `<vault>/.imports/highlighted`. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
-- `booktools/readwise_obsidian.py` → `readwise` — reads a Readwise CSV export and renders highlights (via `booktools/highlights.py`) into a marker-wrapped `## Highlights` section of an **existing** book note (matched via `VaultIndex.find` by Amazon id then standardized title/author; unmatched books are skipped and counted). `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/readwise`. Fills `amazon`/`shelves`/`series`/`series_index` frontmatter, renders type-aware location labels (`p.`/`loc.`). Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
-- `booktools/sync.py` → `sync` — master orchestrator that runs the importers in dependency order using each command's default options: `calibre` → `goodreads` → `kobo` → `highlighted` → `readwise` (covers is **not** included). Each step is skipped when its source is absent (calibre: `~/Calibre Library` exists; goodreads/highlighted/readwise: a `*.csv` in the `.imports/<name>` folder; kobo: a mounted device or a `*.sqlite` in `.imports/kobo`). Each step calls the module's core function directly (`convert`/`export_obsidian`) — no shelling out. Failures are reported but never stop the remaining steps (continue-on-error); a colored per-step + summary report is printed via `typer.secho`. `--output` overrides the vault; `--dry-run` prints the detection plan without writing. Creates no notes itself — it delegates note creation to `calibre`/`goodreads`.
-- `booktools/covers.py` → `covers` — scans an existing vault for `type: book` notes with a blank `cover:` field and fetches a cover image. Sources are tried in order — Apple Books (iTunes Search API, queried by title+author against the GB store), then Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping). When a note carries an ISBN it drives the Google/Open Library lookup directly (Google `isbn:` query / Open Library `/b/isbn/` cover) — the most reliable path, unaffected by Google's title-search rate limiting (Apple is always queried by title+author, since its ISBN-term search is unreliable). Stdlib-only (`urllib`); all network I/O is injected for testing. HTTP fetches retry transient failures (429/5xx) with exponential backoff (`fetch_with_retry`), and a source that errors outright (rate-limited/unreachable) is counted and reported separately from one that merely found no match. Author/title queries are normalized before sending (`normalize_author` collapses whitespace and drops translator/co-author tails like "Plato and Benjamin Jowett" → "Plato"). Fetched images are validated by parsing their pixel dimensions (`image_dimensions`, PNG/GIF/JPEG headers, stdlib) and rejecting anything below `MIN_IMAGE_DIM`, falling back to a byte-size check when dimensions are unparseable. An ISBN learned from a source is backfilled into the note's frontmatter (never overwriting an existing one) — an Apple artwork path often embeds the edition ISBN, which is backfilled like any other learned ISBN. Writes `<Title> - <Author>.jpg` into the flat `Covers/` folder and fills the note's `cover:` frontmatter + top embed (at width 150) via the shared `obsidian.py` helpers (never overwriting an existing cover). Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run. `--book PATH` targets a single note under `Books/` (vault inferred from the path) and is interactive by default.
+- `books/calibre_obsidian.py` → `calibre` — reads a Calibre library's `metadata.opf` (XML) + `cover.jpg` per book and writes Obsidian notes (creates notes via `find_or_create`). `--library` defaults to `~/Calibre Library`.
+- `books/goodreads_obsidian.py` → `goodreads` — reads a Goodreads CSV export and writes/merges Obsidian notes (creates notes via `find_or_create`). A review is written once into a write-once `## Review` section of the book note (never clobbered on re-runs). `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/goodreads`.
+- `books/kobo_export.py` → `kobo` — reads `KoboReader.sqlite` (opened **read-only** via `file:...?mode=ro`) and exports per-book highlight CSVs into a zip. Has a `--csv` flag (the default output mode) and an `--obsidian` flag that renders highlights (via the shared `books/highlights.py`) into a marker-wrapped `## Highlights` section of an **existing** book note (matched via `VaultIndex.find`; unmatched books are skipped and counted). Note markers follow the `#tag` / `@link` convention (parsed via `highlights.parse_markers`). When no DB path is given, a mounted Kobo (`/Volumes/KOBOeReader/.kobo/KoboReader.sqlite`) is safely snapshotted into `<vault>/.imports/kobo/` via SQLite's read-only backup API (the device file is never modified) and read from there; otherwise the existing copy (or newest `*.sqlite`) in that folder is used.
+- `books/highlighted_obsidian.py` → `highlighted` — reads a Highlighted app CSV export (highlights from physical books, page-located) and renders highlights (via the shared `books/highlights.py`) into a marker-wrapped `## Highlights` section of an **existing** book note (matched via `VaultIndex.find`; unmatched books are skipped and counted). `--csv` accepts a single CSV file or a folder of CSV exports (every top-level `*.csv` is imported in sorted order; a file that fails to parse is skipped and reported), defaulting to `<vault>/.imports/highlighted`. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
+- `books/readwise_obsidian.py` → `readwise` — reads a Readwise CSV export and renders highlights (via `books/highlights.py`) into a marker-wrapped `## Highlights` section of an **existing** book note (matched via `VaultIndex.find` by Amazon id then standardized title/author; unmatched books are skipped and counted). `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/readwise`. Fills `amazon`/`shelves`/`series`/`series_index` frontmatter, renders type-aware location labels (`p.`/`loc.`). Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
+- `books/sync.py` → `sync` — master orchestrator that runs the importers in dependency order using each command's default options: `calibre` → `goodreads` → `kobo` → `highlighted` → `readwise` (covers is **not** included). Each step is skipped when its source is absent (calibre: `~/Calibre Library` exists; goodreads/highlighted/readwise: a `*.csv` in the `.imports/<name>` folder; kobo: a mounted device or a `*.sqlite` in `.imports/kobo`). Each step calls the module's core function directly (`convert`/`export_obsidian`) — no shelling out. Failures are reported but never stop the remaining steps (continue-on-error); a colored per-step + summary report is printed via `typer.secho`. `--output` overrides the vault; `--dry-run` prints the detection plan without writing. Creates no notes itself — it delegates note creation to `calibre`/`goodreads`.
+- `books/covers.py` → `covers` — scans an existing vault for `type: book` notes with a blank `cover:` field and fetches a cover image. Sources are tried in order — Apple Books (iTunes Search API, queried by title+author against the GB store), then Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping). When a note carries an ISBN it drives the Google/Open Library lookup directly (Google `isbn:` query / Open Library `/b/isbn/` cover) — the most reliable path, unaffected by Google's title-search rate limiting (Apple is always queried by title+author, since its ISBN-term search is unreliable). Stdlib-only (`urllib`); all network I/O is injected for testing. HTTP fetches retry transient failures (429/5xx) with exponential backoff (`fetch_with_retry`), and a source that errors outright (rate-limited/unreachable) is counted and reported separately from one that merely found no match. Author/title queries are normalized before sending (`normalize_author` collapses whitespace and drops translator/co-author tails like "Plato and Benjamin Jowett" → "Plato"). Fetched images are validated by parsing their pixel dimensions (`image_dimensions`, PNG/GIF/JPEG headers, stdlib) and rejecting anything below `MIN_IMAGE_DIM`, falling back to a byte-size check when dimensions are unparseable. An ISBN learned from a source is backfilled into the note's frontmatter (never overwriting an existing one) — an Apple artwork path often embeds the edition ISBN, which is backfilled like any other learned ISBN. Writes `<Title> - <Author>.jpg` into the flat `Covers/` folder and fills the note's `cover:` frontmatter + top embed (at width 150) via the shared `obsidian.py` helpers (never overwriting an existing cover). Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run. `--book PATH` targets a single note under `Books/` (vault inferred from the path) and is interactive by default.
 
 ### Configuration
 
-`booktools/config.py` supplies the default Obsidian vault. It reads
-`~/.config/booktools/config.toml` (respecting `$XDG_CONFIG_HOME`), auto-creating it
+`books/config.py` supplies the default Obsidian vault. It reads
+`~/.config/books/config.toml` (respecting `$XDG_CONFIG_HOME`), auto-creating it
 with defaults on first run: `obsidian_path` (the folder holding your vaults, default
 `~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian`) and `vault` (the vault
 name, default `History`). `default_vault()` joins them; `resolve_vault(output)` is
@@ -65,7 +65,7 @@ single-file CSV importers (goodreads/readwise), `newest_csv(folder)` picks the
 most-recently-modified top-level `*.csv` and `resolve_csv_arg(csv, name, output)` resolves
 an unset/folder/file `--csv` to one CSV (unset → newest in the canonical subfolder).
 
-**The `#tag` / `@link` convention** (in `booktools/highlights.py`): highlight annotations
+**The `#tag` / `@link` convention** (in `books/highlights.py`): highlight annotations
 carry two marker kinds — `#tag` renders as an Obsidian inline tag, `@link` renders as a
 `[[wikilink]]`. Inline in free-form note text (Kobo), `parse_markers` captures each marker
 until the next `@`/`#`/newline. In CSV tag columns (Highlighted, Readwise), `split_tag_column`
@@ -75,7 +75,7 @@ Links render on the `[!quote]` callout **title line** (middot-joined after the l
 `ch. 2 · 42% · [[Trotsky]]`) so people/events scan from the header; tags render on a trailing
 line inside the callout body. The author's note sits between them as a nested blockquote (`>>`).
 
-**Chapter subheaders** (in `booktools/highlights.py`, `render_highlights`): when a source
+**Chapter subheaders** (in `books/highlights.py`, `render_highlights`): when a source
 knows chapter titles, highlights group under `### Chapter Title` markdown headers (level 3,
 because the whole block sits under a `## Highlights` section) so all the highlights for a
 chapter collect under one heading. Grouping triggers when **any** highlight carries a
@@ -87,7 +87,7 @@ locator always keeps the chapter, prefixed by the `chapter_label` argument to
 otherwise. A title-less highlight sitting among titled ones falls back to a `### Chapter {index}`
 header. Highlights are never separated by `---` dividers (blank line only).
 
-**Ordering** (in `booktools/highlights.py`, `render_highlights` via `sort_key`): `render_highlights`
+**Ordering** (in `books/highlights.py`, `render_highlights` via `sort_key`): `render_highlights`
 always sorts its input into reading order before rendering, so output is ordered regardless of the
 caller's input order — by `chapter_index`, then `progress` (% within chapter), then the leading page
 number, then KoboSpan `block`/`segment`. Missing components sort last (located highlights lead), and
@@ -97,7 +97,7 @@ be reading order); Kobo's SQL `ORDER BY` produces the same order and is merely r
 
 ### The shared Obsidian layer
 
-`booktools/obsidian.py` is the heart of the design and the reason the Calibre and
+`books/obsidian.py` is the heart of the design and the reason the Calibre and
 Goodreads importers compose. Read it before changing either importer. It owns:
 
 - **The flat vault layout.** Everything lives in top-level folders — `Books/` (the
@@ -157,7 +157,7 @@ new shared logic in `obsidian.py` rather than duplicating it per importer.
 
 ### Path handling
 
-All CLI path arguments pass through `booktools.resolve_path` (in `__init__.py`): absolute
+All CLI path arguments pass through `books.resolve_path` (in `__init__.py`): absolute
 and `~` paths are used as-is; relative paths resolve against the cwd (or home for some
 defaults). Use it for any new path option.
 

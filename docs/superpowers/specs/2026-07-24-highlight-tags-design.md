@@ -25,7 +25,7 @@ and the quote can be transcluded via `![[Book#^ch3-p45]]`.
 
 ## Changes
 
-### 1. Shared model — `booktools/highlights.py`
+### 1. Shared model — `books/highlights.py`
 
 - Add `tags: list[str] = field(default_factory=list)` to the `Highlight`
   dataclass.
@@ -59,7 +59,7 @@ quoted text:
 - When there are no tags, the callout is unchanged (no trailing blank line).
 - Note callout and block anchors are unaffected.
 
-### 3. Kobo — `booktools/kobo_export.py`
+### 3. Kobo — `books/kobo_export.py`
 
 In `row_to_highlight`, extract inline hashtags from the note text:
 
@@ -73,7 +73,7 @@ In `row_to_highlight`, extract inline hashtags from the note text:
 
 The CSV export path (`export`) is unchanged.
 
-### 4. Highlighted — `booktools/highlighted_obsidian.py`
+### 4. Highlighted — `books/highlighted_obsidian.py`
 
 In `row_to_highlight`, split the `Tags` column on commas, run each through
 `sanitize_tag`, and drop `None`/empty results.

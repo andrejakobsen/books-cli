@@ -15,7 +15,7 @@ cover, and fetches one — preferring paperback editions where that is knowable.
 ## Goals
 
 - New capability: `books covers`, following the existing module/`register(app)`
-  convention (`booktools/covers.py` + `scripts/covers.py` shim).
+  convention (`books/covers.py` + `scripts/covers.py` shim).
 - Fill only **blank/absent** `cover:` frontmatter on `type: book` notes. Do **not**
   chase broken cover links (a `cover:` that points at a missing file is left alone).
 - Fetch from **Google Books → Open Library → Amazon (ASIN only)**, in that order.
@@ -39,7 +39,7 @@ cover, and fetches one — preferring paperback editions where that is knowable.
 
 ## Architecture
 
-Single module `booktools/covers.py`, added to `CAPABILITIES` in `booktools/cli.py`.
+Single module `books/covers.py`, added to `CAPABILITIES` in `books/cli.py`.
 Standalone shim `scripts/covers.py` calls the module's `main()`.
 
 The module is split into small, independently testable units. All network I/O is

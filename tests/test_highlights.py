@@ -1,6 +1,6 @@
 """Unit tests for the source-agnostic highlights layer."""
 
-from booktools import highlights as hl
+from books import highlights as hl
 
 
 def test_build_anchors_chapter_and_progress():

@@ -5,7 +5,7 @@ from pathlib import Path
 import typer
 from typer.testing import CliRunner
 
-from booktools import readwise_obsidian as rw
+from books import readwise_obsidian as rw
 
 HEADER = ("Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
           "Location Type,Location,Highlighted at,Document tags\n")
@@ -235,7 +235,7 @@ def test_split_series_ignores_non_numbered_parenthetical():
 
 
 def test_readwise_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
-    from booktools import config
+    from books import config
 
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "readwise"
@@ -257,7 +257,7 @@ def test_readwise_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
 def test_readwise_folder_arg_picks_newest(monkeypatch, tmp_path):
     import os
 
-    from booktools import config
+    from books import config
 
     vault = tmp_path / "Vault"
     folder = tmp_path / "exports"

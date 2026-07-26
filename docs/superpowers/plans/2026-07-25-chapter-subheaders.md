@@ -4,7 +4,7 @@
 
 **Goal:** Group highlights under `## Chapter Title` subheaders (with a hidden `%% Kobo ch. N %%` reading-order comment) when a source knows chapter titles, so all highlights for a chapter collect under one heading.
 
-**Architecture:** All logic lives in `render_highlights` in `booktools/highlights.py` (the shared renderer). It is gated on chapter data: if no highlight has a `chapter_title` the output is flat and unchanged; otherwise it emits a header at each chapter change and drops the redundant `ch. N` from each callout locator. Kobo passes a `chapter_label="Kobo ch."` so its reading-order index renders as a hidden comment. Page-based sources (Highlighted) and chapter-less exports (Readwise) are unaffected because they never set `chapter_title`.
+**Architecture:** All logic lives in `render_highlights` in `books/highlights.py` (the shared renderer). It is gated on chapter data: if no highlight has a `chapter_title` the output is flat and unchanged; otherwise it emits a header at each chapter change and drops the redundant `ch. N` from each callout locator. Kobo passes a `chapter_label="Kobo ch."` so its reading-order index renders as a hidden comment. Page-based sources (Highlighted) and chapter-less exports (Readwise) are unaffected because they never set `chapter_title`.
 
 **Tech Stack:** Python 3 (stdlib only), Typer CLI, pytest. Run tests with `uv run pytest`.
 
@@ -12,8 +12,8 @@
 
 ## File Structure
 
-- `booktools/highlights.py` — MODIFY. Add `include_chapter` param to `_label`, add `_chapter_key` and `_chapter_header` helpers, and add grouped-mode logic + `chapter_label` param to `render_highlights`.
-- `booktools/kobo_export.py` — MODIFY (line 173). Pass `chapter_label="Kobo ch."` into `render_highlights`.
+- `books/highlights.py` — MODIFY. Add `include_chapter` param to `_label`, add `_chapter_key` and `_chapter_header` helpers, and add grouped-mode logic + `chapter_label` param to `render_highlights`.
+- `books/kobo_export.py` — MODIFY (line 173). Pass `chapter_label="Kobo ch."` into `render_highlights`.
 - `tests/test_highlights.py` — MODIFY. Add grouped-mode tests; update the one existing test that relied on chapter_title rendering flat.
 - `tests/test_kobo_export.py` — MODIFY (lines 62-64). Update the flat locator assertion to the new grouped output.
 
@@ -22,7 +22,7 @@
 ## Task 1: Grouped chapter rendering in `highlights.py`
 
 **Files:**
-- Modify: `booktools/highlights.py` (`_label` ~176-187, `render_highlights` ~196-222)
+- Modify: `books/highlights.py` (`_label` ~176-187, `render_highlights` ~196-222)
 - Test: `tests/test_highlights.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -107,7 +107,7 @@ Expected: FAIL — `render_highlights()` currently takes no `chapter_label` argu
 
 - [ ] **Step 3: Implement grouped rendering**
 
-In `booktools/highlights.py`, replace the `_label` function (currently ~176-187) with a version that takes `include_chapter`:
+In `books/highlights.py`, replace the `_label` function (currently ~176-187) with a version that takes `include_chapter`:
 
 ```python
 def _label(h: Highlight, include_chapter: bool = True) -> str:
@@ -232,7 +232,7 @@ Expected: PASS (all tests, including the updated ones).
 - [ ] **Step 7: Commit**
 
 ```bash
-git add booktools/highlights.py tests/test_highlights.py
+git add books/highlights.py tests/test_highlights.py
 git commit -m "feat(highlights): group highlights under chapter subheaders"
 ```
 
@@ -241,7 +241,7 @@ git commit -m "feat(highlights): group highlights under chapter subheaders"
 ## Task 2: Kobo passes the reading-order label
 
 **Files:**
-- Modify: `booktools/kobo_export.py:173`
+- Modify: `books/kobo_export.py:173`
 - Test: `tests/test_kobo_export.py:62-64`
 
 - [ ] **Step 1: Update the Kobo obsidian export assertion (failing test)**
@@ -269,7 +269,7 @@ Expected: FAIL — the export still calls `render_highlights` without a label, s
 
 - [ ] **Step 3: Pass the chapter label from the Kobo exporter**
 
-In `booktools/kobo_export.py`, in `export_obsidian` (~line 171-173), change:
+In `books/kobo_export.py`, in `export_obsidian` (~line 171-173), change:
 
 ```python
         write_leaf_with_embed(
@@ -299,7 +299,7 @@ Expected: PASS (all tests across all files; Highlighted and Readwise are unaffec
 - [ ] **Step 6: Commit**
 
 ```bash
-git add booktools/kobo_export.py tests/test_kobo_export.py
+git add books/kobo_export.py tests/test_kobo_export.py
 git commit -m "feat(kobo): render chapter subheaders with hidden reading-order comment"
 ```
 

@@ -1,12 +1,12 @@
-"""Tests for booktools.config (config file + vault resolution)."""
+"""Tests for books.config (config file + vault resolution)."""
 
 from pathlib import Path
 
-from booktools import config
+from books import config
 
 
 def test_load_config_creates_default_file_when_absent(tmp_path):
-    cfg_file = tmp_path / "booktools" / "config.toml"
+    cfg_file = tmp_path / "books" / "config.toml"
     cfg = config.load_config(cfg_file)
     assert cfg.obsidian_path == config.DEFAULT_OBSIDIAN_PATH
     assert cfg.vault == config.DEFAULT_VAULT
@@ -59,13 +59,13 @@ def test_load_config_falls_back_when_file_unwritable(tmp_path):
 
 def test_config_path_respects_xdg(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
-    assert config.config_path() == tmp_path / "xdg" / "booktools" / "config.toml"
+    assert config.config_path() == tmp_path / "xdg" / "books" / "config.toml"
 
 
 def test_config_path_defaults_to_dot_config(monkeypatch, tmp_path):
     monkeypatch.delenv("XDG_CONFIG_HOME", raising=False)
     monkeypatch.setattr(Path, "home", classmethod(lambda cls: tmp_path))
-    assert config.config_path() == tmp_path / ".config" / "booktools" / "config.toml"
+    assert config.config_path() == tmp_path / ".config" / "books" / "config.toml"
 
 
 def test_default_vault_joins_and_expands(tmp_path, monkeypatch):
@@ -110,7 +110,7 @@ def test_load_config_defaults_imports_on_non_string(tmp_path):
 
 
 def test_default_file_includes_imports(tmp_path):
-    cfg_file = tmp_path / "booktools" / "config.toml"
+    cfg_file = tmp_path / "books" / "config.toml"
     config.load_config(cfg_file)
     assert 'imports = ".imports"' in cfg_file.read_text()
 
@@ -218,7 +218,7 @@ def test_importer_writes_to_configured_vault_without_output(monkeypatch, tmp_pat
     import typer
     from typer.testing import CliRunner
 
-    from booktools import readwise_obsidian as rw
+    from books import readwise_obsidian as rw
 
     vault = tmp_path / "ConfiguredVault"
     monkeypatch.setattr(config, "default_vault", lambda path=None: vault)

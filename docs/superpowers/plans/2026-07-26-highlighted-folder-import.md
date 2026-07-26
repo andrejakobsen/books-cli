@@ -13,7 +13,7 @@
 ### Task 1: `resolve_csv_paths` helper
 
 **Files:**
-- Modify: `booktools/highlighted_obsidian.py` (add helper after `parse_csv`, ~line 44)
+- Modify: `books/highlighted_obsidian.py` (add helper after `parse_csv`, ~line 44)
 - Test: `tests/test_highlighted_obsidian.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -46,11 +46,11 @@ def test_resolve_csv_paths_empty_folder_raises(tmp_path):
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_highlighted_obsidian.py -k resolve_csv_paths -v`
-Expected: FAIL with `AttributeError: module 'booktools.highlighted_obsidian' has no attribute 'resolve_csv_paths'`
+Expected: FAIL with `AttributeError: module 'books.highlighted_obsidian' has no attribute 'resolve_csv_paths'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add after `parse_csv` in `booktools/highlighted_obsidian.py`:
+Add after `parse_csv` in `books/highlighted_obsidian.py`:
 
 ```python
 def resolve_csv_paths(csv_path: Path) -> list[Path]:
@@ -76,7 +76,7 @@ Expected: PASS (3 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/highlighted_obsidian.py tests/test_highlighted_obsidian.py
+git add books/highlighted_obsidian.py tests/test_highlighted_obsidian.py
 git commit -m "feat(highlighted): resolve --csv folder to a sorted list of CSVs"
 ```
 
@@ -85,7 +85,7 @@ git commit -m "feat(highlighted): resolve --csv folder to a sorted list of CSVs"
 ### Task 2: CLI loops over CSVs, sums stats, skips bad files
 
 **Files:**
-- Modify: `booktools/highlighted_obsidian.py` — `highlighted_to_obsidian` (~lines 105-137)
+- Modify: `books/highlighted_obsidian.py` — `highlighted_to_obsidian` (~lines 105-137)
 - Test: `tests/test_highlighted_obsidian.py`
 
 This task changes the CLI command. The CLI is exercised via Typer's `CliRunner`. Tests assert on the printed summary and on the vault contents.
@@ -96,7 +96,7 @@ Add to `tests/test_highlighted_obsidian.py`:
 
 ```python
 from typer.testing import CliRunner
-from booktools.cli import app
+from books.cli import app
 
 runner = CliRunner()
 
@@ -183,7 +183,7 @@ Expected: FAIL — the current CLI treats `--csv` as a single file (`is_file()` 
 
 - [ ] **Step 3: Write minimal implementation**
 
-Replace the body of `highlighted_to_obsidian` (the code after the docstring, currently lines 126-137) in `booktools/highlighted_obsidian.py` with:
+Replace the body of `highlighted_to_obsidian` (the code after the docstring, currently lines 126-137) in `books/highlighted_obsidian.py` with:
 
 ```python
     csv = resolve_path(csv, Path.cwd())
@@ -227,7 +227,7 @@ Expected: PASS (5 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/highlighted_obsidian.py tests/test_highlighted_obsidian.py
+git add books/highlighted_obsidian.py tests/test_highlighted_obsidian.py
 git commit -m "feat(highlighted): import every CSV in a folder, skipping bad files"
 ```
 
@@ -236,7 +236,7 @@ git commit -m "feat(highlighted): import every CSV in a folder, skipping bad fil
 ### Task 3: Update `--csv` help text and docstring
 
 **Files:**
-- Modify: `booktools/highlighted_obsidian.py` — `--csv` option help (~line 109) and command docstring (~lines 118-125)
+- Modify: `books/highlighted_obsidian.py` — `--csv` option help (~line 109) and command docstring (~lines 118-125)
 
 - [ ] **Step 1: Update the `--csv` help text**
 
@@ -270,7 +270,7 @@ Expected: help text mentions "or a folder of CSV exports".
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/highlighted_obsidian.py
+git add books/highlighted_obsidian.py
 git commit -m "docs(highlighted): document folder support in --csv help"
 ```
 
@@ -279,7 +279,7 @@ git commit -m "docs(highlighted): document folder support in --csv help"
 ### Task 4: Update CLAUDE.md capability description
 
 **Files:**
-- Modify: `CLAUDE.md` — the `booktools/highlighted_obsidian.py` bullet under Architecture
+- Modify: `CLAUDE.md` — the `books/highlighted_obsidian.py` bullet under Architecture
 
 - [ ] **Step 1: Edit the capability bullet**
 

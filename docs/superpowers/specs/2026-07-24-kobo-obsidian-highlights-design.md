@@ -3,7 +3,7 @@
 **Date:** 2026-07-24
 **Status:** Approved design, pending implementation plan
 **Command touched:** `books kobo` (adds an Obsidian output mode); refactor of `books goodreads` onto shared helpers
-**New shared module:** `booktools/highlights.py` (source-agnostic highlight model + renderer, reusable by future apps: Kindle, Apple Books, …)
+**New shared module:** `books/highlights.py` (source-agnostic highlight model + renderer, reusable by future apps: Kindle, Apple Books, …)
 
 ## Goal
 
@@ -58,7 +58,7 @@ Obsidian-facing logic is **source-agnostic** and lives in a shared module. Each
 app importer only maps its own storage into the shared model; it owns none of the
 rendering, anchoring, or note-wiring.
 
-**New module `booktools/highlights.py`** (stdlib-only) owns:
+**New module `books/highlights.py`** (stdlib-only) owns:
 
 - **`Highlight` dataclass** — a source-neutral highlight:
   ```
@@ -85,7 +85,7 @@ rendering, anchoring, or note-wiring.
 
 **Promote book-note orchestration to shared.** Goodreads already contains
 `build_index`/`match_note` and the find-or-create-note-folder logic; move the
-generic parts to the shared layer (`booktools/obsidian.py`, or `highlights.py`)
+generic parts to the shared layer (`books/obsidian.py`, or `highlights.py`)
 so any exporter can:
 
 - `find_or_create_book_note(vault, book_ref) -> Path` — match an existing note by
@@ -167,13 +167,13 @@ Kobo-specific code):
 
 ## Shared layer changes
 
-- **`booktools/highlights.py`** (new): `Highlight`, `render_highlights`, anchor
+- **`books/highlights.py`** (new): `Highlight`, `render_highlights`, anchor
   building — the source-agnostic highlight model + renderer.
-- **`booktools/obsidian.py`**: `ensure_embed_section(note_text, heading, target)`
+- **`books/obsidian.py`**: `ensure_embed_section(note_text, heading, target)`
   (append `\n## <heading>\n![](<target>)\n` iff the heading is absent);
   `BookRef`, `find_or_create_book_note`, and `write_leaf_with_embed` — the shared
   note orchestration promoted out of Goodreads.
-- **`booktools/kobo_export.py`**: only Kobo SQL + KoboSpan→`block`/`segment`
+- **`books/kobo_export.py`**: only Kobo SQL + KoboSpan→`block`/`segment`
   mapping; delegates all rendering and note-wiring to the shared helpers.
 
 ## Error handling
@@ -215,5 +215,5 @@ Goodreads (`test_goodreads_obsidian.py`):
 
 ## Standalone shim
 
-`scripts/kobo_export.py` remains a thin shim over `booktools.kobo_export.main()`;
+`scripts/kobo_export.py` remains a thin shim over `books.kobo_export.main()`;
 no changes beyond staying in sync with the module.

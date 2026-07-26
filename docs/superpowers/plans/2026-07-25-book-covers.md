@@ -4,21 +4,21 @@
 
 **Goal:** Add a `books covers` CLI command that scans an Obsidian vault for book notes with a blank `cover:` field and fetches a cover from Google Books → Open Library → Amazon (ASIN only), preferring paperback where the source reports it.
 
-**Architecture:** A new stdlib-only capability module `booktools/covers.py` exposing `register(app)`, composed of small, independently testable units (scan, per-source candidate builders, image validation, selection, apply-to-vault). All network I/O is injected as `fetch_json`/`fetch_bytes` callables so tests never touch the network. All vault writing reuses `booktools/obsidian.py` (never overwrite, never rename).
+**Architecture:** A new stdlib-only capability module `books/covers.py` exposing `register(app)`, composed of small, independently testable units (scan, per-source candidate builders, image validation, selection, apply-to-vault). All network I/O is injected as `fetch_json`/`fetch_bytes` callables so tests never touch the network. All vault writing reuses `books/obsidian.py` (never overwrite, never rename).
 
-**Tech Stack:** Python 3, Typer (CLI), `urllib.request` + `json` (network), pytest (tests). Reuses `booktools.obsidian` and `booktools.resolve_path`.
+**Tech Stack:** Python 3, Typer (CLI), `urllib.request` + `json` (network), pytest (tests). Reuses `books.obsidian` and `books.resolve_path`.
 
 ---
 
 ## File Structure
 
-- **Create** `booktools/covers.py` — the whole capability: data types, scan, source builders, validation, selection, apply, CLI command, `register`, `main`.
-- **Create** `scripts/covers.py` — standalone shim importing `booktools.covers.main`.
+- **Create** `books/covers.py` — the whole capability: data types, scan, source builders, validation, selection, apply, CLI command, `register`, `main`.
+- **Create** `scripts/covers.py` — standalone shim importing `books.covers.main`.
 - **Create** `tests/test_covers.py` — unit + CLI tests.
-- **Modify** `booktools/cli.py` — import `covers`, add to `CAPABILITIES`.
+- **Modify** `books/cli.py` — import `covers`, add to `CAPABILITIES`.
 - **Modify** `CLAUDE.md` — document the new capability (architecture section).
 
-Reused from `booktools/obsidian.py` (do not reimplement): `frontmatter_values`,
+Reused from `books/obsidian.py` (do not reimplement): `frontmatter_values`,
 `unquote`, `extract_wikilinks`, `BookRef`, `VaultIndex`, `cover_refs`,
 `update_frontmatter`, `ensure_top_embed`, `BOOKS_DIRNAME`.
 
@@ -27,18 +27,18 @@ Reused from `booktools/obsidian.py` (do not reimplement): `frontmatter_values`,
 ## Task 1: Module skeleton + data types
 
 **Files:**
-- Create: `booktools/covers.py`
+- Create: `books/covers.py`
 - Test: `tests/test_covers.py`
 
 - [ ] **Step 1: Write the failing test**
 
 ```python
 # tests/test_covers.py
-"""Tests for the `books covers` capability (booktools.covers)."""
+"""Tests for the `books covers` capability (books.covers)."""
 
 from pathlib import Path
 
-from booktools import covers
+from books import covers
 
 
 def test_dataclasses_exist():
@@ -63,12 +63,12 @@ def test_dataclasses_exist():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_covers.py::test_dataclasses_exist -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'booktools.covers'`
+Expected: FAIL with `ModuleNotFoundError: No module named 'books.covers'`
 
 - [ ] **Step 3: Write minimal implementation**
 
 ```python
-# booktools/covers.py
+# books/covers.py
 #!/usr/bin/env python3
 """Fill missing book-note covers from Google Books, Open Library, and Amazon.
 
@@ -77,7 +77,7 @@ blank/absent and fetches a cover image. Sources are tried in order — Google
 Books, then Open Library (paperback editions preferred where the format is
 known), then Amazon (only when the note already carries an `amazon` ASIN, by
 constructing the known cover-image URL — no scraping). All network I/O is
-injected so the logic is unit-testable; vault writing reuses booktools.obsidian.
+injected so the logic is unit-testable; vault writing reuses books.obsidian.
 
 Standard library only.
 """
@@ -115,7 +115,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "feat(covers): module skeleton and data types
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -126,7 +126,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 2: `find_missing` — scan the vault
 
 **Files:**
-- Modify: `booktools/covers.py`
+- Modify: `books/covers.py`
 - Test: `tests/test_covers.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -173,15 +173,15 @@ def test_find_missing_no_books_dir_returns_empty(tmp_path):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_covers.py -k find_missing -v`
-Expected: FAIL with `AttributeError: module 'booktools.covers' has no attribute 'find_missing'`
+Expected: FAIL with `AttributeError: module 'books.covers' has no attribute 'find_missing'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add imports and the function to `booktools/covers.py`:
+Add imports and the function to `books/covers.py`:
 
 ```python
 # add to the imports block
-from booktools.obsidian import (
+from books.obsidian import (
     BOOKS_DIRNAME,
     extract_wikilinks,
     frontmatter_values,
@@ -228,7 +228,7 @@ Expected: PASS (2 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "feat(covers): scan vault for notes missing a cover
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -239,7 +239,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 3: Google Books candidate builder
 
 **Files:**
-- Modify: `booktools/covers.py`
+- Modify: `books/covers.py`
 - Test: `tests/test_covers.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -315,7 +315,7 @@ Expected: FAIL with `AttributeError: ... has no attribute 'google_books_candidat
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add to `booktools/covers.py` (add `from urllib.parse import quote` to imports):
+Add to `books/covers.py` (add `from urllib.parse import quote` to imports):
 
 ```python
 # add to imports
@@ -378,7 +378,7 @@ Expected: PASS (3 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "feat(covers): Google Books candidate lookup
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -389,7 +389,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 4: Open Library candidate builder (paperback-first)
 
 **Files:**
-- Modify: `booktools/covers.py`
+- Modify: `books/covers.py`
 - Test: `tests/test_covers.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -467,7 +467,7 @@ Expected: FAIL with `AttributeError: ... has no attribute 'openlibrary_candidate
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add to `booktools/covers.py`:
+Add to `books/covers.py`:
 
 ```python
 OL_SEARCH_API = "https://openlibrary.org/search.json"
@@ -542,7 +542,7 @@ Expected: PASS (3 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "feat(covers): Open Library lookup with paperback preference
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -553,7 +553,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 5: Amazon ASIN candidate + `gather_candidates` ordering
 
 **Files:**
-- Modify: `booktools/covers.py`
+- Modify: `books/covers.py`
 - Test: `tests/test_covers.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -602,7 +602,7 @@ Expected: FAIL with `AttributeError: ... has no attribute 'amazon_candidates'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add to `booktools/covers.py`:
+Add to `books/covers.py`:
 
 ```python
 AMAZON_IMAGE = "https://images-na.ssl-images-amazon.com/images/P/{asin}.01._SCLZZZZZZZ_.jpg"
@@ -637,7 +637,7 @@ Expected: PASS (3 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "feat(covers): Amazon ASIN cover URL and ordered candidate gather
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -648,7 +648,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 6: `is_valid_image` and `pick_cover` (auto + interactive)
 
 **Files:**
-- Modify: `booktools/covers.py`
+- Modify: `books/covers.py`
 - Test: `tests/test_covers.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -717,7 +717,7 @@ Expected: FAIL with `AttributeError: ... has no attribute 'is_valid_image'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add to `booktools/covers.py`:
+Add to `books/covers.py`:
 
 ```python
 MIN_IMAGE_BYTES = 1000
@@ -772,7 +772,7 @@ Expected: PASS (5 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "feat(covers): image validation and auto/interactive selection
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -783,7 +783,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 7: `apply_cover` — write image + frontmatter + embed
 
 **Files:**
-- Modify: `booktools/covers.py`
+- Modify: `books/covers.py`
 - Test: `tests/test_covers.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -792,7 +792,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 # tests/test_covers.py — append
 
 def test_apply_cover_writes_file_and_frontmatter(tmp_path):
-    from booktools.obsidian import VaultIndex
+    from books.obsidian import VaultIndex
 
     note = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
         '---\ntype: book\ntitle: "Napoleon"\n'
@@ -817,7 +817,7 @@ def test_apply_cover_writes_file_and_frontmatter(tmp_path):
 
 
 def test_apply_cover_idempotent(tmp_path):
-    from booktools.obsidian import VaultIndex
+    from books.obsidian import VaultIndex
 
     note = _write_note(tmp_path, "N - A.md",
         '---\ntype: book\ntitle: "N"\nauthors: ["[[A]]"]\ncover:\n---\n')
@@ -840,11 +840,11 @@ Expected: FAIL with `AttributeError: ... has no attribute 'apply_cover'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add to `booktools/covers.py` (extend the obsidian import with `BookRef, VaultIndex, cover_refs, update_frontmatter, ensure_top_embed`):
+Add to `books/covers.py` (extend the obsidian import with `BookRef, VaultIndex, cover_refs, update_frontmatter, ensure_top_embed`):
 
 ```python
-# extend the booktools.obsidian import block
-from booktools.obsidian import (
+# extend the books.obsidian import block
+from books.obsidian import (
     BOOKS_DIRNAME,
     BookRef,
     VaultIndex,
@@ -881,7 +881,7 @@ Expected: PASS (2 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "feat(covers): write cover image and fill note frontmatter/embed
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -892,7 +892,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 8: Default network fetchers + terminal prompt
 
 **Files:**
-- Modify: `booktools/covers.py`
+- Modify: `books/covers.py`
 - Test: `tests/test_covers.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -922,14 +922,14 @@ Expected: FAIL with `AttributeError: ... has no attribute '_terminal_prompt'`
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add to `booktools/covers.py` (add `import json` and `from urllib.request import Request, urlopen`):
+Add to `books/covers.py` (add `import json` and `from urllib.request import Request, urlopen`):
 
 ```python
 # add to imports
 import json
 from urllib.request import Request, urlopen
 
-USER_AGENT = "booktools-covers/1.0 (+https://github.com/)"
+USER_AGENT = "books-covers/1.0 (+https://github.com/)"
 HTTP_TIMEOUT = 15
 
 
@@ -963,7 +963,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "feat(covers): default network fetchers and terminal prompt
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -974,7 +974,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 9: `run` orchestrator (scan → gather → pick → apply)
 
 **Files:**
-- Modify: `booktools/covers.py`
+- Modify: `books/covers.py`
 - Test: `tests/test_covers.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1209,7 +1209,7 @@ refactor didn't regress Task 2: `uv run pytest tests/test_covers.py -v`.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "feat(covers): run orchestrator with single-book, dry-run, limit, quit
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -1220,7 +1220,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 10: CLI command, `register`, `main`
 
 **Files:**
-- Modify: `booktools/covers.py`
+- Modify: `books/covers.py`
 - Test: `tests/test_covers.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -1230,7 +1230,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 def test_cli_covers_dry_run(tmp_path, monkeypatch):
     from typer.testing import CliRunner
-    from booktools.cli import app
+    from books.cli import app
 
     _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
         '---\ntype: book\ntitle: "Napoleon"\n'
@@ -1249,14 +1249,14 @@ def test_cli_covers_dry_run(tmp_path, monkeypatch):
 
 
 def test_cli_covers_registered():
-    from booktools.cli import app
+    from books.cli import app
     names = {c.name for c in app.registered_commands}
     assert "covers" in names
 
 
 def test_cli_covers_single_book_interactive_by_default(tmp_path, monkeypatch):
     from typer.testing import CliRunner
-    from booktools.cli import app
+    from books.cli import app
 
     note = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
         '---\ntype: book\ntitle: "Napoleon"\n'
@@ -1279,7 +1279,7 @@ def test_cli_covers_single_book_interactive_by_default(tmp_path, monkeypatch):
 
 def test_cli_covers_single_book_rejects_note_outside_books(tmp_path):
     from typer.testing import CliRunner
-    from booktools.cli import app
+    from books.cli import app
 
     stray = tmp_path / "stray.md"
     stray.write_text('---\ntype: book\ntitle: "S"\ncover:\n---\n', encoding="utf-8")
@@ -1294,12 +1294,12 @@ Expected: FAIL (`covers` command not registered / no `register`)
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add to `booktools/covers.py` (add `import typer` and `from booktools import resolve_path`):
+Add to `books/covers.py` (add `import typer` and `from books import resolve_path`):
 
 ```python
 # add to imports
 import typer
-from booktools import resolve_path
+from books import resolve_path
 
 
 def covers_command(
@@ -1395,7 +1395,7 @@ Expected: PASS (4 tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "feat(covers): Typer command, register, and main entrypoint
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -1406,7 +1406,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 11: Wire into the CLI hub
 
 **Files:**
-- Modify: `booktools/cli.py`
+- Modify: `books/cli.py`
 
 - [ ] **Step 1: Write the failing test**
 
@@ -1417,10 +1417,10 @@ shared hub app by running the existing CLI registration test.
 Run: `uv run pytest tests/test_cli.py -v`
 Expected: currently PASSES but does not yet include `covers` — proceed to wire it.
 
-- [ ] **Step 2: Modify `booktools/cli.py`**
+- [ ] **Step 2: Modify `books/cli.py`**
 
 ```python
-from booktools import (
+from books import (
     calibre_obsidian,
     covers,
     goodreads_obsidian,
@@ -1453,7 +1453,7 @@ Expected: `covers` listed among the subcommands.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/cli.py
+git add books/cli.py
 git commit -m "feat(covers): register the covers command on the books CLI
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -1473,12 +1473,12 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 #!/usr/bin/env python3
 """Standalone shim: `python covers.py [-o VAULT] [--interactive] [--dry-run]`.
 
-The real implementation lives in ``booktools.covers``. This keeps the script
+The real implementation lives in ``books.covers``. This keeps the script
 runnable on its own while there is a single source of truth. For the full CLI
 with all capabilities, use ``books`` (see pyproject.toml).
 """
 
-from booktools.covers import main
+from books.covers import main
 
 if __name__ == "__main__":
     main()
@@ -1511,7 +1511,7 @@ In the Architecture section, update the capability count from "Five" to "Six" an
 add a bullet describing `covers` after the `readwise` bullet:
 
 ```markdown
-- `booktools/covers.py` → `covers` — scans an existing vault for `type: book` notes with a blank `cover:` field and fetches a cover image. Sources are tried in order — Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping). Stdlib-only (`urllib`); all network I/O is injected for testing. Writes `cover.jpg` into `Exports/<Author>/<Title>/` and fills the note's `cover:` frontmatter + top embed via the shared `obsidian.py` helpers (never overwriting an existing cover). Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run. `--book PATH` targets a single note under `Books/` (vault inferred from the path) and is interactive by default.
+- `books/covers.py` → `covers` — scans an existing vault for `type: book` notes with a blank `cover:` field and fetches a cover image. Sources are tried in order — Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping). Stdlib-only (`urllib`); all network I/O is injected for testing. Writes `cover.jpg` into `Exports/<Author>/<Title>/` and fills the note's `cover:` frontmatter + top embed via the shared `obsidian.py` helpers (never overwriting an existing cover). Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run. `--book PATH` targets a single note under `Books/` (vault inferred from the path) and is interactive by default.
 ```
 
 - [ ] **Step 2: Run the full suite**
@@ -1543,7 +1543,7 @@ endpoint: `search.json` gives a work `key` (`/works/OL…W`), then
 hand-crafted `editions.docs` that don't match the real API.
 
 **Files:**
-- Modify: `booktools/covers.py`
+- Modify: `books/covers.py`
 - Test: `tests/test_covers.py`
 
 - [ ] **Step 1: Replace the misleading test and add coverage**
@@ -1677,7 +1677,7 @@ with `cover_i`, so the fallback yields one OL candidate).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "fix(covers): real Open Library paperback preference via editions endpoint
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"

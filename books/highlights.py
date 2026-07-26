@@ -14,7 +14,7 @@ import math
 import re
 from dataclasses import dataclass, field
 
-from booktools.obsidian import wikilink
+from books.obsidian import wikilink
 
 
 @dataclass

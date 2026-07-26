@@ -4,9 +4,9 @@
 
 **Goal:** Add Apple Books (via the public iTunes Search API) as the first cover source tried by the `books covers` command, ahead of Google → Open Library → Amazon.
 
-**Architecture:** A new `apple_books_candidates(book, fetch_json)` function in `booktools/covers.py` mirrors the existing source signature and is prepended to the `_API_SOURCES` priority tuple. Two small pure helpers rewrite the iTunes artwork URL to a large render and extract an ISBN from the artwork path. Stats dicts and the CLI summary line gain an `apple` entry. All network I/O stays injected, so everything is unit-tested offline.
+**Architecture:** A new `apple_books_candidates(book, fetch_json)` function in `books/covers.py` mirrors the existing source signature and is prepended to the `_API_SOURCES` priority tuple. Two small pure helpers rewrite the iTunes artwork URL to a large render and extract an ISBN from the artwork path. Stats dicts and the CLI summary line gain an `apple` entry. All network I/O stays injected, so everything is unit-tested offline.
 
-**Tech Stack:** Python 3.11+ stdlib only (`urllib`), Typer CLI, pytest. Follows the existing patterns in `booktools/covers.py` and `tests/test_covers.py`.
+**Tech Stack:** Python 3.11+ stdlib only (`urllib`), Typer CLI, pytest. Follows the existing patterns in `books/covers.py` and `tests/test_covers.py`.
 
 **Spec:** `docs/superpowers/specs/2026-07-26-apple-books-cover-source-design.md`
 
@@ -24,7 +24,7 @@
 ## Task 1: Apple Books source function + helpers
 
 **Files:**
-- Modify: `booktools/covers.py` (add constants, two helpers, and `apple_books_candidates` after `amazon_candidates`, before `_API_SOURCES` at line ~284)
+- Modify: `books/covers.py` (add constants, two helpers, and `apple_books_candidates` after `amazon_candidates`, before `_API_SOURCES` at line ~284)
 - Test: `tests/test_covers.py`
 
 - [ ] **Step 1: Add the test fixture and helper-function tests**
@@ -85,11 +85,11 @@ def test_itunes_isbn_none_for_opaque_stem():
 - [ ] **Step 2: Run the helper tests to verify they fail**
 
 Run: `uv run pytest tests/test_covers.py -k "itunes" -q`
-Expected: FAIL with `AttributeError: module 'booktools.covers' has no attribute '_itunes_artwork'`
+Expected: FAIL with `AttributeError: module 'books.covers' has no attribute '_itunes_artwork'`
 
 - [ ] **Step 3: Add constants + the two helpers**
 
-In `booktools/covers.py`, immediately after `amazon_candidates` (ends ~line 281) and before the `# The API-backed sources...` comment (~line 284), insert:
+In `books/covers.py`, immediately after `amazon_candidates` (ends ~line 281) and before the `# The API-backed sources...` comment (~line 284), insert:
 
 ```python
 ITUNES_API = "https://itunes.apple.com/search"
@@ -213,11 +213,11 @@ def test_apple_books_skips_results_without_artwork():
 - [ ] **Step 6: Run the new tests to verify they fail**
 
 Run: `uv run pytest tests/test_covers.py -k "apple_books" -q`
-Expected: FAIL with `AttributeError: module 'booktools.covers' has no attribute 'apple_books_candidates'`
+Expected: FAIL with `AttributeError: module 'books.covers' has no attribute 'apple_books_candidates'`
 
 - [ ] **Step 7: Implement `apple_books_candidates`**
 
-In `booktools/covers.py`, immediately after `_itunes_isbn` (from Step 3), add:
+In `books/covers.py`, immediately after `_itunes_isbn` (from Step 3), add:
 
 ```python
 def apple_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
@@ -260,7 +260,7 @@ Expected: PASS (9 tests)
 - [ ] **Step 9: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "feat(covers): add Apple Books (iTunes) cover source function
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -271,7 +271,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 2: Wire Apple in first — source order, stats, CLI summary
 
 **Files:**
-- Modify: `booktools/covers.py` — `_API_SOURCES` (~line 285), `gather_with_errors` docstring (~line 291), `run()` stats dict (~lines 511-512), `covers_command` echo (~lines 606-611)
+- Modify: `books/covers.py` — `_API_SOURCES` (~line 285), `gather_with_errors` docstring (~line 291), `run()` stats dict (~lines 511-512), `covers_command` echo (~lines 606-611)
 - Modify: `tests/test_covers.py` — `test_gather_candidates_source_order` (~line 409)
 - Test: `tests/test_covers.py`
 
@@ -310,7 +310,7 @@ Expected: FAIL — `sources[0]` is `"google"`, not `"apple"` (apple not yet wire
 
 - [ ] **Step 3: Prepend Apple to `_API_SOURCES`**
 
-In `booktools/covers.py`, change (~line 284):
+In `books/covers.py`, change (~line 284):
 
 ```python
 # The API-backed sources, in priority order; amazon is URL-only (no fetch).
@@ -333,7 +333,7 @@ _API_SOURCES = (
 
 - [ ] **Step 4: Update `gather_with_errors` docstring**
 
-In `booktools/covers.py`, in `gather_with_errors` (~line 296), update the parenthetical source list:
+In `books/covers.py`, in `gather_with_errors` (~line 296), update the parenthetical source list:
 
 ```python
     order (Apple, Google, Open Library, Amazon) and *errored* is the list of source
@@ -343,7 +343,7 @@ In `booktools/covers.py`, in `gather_with_errors` (~line 296), update the parent
 
 - [ ] **Step 5: Add `apple` to the stats dicts in `run()`**
 
-In `booktools/covers.py`, in `run()` (~lines 511-512), change:
+In `books/covers.py`, in `run()` (~lines 511-512), change:
 
 ```python
         "by_source": {"google": 0, "openlibrary": 0, "amazon": 0},
@@ -359,7 +359,7 @@ to:
 
 - [ ] **Step 6: Add `apple` to the CLI summary line**
 
-In `booktools/covers.py`, in `covers_command` (~lines 607-611), change:
+In `books/covers.py`, in `covers_command` (~lines 607-611), change:
 
 ```python
     typer.echo(
@@ -397,7 +397,7 @@ Expected: PASS (all tests, including `test_gather_candidates_apple_first`)
 - [ ] **Step 9: Commit**
 
 ```bash
-git add booktools/covers.py tests/test_covers.py
+git add books/covers.py tests/test_covers.py
 git commit -m "feat(covers): try Apple Books first, ahead of google/openlibrary/amazon
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -408,13 +408,13 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 3: Documentation
 
 **Files:**
-- Modify: `booktools/covers.py` — module docstring (~lines 2-10) and `covers_command` help (~lines 569-579)
+- Modify: `books/covers.py` — module docstring (~lines 2-10) and `covers_command` help (~lines 569-579)
 - Modify: `CLAUDE.md` — the `covers` capability bullet
 - Modify: `README.md` — any `covers` source description
 
 - [ ] **Step 1: Update the module docstring**
 
-In `booktools/covers.py`, update the opening docstring so the source order reads Apple first. Change the first sentence + the "Sources are tried in order" sentence to name Apple Books:
+In `books/covers.py`, update the opening docstring so the source order reads Apple first. Change the first sentence + the "Sources are tried in order" sentence to name Apple Books:
 
 ```python
 """Fill missing book-note covers from Apple Books, Google, Open Library, and Amazon.
@@ -428,14 +428,14 @@ URL — no scraping). When a note has an ISBN it drives the Google/Open Library
 lookup directly (Google `isbn:` query / Open Library `/b/isbn/` cover); Apple is
 always queried by title+author because its ISBN-term search is unreliable. All
 network I/O is injected so the logic is unit-testable; vault writing reuses
-booktools.obsidian.
+books.obsidian.
 ```
 
 (Keep the remaining paragraphs of the docstring as-is.)
 
 - [ ] **Step 2: Update the `covers` command help text**
 
-In `booktools/covers.py`, in `covers_command`'s docstring (~lines 570-578), change the source sentence to lead with Apple:
+In `books/covers.py`, in `covers_command`'s docstring (~lines 570-578), change the source sentence to lead with Apple:
 
 ```python
     frontmatter is blank and fetches a cover from Apple Books, then Google Books,
@@ -445,7 +445,7 @@ In `booktools/covers.py`, in `covers_command`'s docstring (~lines 570-578), chan
 
 - [ ] **Step 3: Update CLAUDE.md**
 
-In `CLAUDE.md`, find the `booktools/covers.py → covers` bullet. Update the "Sources are tried in order" sentence to:
+In `CLAUDE.md`, find the `books/covers.py → covers` bullet. Update the "Sources are tried in order" sentence to:
 
 > Sources are tried in order — Apple Books (iTunes Search API, queried by title+author against the GB store), then Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping).
 
@@ -463,7 +463,7 @@ Expected: PASS (entire suite)
 - [ ] **Step 6: Commit**
 
 ```bash
-git add booktools/covers.py CLAUDE.md README.md
+git add books/covers.py CLAUDE.md README.md
 git commit -m "docs(covers): document Apple Books as the first cover source
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"

@@ -1,4 +1,4 @@
-# booktools
+# books
 
 CLI tools for books & reading data. Ships a single `books` command with
 sub-commands, built with [Typer](https://typer.tiangolo.com/) and managed with
@@ -46,7 +46,7 @@ Then `books <Tab>` completes commands, and `--<Tab>` completes options/paths.
 uv tool install . --reinstall              # rebuild & reinstall after code changes
 uv tool install . --reinstall --editable   # editable: picks up edits without reinstalling
 uv tool list                               # show installed tools
-uv tool uninstall booktools                # remove the `books` command
+uv tool uninstall books                # remove the `books` command
 ```
 
 ### Alternative: run without installing globally
@@ -58,7 +58,7 @@ uv run books --help     # run via uv without a global install
 
 ## Configuration
 
-`booktools` reads a config file at `~/.config/booktools/config.toml` (honoring
+`books` reads a config file at `~/.config/books/config.toml` (honoring
 `$XDG_CONFIG_HOME`), auto-created with defaults on first run. It has three keys:
 
 ```toml
@@ -190,9 +190,9 @@ uv run python scripts/kobo_export.py -o kobo_highlights.zip
 
 ## Adding a capability
 
-1. Create `booktools/<feature>.py` with a `register(app: typer.Typer)` function
+1. Create `books/<feature>.py` with a `register(app: typer.Typer)` function
    that attaches your `@app.command()`.
-2. Add the module to `CAPABILITIES` in `booktools/cli.py`.
+2. Add the module to `CAPABILITIES` in `books/cli.py`.
 
 ## Development
 

@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from booktools import kobo_export as ke
+from books import kobo_export as ke
 
 
 def _make_db(path: Path) -> None:
@@ -173,7 +173,7 @@ def test_kobo_note_only_markers_becomes_none():
 def test_kobo_copies_from_mounted_device(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import kobo_export as ke, config
+    from books import kobo_export as ke, config
 
     vault = tmp_path / "Vault"
     device = tmp_path / "device" / "KoboReader.sqlite"
@@ -223,7 +223,7 @@ def test_safe_copy_db_removes_partial_snapshot_on_failure(tmp_path):
 def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import kobo_export as ke, config
+    from books import kobo_export as ke, config
 
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "kobo"
@@ -245,7 +245,7 @@ def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
 def test_kobo_csv_mode_default_ignores_zip_output_for_imports(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import kobo_export as ke, config
+    from books import kobo_export as ke, config
 
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "kobo"
@@ -273,7 +273,7 @@ def test_kobo_csv_mode_default_ignores_zip_output_for_imports(monkeypatch, tmp_p
 def test_kobo_obsidian_mode_default_forwards_output_for_imports(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import kobo_export as ke, config
+    from books import kobo_export as ke, config
 
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "kobo"
@@ -300,7 +300,7 @@ def test_kobo_obsidian_mode_default_forwards_output_for_imports(monkeypatch, tmp
 def test_kobo_default_missing_everything_errors(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import kobo_export as ke, config
+    from books import kobo_export as ke, config
 
     vault = tmp_path / "Vault"
     monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")

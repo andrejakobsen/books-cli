@@ -4,7 +4,7 @@
 
 **Goal:** Add a `goodreads-to-obsidian` capability to the `books` CLI that turns a Goodreads CSV export (read books only, by default) into Obsidian notes, merging with existing Calibre notes without ever overwriting non-empty data.
 
-**Architecture:** Extract shared Obsidian helpers into a new `booktools/obsidian.py` — including a canonical book-note property schema and an `update_frontmatter()` merge that fills only absent/blank keys. Both `calibre_obsidian.py` (refactored to be merge-based) and the new `goodreads_obsidian.py` build a `{property: formatted_value}` dict and feed it through `update_frontmatter()`. Matching uses ISBN first, then a strict normalized Author/Title fallback.
+**Architecture:** Extract shared Obsidian helpers into a new `books/obsidian.py` — including a canonical book-note property schema and an `update_frontmatter()` merge that fills only absent/blank keys. Both `calibre_obsidian.py` (refactored to be merge-based) and the new `goodreads_obsidian.py` build a `{property: formatted_value}` dict and feed it through `update_frontmatter()`. Matching uses ISBN first, then a strict normalized Author/Title fallback.
 
 **Tech Stack:** Python 3.9+ stdlib (`csv`, `re`, `unicodedata`, `xml`, `html.parser`), Typer, pytest, uv.
 
@@ -12,10 +12,10 @@
 
 ## File Structure
 
-- **Create** `booktools/obsidian.py` — shared formatting/filesystem helpers, canonical schema, `update_frontmatter`, frontmatter reading helpers, HTML→Markdown.
-- **Modify** `booktools/calibre_obsidian.py` — import shared helpers; emit full canonical schema; merge-based `convert`.
-- **Create** `booktools/goodreads_obsidian.py` — CSV parsing, normalization/matching, `convert`, Typer command, `register`, `main`.
-- **Modify** `booktools/cli.py` — add `goodreads_obsidian` to `CAPABILITIES`.
+- **Create** `books/obsidian.py` — shared formatting/filesystem helpers, canonical schema, `update_frontmatter`, frontmatter reading helpers, HTML→Markdown.
+- **Modify** `books/calibre_obsidian.py` — import shared helpers; emit full canonical schema; merge-based `convert`.
+- **Create** `books/goodreads_obsidian.py` — CSV parsing, normalization/matching, `convert`, Typer command, `register`, `main`.
+- **Modify** `books/cli.py` — add `goodreads_obsidian` to `CAPABILITIES`.
 - **Create** `scripts/goodreads_to_obsidian.py` — standalone shim.
 - **Create** `tests/test_obsidian.py` — unit tests for the shared module.
 - **Create** `tests/test_goodreads_obsidian.py` — importer tests.
@@ -26,10 +26,10 @@ Run tests throughout with: `uv run pytest -q`
 
 ---
 
-## Task 1: Shared `booktools/obsidian.py`
+## Task 1: Shared `books/obsidian.py`
 
 **Files:**
-- Create: `booktools/obsidian.py`
+- Create: `books/obsidian.py`
 - Test: `tests/test_obsidian.py`
 
 - [ ] **Step 1: Write failing tests**
@@ -39,7 +39,7 @@ Create `tests/test_obsidian.py`:
 ```python
 """Unit tests for the shared Obsidian helpers."""
 
-from booktools import obsidian as ob
+from books import obsidian as ob
 
 
 def test_safe_filename_replaces_illegal_chars():
@@ -97,9 +97,9 @@ def test_html_to_markdown_list():
 - [ ] **Step 2: Run tests, verify they fail**
 
 Run: `uv run pytest tests/test_obsidian.py -q`
-Expected: FAIL (module `booktools.obsidian` does not exist).
+Expected: FAIL (module `books.obsidian` does not exist).
 
-- [ ] **Step 3: Create `booktools/obsidian.py`**
+- [ ] **Step 3: Create `books/obsidian.py`**
 
 ```python
 """Shared helpers for writing Obsidian book-note vaults.
@@ -436,8 +436,8 @@ Expected: PASS (7 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/obsidian.py tests/test_obsidian.py
-git commit -m "Add shared booktools.obsidian module (schema, merge, helpers)
+git add books/obsidian.py tests/test_obsidian.py
+git commit -m "Add shared books.obsidian module (schema, merge, helpers)
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
@@ -447,7 +447,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 2: Refactor `calibre_obsidian.py` to shared schema + merge
 
 **Files:**
-- Modify: `booktools/calibre_obsidian.py`
+- Modify: `books/calibre_obsidian.py`
 - Modify: `tests/test_calibre_to_obsidian.py`
 
 - [ ] **Step 1: Update the Calibre tests for the new schema/merge**
@@ -496,7 +496,7 @@ def test_rerun_preserves_book_note_edits(tmp_path):
 Run: `uv run pytest tests/test_calibre_to_obsidian.py -q`
 Expected: FAIL (placeholders missing, merge not implemented).
 
-- [ ] **Step 3: Refactor `booktools/calibre_obsidian.py`**
+- [ ] **Step 3: Refactor `books/calibre_obsidian.py`**
 
 Replace the helper/emission sections. First, replace the imports and delete the now-shared helpers (`_HTMLToMarkdown`, `html_to_markdown`, `_yaml_quote`, `_wikilink`, `_link_list`, `sanitize_folder_name`, `write_if_absent`, `write_stub`). At the top of the file, after the docstring, use:
 
@@ -509,8 +509,8 @@ from xml.etree import ElementTree as ET
 
 import typer
 
-from booktools import resolve_path
-from booktools.obsidian import (
+from books import resolve_path
+from books.obsidian import (
     html_to_markdown,
     link_list,
     sanitize_folder_name,
@@ -613,7 +613,7 @@ Expected: PASS (obsidian + calibre tests all green).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/calibre_obsidian.py tests/test_calibre_to_obsidian.py
+git add books/calibre_obsidian.py tests/test_calibre_to_obsidian.py
 git commit -m "Refactor Calibre importer onto shared schema + merge writes
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -624,7 +624,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 3: Goodreads CSV parsing + normalization
 
 **Files:**
-- Create: `booktools/goodreads_obsidian.py`
+- Create: `books/goodreads_obsidian.py`
 - Test: `tests/test_goodreads_obsidian.py`
 
 - [ ] **Step 1: Write failing parse tests**
@@ -636,7 +636,7 @@ Create `tests/test_goodreads_obsidian.py`:
 
 from pathlib import Path
 
-from booktools import goodreads_obsidian as gr
+from books import goodreads_obsidian as gr
 
 
 HEADER = (
@@ -692,7 +692,7 @@ def test_parse_csv_fields(tmp_path):
 
 
 def test_normalization_helpers():
-    from booktools import obsidian as ob
+    from books import obsidian as ob
     assert ob.norm_isbn('="9780698176287"') == "9780698176287"
     assert ob.norm_title("The Cold War: A New History") == \
         ob.norm_title("The Cold War - A New History")
@@ -708,7 +708,7 @@ def test_normalization_helpers():
 Run: `uv run pytest tests/test_goodreads_obsidian.py -q`
 Expected: FAIL (module missing).
 
-- [ ] **Step 3: Create `booktools/goodreads_obsidian.py` (parsing portion)**
+- [ ] **Step 3: Create `books/goodreads_obsidian.py` (parsing portion)**
 
 ```python
 #!/usr/bin/env python3
@@ -731,8 +731,8 @@ from pathlib import Path
 
 import typer
 
-from booktools import resolve_path
-from booktools.obsidian import (
+from books import resolve_path
+from books.obsidian import (
     author_key,
     extract_wikilinks,
     frontmatter_values,
@@ -835,7 +835,7 @@ Expected: PASS (2 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/goodreads_obsidian.py tests/test_goodreads_obsidian.py
+git add books/goodreads_obsidian.py tests/test_goodreads_obsidian.py
 git commit -m "Add Goodreads CSV parsing + normalization
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -846,7 +846,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 4: Goodreads matching + `convert`
 
 **Files:**
-- Modify: `booktools/goodreads_obsidian.py`
+- Modify: `books/goodreads_obsidian.py`
 - Modify: `tests/test_goodreads_obsidian.py`
 
 - [ ] **Step 1: Write failing convert tests**
@@ -932,7 +932,7 @@ def test_convert_idempotent(tmp_path):
 Run: `uv run pytest tests/test_goodreads_obsidian.py -q`
 Expected: FAIL (`convert` not defined).
 
-- [ ] **Step 3: Add matching + `convert` to `booktools/goodreads_obsidian.py`**
+- [ ] **Step 3: Add matching + `convert` to `books/goodreads_obsidian.py`**
 
 Append after `parse_csv`:
 
@@ -978,7 +978,7 @@ def match_note(book: GoodreadsBook, by_isbn, by_title_author) -> Path | None:
 
 def _goodreads_updates(book: GoodreadsBook) -> dict[str, str]:
     """Canonical property -> formatted value; empty for fields Goodreads lacks."""
-    from booktools.obsidian import BOOK_PROPERTY_ORDER
+    from books.obsidian import BOOK_PROPERTY_ORDER
     u = {k: "" for k in BOOK_PROPERTY_ORDER if k != "type"}
     if book.title:
         u["title"] = yaml_quote(book.title)
@@ -1070,7 +1070,7 @@ Expected: PASS (all Goodreads tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/goodreads_obsidian.py tests/test_goodreads_obsidian.py
+git add books/goodreads_obsidian.py tests/test_goodreads_obsidian.py
 git commit -m "Add Goodreads matching and merge-based convert
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -1081,12 +1081,12 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 5: CLI wiring, standalone shim, README
 
 **Files:**
-- Modify: `booktools/goodreads_obsidian.py` (add command/register/main)
-- Modify: `booktools/cli.py`
+- Modify: `books/goodreads_obsidian.py` (add command/register/main)
+- Modify: `books/cli.py`
 - Create: `scripts/goodreads_to_obsidian.py`
 - Modify: `README.md`
 
-- [ ] **Step 1: Add the Typer command, `register`, and `main` to `booktools/goodreads_obsidian.py`**
+- [ ] **Step 1: Add the Typer command, `register`, and `main` to `books/goodreads_obsidian.py`**
 
 Append at the end of the module:
 
@@ -1144,12 +1144,12 @@ if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 2: Register the capability in `booktools/cli.py`**
+- [ ] **Step 2: Register the capability in `books/cli.py`**
 
 Change the import:
 
 ```python
-from booktools import calibre_obsidian, goodreads_obsidian, kobo_export
+from books import calibre_obsidian, goodreads_obsidian, kobo_export
 ```
 
 and the tuple:
@@ -1168,12 +1168,12 @@ CAPABILITIES = (
 #!/usr/bin/env python3
 """Standalone shim: `python scripts/goodreads_to_obsidian.py --csv ... [--output ...]`.
 
-The real implementation lives in ``booktools.goodreads_obsidian``. This keeps the
+The real implementation lives in ``books.goodreads_obsidian``. This keeps the
 script runnable on its own while there is a single source of truth. For the full
 CLI with all capabilities, use ``books`` (see pyproject.toml).
 """
 
-from booktools.goodreads_obsidian import main
+from books.goodreads_obsidian import main
 
 if __name__ == "__main__":
     main()
@@ -1220,7 +1220,7 @@ Expected: PASS (all obsidian, calibre, goodreads tests).
 - [ ] **Step 7: Commit**
 
 ```bash
-git add booktools/goodreads_obsidian.py booktools/cli.py scripts/goodreads_to_obsidian.py README.md
+git add books/goodreads_obsidian.py books/cli.py scripts/goodreads_to_obsidian.py README.md
 git commit -m "Wire goodreads-to-obsidian into CLI + standalone shim + docs
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"

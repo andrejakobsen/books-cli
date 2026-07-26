@@ -45,8 +45,8 @@ the remaining steps still run. A final summary tallies ran / skipped / failed.
 
 ## Implementation
 
-New capability module `booktools/sync.py` exposing `register(app)` that attaches
-the `sync` command, added to `CAPABILITIES` in `booktools/cli.py` (same pattern
+New capability module `books/sync.py` exposing `register(app)` that attaches
+the `sync` command, added to `CAPABILITIES` in `books/cli.py` (same pattern
 as every other capability). Also add a `scripts/sync.py` shim for parity with the
 other standalone shims.
 

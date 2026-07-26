@@ -4,7 +4,7 @@
 
 **Goal:** Let every importer default its input to a canonical subfolder under a hidden `.imports/` folder inside the Obsidian vault, configured by a single `imports` key.
 
-**Architecture:** Extend `booktools/config.py` with an `imports` config key, a `resolve_imports(name, output)` helper (`<vault>/<imports>/<name>`), and a `newest_csv(folder)` helper. Each importer's input option becomes optional and, when omitted, resolves to its `.imports/<name>` subfolder. Explicit flags still override with today's resolution.
+**Architecture:** Extend `books/config.py` with an `imports` config key, a `resolve_imports(name, output)` helper (`<vault>/<imports>/<name>`), and a `newest_csv(folder)` helper. Each importer's input option becomes optional and, when omitted, resolves to its `.imports/<name>` subfolder. Explicit flags still override with today's resolution.
 
 **Tech Stack:** Python 3.11+ stdlib (`tomllib`, `pathlib`, `dataclasses`), Typer, pytest.
 
@@ -17,7 +17,7 @@
 ## Task 1: Add `imports` key to config
 
 **Files:**
-- Modify: `booktools/config.py`
+- Modify: `books/config.py`
 - Test: `tests/test_config.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -48,7 +48,7 @@ def test_load_config_defaults_imports_on_non_string(tmp_path):
 
 
 def test_default_file_includes_imports(tmp_path):
-    cfg_file = tmp_path / "booktools" / "config.toml"
+    cfg_file = tmp_path / "books" / "config.toml"
     config.load_config(cfg_file)
     assert 'imports = ".imports"' in cfg_file.read_text()
 ```
@@ -60,7 +60,7 @@ Expected: FAIL (`AttributeError: ... 'DEFAULT_IMPORTS'` / `Config` has no field 
 
 - [ ] **Step 3: Implement the config changes**
 
-In `booktools/config.py`, add the constant next to the others:
+In `books/config.py`, add the constant next to the others:
 
 ```python
 DEFAULT_OBSIDIAN_PATH = "~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian"
@@ -72,7 +72,7 @@ Update `_DEFAULT_FILE`:
 
 ```python
 _DEFAULT_FILE = (
-    "# booktools configuration\n"
+    "# books configuration\n"
     f'obsidian_path = "{DEFAULT_OBSIDIAN_PATH}"\n'
     f'vault = "{DEFAULT_VAULT}"\n'
     "# Folder (inside the vault) holding raw import sources, hidden from Obsidian.\n"
@@ -111,7 +111,7 @@ Expected: PASS (all config tests, including the four new ones).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/config.py tests/test_config.py
+git add books/config.py tests/test_config.py
 git commit -m "feat(config): add imports key for the .imports source folder
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -122,7 +122,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 2: Add `resolve_imports` helper
 
 **Files:**
-- Modify: `booktools/config.py`
+- Modify: `books/config.py`
 - Test: `tests/test_config.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -159,11 +159,11 @@ def test_resolve_imports_honors_absolute_imports(tmp_path, monkeypatch):
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_config.py -k resolve_imports -q`
-Expected: FAIL (`AttributeError: module 'booktools.config' has no attribute 'resolve_imports'`).
+Expected: FAIL (`AttributeError: module 'books.config' has no attribute 'resolve_imports'`).
 
 - [ ] **Step 3: Implement `resolve_imports`**
 
-In `booktools/config.py`, add after `resolve_vault`:
+In `books/config.py`, add after `resolve_vault`:
 
 ```python
 def resolve_imports(name: str, output: Path | None = None) -> Path:
@@ -187,7 +187,7 @@ Expected: PASS (3 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/config.py tests/test_config.py
+git add books/config.py tests/test_config.py
 git commit -m "feat(config): resolve_imports helper for .imports subfolders
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -198,7 +198,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 3: Add `newest_csv` helper
 
 **Files:**
-- Modify: `booktools/config.py`
+- Modify: `books/config.py`
 - Test: `tests/test_config.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -242,7 +242,7 @@ Expected: FAIL (`AttributeError: ... 'newest_csv'`).
 
 - [ ] **Step 3: Implement `newest_csv`**
 
-In `booktools/config.py`, add after `resolve_imports`:
+In `books/config.py`, add after `resolve_imports`:
 
 ```python
 def newest_csv(folder: Path) -> Path:
@@ -267,7 +267,7 @@ Expected: PASS (4 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/config.py tests/test_config.py
+git add books/config.py tests/test_config.py
 git commit -m "feat(config): newest_csv helper to pick the latest CSV in a folder
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -278,7 +278,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 4: calibre default → `.imports/calibre`
 
 **Files:**
-- Modify: `booktools/calibre_obsidian.py:272-303`
+- Modify: `books/calibre_obsidian.py:272-303`
 - Test: `tests/test_calibre_to_obsidian.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -289,7 +289,7 @@ Add to `tests/test_calibre_to_obsidian.py`:
 def test_calibre_defaults_library_to_imports(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import calibre_obsidian as cal, config
+    from books import calibre_obsidian as cal, config
 
     vault = tmp_path / "Vault"
     lib = vault / ".imports" / "calibre"
@@ -313,7 +313,7 @@ Expected: FAIL (calibre resolves the default `Calibre Library` against home, not
 
 - [ ] **Step 3: Implement the default**
 
-In `booktools/calibre_obsidian.py`, change the `library` option default to `None`:
+In `books/calibre_obsidian.py`, change the `library` option default to `None`:
 
 ```python
     library: Path | None = typer.Option(
@@ -341,7 +341,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/calibre_obsidian.py tests/test_calibre_to_obsidian.py
+git add books/calibre_obsidian.py tests/test_calibre_to_obsidian.py
 git commit -m "feat(calibre): default --library to <vault>/.imports/calibre
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -352,7 +352,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 5: goodreads default + folder → newest CSV
 
 **Files:**
-- Modify: `booktools/goodreads_obsidian.py:234-266`
+- Modify: `books/goodreads_obsidian.py:234-266`
 - Test: `tests/test_goodreads_obsidian.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -372,7 +372,7 @@ def _minimal_goodreads_csv(path):
 def test_goodreads_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import goodreads_obsidian as gr, config
+    from books import goodreads_obsidian as gr, config
 
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "goodreads"
@@ -394,7 +394,7 @@ def test_goodreads_folder_arg_picks_newest(monkeypatch, tmp_path):
     import os
     import typer
     from typer.testing import CliRunner
-    from booktools import goodreads_obsidian as gr, config
+    from books import goodreads_obsidian as gr, config
 
     vault = tmp_path / "Vault"
     folder = tmp_path / "exports"
@@ -421,7 +421,7 @@ Expected: FAIL (`--csv` is currently required, so running with no `--csv` errors
 
 - [ ] **Step 3: Implement default + folder handling**
 
-In `booktools/goodreads_obsidian.py`, change the `csv` option to optional:
+In `books/goodreads_obsidian.py`, change the `csv` option to optional:
 
 ```python
     csv: Path | None = typer.Option(
@@ -466,7 +466,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/goodreads_obsidian.py tests/test_goodreads_obsidian.py
+git add books/goodreads_obsidian.py tests/test_goodreads_obsidian.py
 git commit -m "feat(goodreads): default --csv to .imports/goodreads, accept a folder (newest CSV)
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -477,7 +477,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 6: readwise default + folder → newest CSV
 
 **Files:**
-- Modify: `booktools/readwise_obsidian.py:146-171`
+- Modify: `books/readwise_obsidian.py:146-171`
 - Test: `tests/test_readwise.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -496,7 +496,7 @@ _READWISE_ROW = (
 def test_readwise_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import readwise_obsidian as rw, config
+    from books import readwise_obsidian as rw, config
 
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "readwise"
@@ -518,7 +518,7 @@ def test_readwise_folder_arg_picks_newest(monkeypatch, tmp_path):
     import os
     import typer
     from typer.testing import CliRunner
-    from booktools import readwise_obsidian as rw, config
+    from books import readwise_obsidian as rw, config
 
     vault = tmp_path / "Vault"
     folder = tmp_path / "exports"
@@ -545,7 +545,7 @@ Expected: FAIL (`--csv` currently required; folder path fails `csv.is_file()`).
 
 - [ ] **Step 3: Implement default + folder handling**
 
-In `booktools/readwise_obsidian.py`, change the `csv` option to optional:
+In `books/readwise_obsidian.py`, change the `csv` option to optional:
 
 ```python
     csv: Path | None = typer.Option(
@@ -587,7 +587,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/readwise_obsidian.py tests/test_readwise.py
+git add books/readwise_obsidian.py tests/test_readwise.py
 git commit -m "feat(readwise): default --csv to .imports/readwise, accept a folder (newest CSV)
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -598,7 +598,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 7: highlighted default → `.imports/highlighted`
 
 **Files:**
-- Modify: `booktools/highlighted_obsidian.py:120-150`
+- Modify: `books/highlighted_obsidian.py:120-150`
 - Test: `tests/test_highlighted_obsidian.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -609,7 +609,7 @@ Add to `tests/test_highlighted_obsidian.py`:
 def test_highlighted_defaults_csv_to_imports(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import highlighted_obsidian as hl, config
+    from books import highlighted_obsidian as hl, config
 
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "highlighted"
@@ -638,7 +638,7 @@ Expected: FAIL (`--csv` is currently required — missing option error).
 
 - [ ] **Step 3: Implement the default**
 
-In `booktools/highlighted_obsidian.py`, change the `csv` option to optional:
+In `books/highlighted_obsidian.py`, change the `csv` option to optional:
 
 ```python
     csv: Path | None = typer.Option(
@@ -671,7 +671,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/highlighted_obsidian.py tests/test_highlighted_obsidian.py
+git add books/highlighted_obsidian.py tests/test_highlighted_obsidian.py
 git commit -m "feat(highlighted): default --csv to <vault>/.imports/highlighted
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
@@ -682,7 +682,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ## Task 8: kobo default → `.imports/kobo` with safe device auto-copy
 
 **Files:**
-- Modify: `booktools/kobo_export.py` (imports + `kobo_export` function, ~lines 249-296)
+- Modify: `books/kobo_export.py` (imports + `kobo_export` function, ~lines 249-296)
 - Test: `tests/test_kobo_export.py`
 
 **Behavior:** When no explicit DB path is given, `kobo` resolves its input to
@@ -708,7 +708,7 @@ so no real device is needed:
 def test_kobo_copies_from_mounted_device(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import kobo_export as ke, config
+    from books import kobo_export as ke, config
 
     vault = tmp_path / "Vault"
     # Simulate a mounted Kobo device DB.
@@ -735,7 +735,7 @@ def test_kobo_copies_from_mounted_device(monkeypatch, tmp_path):
 def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import kobo_export as ke, config
+    from books import kobo_export as ke, config
 
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "kobo"
@@ -758,7 +758,7 @@ def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
 def test_kobo_default_missing_everything_errors(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from booktools import kobo_export as ke, config
+    from books import kobo_export as ke, config
 
     vault = tmp_path / "Vault"
     monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
@@ -779,7 +779,7 @@ Expected: FAIL (default is `./KoboReader.sqlite`; `KOBO_DEVICE_DB` and the helpe
 
 - [ ] **Step 3: Implement the default + safe copy**
 
-In `booktools/kobo_export.py`, confirm `sqlite3` and `config` are imported at the
+In `books/kobo_export.py`, confirm `sqlite3` and `config` are imported at the
 top (the module already uses `sqlite3` and imports `config`). Add a module-level
 constant and two helpers near the top (after imports):
 
@@ -875,7 +875,7 @@ Expected: PASS.
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/kobo_export.py tests/test_kobo_export.py
+git add books/kobo_export.py tests/test_kobo_export.py
 git commit -m "feat(kobo): default DB to .imports/kobo, safely snapshot a mounted device
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"

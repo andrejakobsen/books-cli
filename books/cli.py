@@ -3,7 +3,7 @@
 Each capability lives in its own module and exposes a ``register(app)`` function
 that attaches its command(s) to the shared Typer app. To add a new capability:
 
-    1. Create ``booktools/<feature>.py`` with a ``register(app)`` function.
+    1. Create ``books/<feature>.py`` with a ``register(app)`` function.
     2. Add the module to ``CAPABILITIES`` below.
 
 That's it — the command shows up under ``books --help``.
@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import typer
 
-from booktools import (
+from books import (
     calibre_obsidian,
     covers,
     goodreads_obsidian,

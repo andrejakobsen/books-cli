@@ -4,7 +4,7 @@
 
 **Goal:** Add a `readwise` capability that imports a Readwise CSV export into an Obsidian vault, in the same shape as the existing `highlighted` importer.
 
-**Architecture:** A new `booktools/readwise_obsidian.py` module (mirroring `highlighted_obsidian.py`) maps each CSV row into the shared `Highlight` model and writes a per-book `Highlights.md` embedded in the flat book note. Two small additive extensions to the shared layer support it: a `location_label` field on `Highlight` (for `p.`/`loc.` labels) and Amazon-ID matching in `VaultIndex`/`BookRef`.
+**Architecture:** A new `books/readwise_obsidian.py` module (mirroring `highlighted_obsidian.py`) maps each CSV row into the shared `Highlight` model and writes a per-book `Highlights.md` embedded in the flat book note. Two small additive extensions to the shared layer support it: a `location_label` field on `Highlight` (for `p.`/`loc.` labels) and Amazon-ID matching in `VaultIndex`/`BookRef`.
 
 **Tech Stack:** Python 3, stdlib `csv`, Typer, pytest. Run everything with `uv run`.
 
@@ -12,10 +12,10 @@
 
 ## File Structure
 
-- **Modify** `booktools/highlights.py` — add `Highlight.location_label`; use it in `_label()`.
-- **Modify** `booktools/obsidian.py` — add `norm_amazon()`, `BookRef.amazon`, index+match by amazon in `build_index`/`VaultIndex`.
-- **Create** `booktools/readwise_obsidian.py` — the importer (parse, series parsing, row mapping, convert, CLI).
-- **Modify** `booktools/cli.py` — register the module in `CAPABILITIES`.
+- **Modify** `books/highlights.py` — add `Highlight.location_label`; use it in `_label()`.
+- **Modify** `books/obsidian.py` — add `norm_amazon()`, `BookRef.amazon`, index+match by amazon in `build_index`/`VaultIndex`.
+- **Create** `books/readwise_obsidian.py` — the importer (parse, series parsing, row mapping, convert, CLI).
+- **Modify** `books/cli.py` — register the module in `CAPABILITIES`.
 - **Create** `scripts/readwise_obsidian.py` — standalone shim.
 - **Modify** `tests/test_highlights.py` — cover `location_label` rendering.
 - **Modify** `tests/test_obsidian.py` — cover amazon normalization + matching.
@@ -29,7 +29,7 @@ Run the full suite at any point with: `uv run pytest -q`
 ## Task 1: `location_label` on the shared Highlight model
 
 **Files:**
-- Modify: `booktools/highlights.py`
+- Modify: `books/highlights.py`
 - Test: `tests/test_highlights.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -62,7 +62,7 @@ Expected: FAIL — `TypeError: __init__() got an unexpected keyword argument 'lo
 
 - [ ] **Step 3: Add the field**
 
-In `booktools/highlights.py`, inside the `Highlight` dataclass, add the field
+In `books/highlights.py`, inside the `Highlight` dataclass, add the field
 immediately after the `page` field (keep the existing comment style):
 
 ```python
@@ -73,7 +73,7 @@ immediately after the `page` field (keep the existing comment style):
 
 - [ ] **Step 4: Use the field in `_label()`**
 
-In `booktools/highlights.py`, in `_label()`, replace the page branch:
+In `books/highlights.py`, in `_label()`, replace the page branch:
 
 ```python
     if h.page:
@@ -96,7 +96,7 @@ Expected: PASS (all, including the three new tests)
 - [ ] **Step 6: Commit**
 
 ```bash
-git add booktools/highlights.py tests/test_highlights.py
+git add books/highlights.py tests/test_highlights.py
 git commit -m "feat(highlights): add location_label prefix for page/location labels"
 ```
 
@@ -105,7 +105,7 @@ git commit -m "feat(highlights): add location_label prefix for page/location lab
 ## Task 2: Amazon-ID normalization + matching in the shared layer
 
 **Files:**
-- Modify: `booktools/obsidian.py`
+- Modify: `books/obsidian.py`
 - Test: `tests/test_obsidian.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -146,11 +146,11 @@ If it is imported under a different alias, use that alias in the new tests inste
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_obsidian.py::test_norm_amazon_uppercases_and_strips -v`
-Expected: FAIL — `AttributeError: module 'booktools.obsidian' has no attribute 'norm_amazon'`
+Expected: FAIL — `AttributeError: module 'books.obsidian' has no attribute 'norm_amazon'`
 
 - [ ] **Step 3: Add `norm_amazon()`**
 
-In `booktools/obsidian.py`, in the "Matching normalization" section, add after
+In `books/obsidian.py`, in the "Matching normalization" section, add after
 `norm_isbn`:
 
 ```python
@@ -163,7 +163,7 @@ def norm_amazon(amazon: str | None) -> str | None:
 
 - [ ] **Step 4: Add `amazon` to `BookRef`**
 
-In `booktools/obsidian.py`, extend the `BookRef` dataclass:
+In `books/obsidian.py`, extend the `BookRef` dataclass:
 
 ```python
 @dataclass
@@ -177,7 +177,7 @@ class BookRef:
 
 - [ ] **Step 5: Index existing notes by amazon in `build_index`**
 
-In `booktools/obsidian.py`, change `build_index` to also return an amazon index.
+In `books/obsidian.py`, change `build_index` to also return an amazon index.
 Replace the function body with:
 
 ```python
@@ -212,7 +212,7 @@ def build_index(vault: Path) -> tuple[dict[str, Path], dict[tuple, Path], dict[s
 
 - [ ] **Step 6: Wire the amazon index into `VaultIndex`**
 
-In `booktools/obsidian.py`, in `VaultIndex.__init__`, unpack the new tuple:
+In `books/obsidian.py`, in `VaultIndex.__init__`, unpack the new tuple:
 
 ```python
     def __init__(self, vault: Path) -> None:
@@ -272,7 +272,7 @@ confirms nothing else unpacks the old 2-tuple.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add booktools/obsidian.py tests/test_obsidian.py
+git add books/obsidian.py tests/test_obsidian.py
 git commit -m "feat(obsidian): match books by Amazon id (BookRef.amazon + VaultIndex)"
 ```
 
@@ -281,7 +281,7 @@ git commit -m "feat(obsidian): match books by Amazon id (BookRef.amazon + VaultI
 ## Task 3: Series-suffix parsing helper
 
 **Files:**
-- Create: `booktools/readwise_obsidian.py`
+- Create: `books/readwise_obsidian.py`
 - Test: `tests/test_readwise.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -293,7 +293,7 @@ Create `tests/test_readwise.py`:
 
 from pathlib import Path
 
-from booktools import readwise_obsidian as rw
+from books import readwise_obsidian as rw
 
 
 def test_split_series_extracts_name_and_index():
@@ -321,11 +321,11 @@ def test_split_series_no_suffix_is_verbatim():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_readwise.py -q`
-Expected: FAIL — `ModuleNotFoundError: No module named 'booktools.readwise_obsidian'`
+Expected: FAIL — `ModuleNotFoundError: No module named 'books.readwise_obsidian'`
 
 - [ ] **Step 3: Create the module skeleton with `split_series`**
 
-Create `booktools/readwise_obsidian.py`:
+Create `books/readwise_obsidian.py`:
 
 ```python
 #!/usr/bin/env python3
@@ -352,9 +352,9 @@ from pathlib import Path
 
 import typer
 
-from booktools import resolve_path
-from booktools.highlights import Highlight, render_highlights, sanitize_tag
-from booktools.obsidian import (
+from books import resolve_path
+from books.highlights import Highlight, render_highlights, sanitize_tag
+from books.obsidian import (
     BookRef,
     VaultIndex,
     link_list,
@@ -391,7 +391,7 @@ Expected: PASS (three tests)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/readwise_obsidian.py tests/test_readwise.py
+git add books/readwise_obsidian.py tests/test_readwise.py
 git commit -m "feat(readwise): add split_series title/series parser"
 ```
 
@@ -400,7 +400,7 @@ git commit -m "feat(readwise): add split_series title/series parser"
 ## Task 4: Row → Highlight mapping (tags + type-aware location)
 
 **Files:**
-- Modify: `booktools/readwise_obsidian.py`
+- Modify: `books/readwise_obsidian.py`
 - Test: `tests/test_readwise.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -448,11 +448,11 @@ def test_row_to_highlight_splits_and_dedupes_tags():
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_readwise.py::test_row_to_highlight_page_location -v`
-Expected: FAIL — `AttributeError: module 'booktools.readwise_obsidian' has no attribute 'row_to_highlight'`
+Expected: FAIL — `AttributeError: module 'books.readwise_obsidian' has no attribute 'row_to_highlight'`
 
 - [ ] **Step 3: Implement `row_to_highlight`**
 
-Append to `booktools/readwise_obsidian.py`:
+Append to `books/readwise_obsidian.py`:
 
 ```python
 def _split_tags(raw: str | None) -> list[str]:
@@ -497,7 +497,7 @@ Expected: PASS
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/readwise_obsidian.py tests/test_readwise.py
+git add books/readwise_obsidian.py tests/test_readwise.py
 git commit -m "feat(readwise): map CSV rows to Highlights with type-aware location"
 ```
 
@@ -506,7 +506,7 @@ git commit -m "feat(readwise): map CSV rows to Highlights with type-aware locati
 ## Task 5: `parse_csv` + `convert` (grouping, frontmatter, embed)
 
 **Files:**
-- Modify: `booktools/readwise_obsidian.py`
+- Modify: `books/readwise_obsidian.py`
 - Test: `tests/test_readwise.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -589,11 +589,11 @@ id, not filename.
 - [ ] **Step 2: Run the tests to verify they fail**
 
 Run: `uv run pytest tests/test_readwise.py::test_convert_writes_highlights_and_frontmatter -v`
-Expected: FAIL — `AttributeError: module 'booktools.readwise_obsidian' has no attribute 'parse_csv'`
+Expected: FAIL — `AttributeError: module 'books.readwise_obsidian' has no attribute 'parse_csv'`
 
 - [ ] **Step 3: Implement `parse_csv` and `convert`**
 
-Append to `booktools/readwise_obsidian.py`:
+Append to `books/readwise_obsidian.py`:
 
 ```python
 def parse_csv(path: Path) -> list[dict]:
@@ -668,7 +668,7 @@ Expected: PASS (all)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/readwise_obsidian.py tests/test_readwise.py
+git add books/readwise_obsidian.py tests/test_readwise.py
 git commit -m "feat(readwise): parse CSV and convert into Obsidian book notes"
 ```
 
@@ -677,7 +677,7 @@ git commit -m "feat(readwise): parse CSV and convert into Obsidian book notes"
 ## Task 6: CLI command + `register`
 
 **Files:**
-- Modify: `booktools/readwise_obsidian.py`
+- Modify: `books/readwise_obsidian.py`
 - Test: `tests/test_readwise.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -715,11 +715,11 @@ others — either placement works.)
 - [ ] **Step 2: Run the test to verify it fails**
 
 Run: `uv run pytest tests/test_readwise.py::test_readwise_command_end_to_end -v`
-Expected: FAIL — `AttributeError: module 'booktools.readwise_obsidian' has no attribute 'register'`
+Expected: FAIL — `AttributeError: module 'books.readwise_obsidian' has no attribute 'register'`
 
 - [ ] **Step 3: Add the CLI command, `register`, and `main`**
 
-Append to `booktools/readwise_obsidian.py`:
+Append to `books/readwise_obsidian.py`:
 
 ```python
 def readwise_to_obsidian(
@@ -778,7 +778,7 @@ Expected: PASS (all)
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/readwise_obsidian.py tests/test_readwise.py
+git add books/readwise_obsidian.py tests/test_readwise.py
 git commit -m "feat(readwise): add readwise CLI command + register/main"
 ```
 
@@ -787,7 +787,7 @@ git commit -m "feat(readwise): add readwise CLI command + register/main"
 ## Task 7: Wire into the `books` CLI + standalone shim
 
 **Files:**
-- Modify: `booktools/cli.py`
+- Modify: `books/cli.py`
 - Create: `scripts/readwise_obsidian.py`
 - Test: `tests/test_cli.py`
 
@@ -838,10 +838,10 @@ end-to-end test errors on an unknown command.
 
 - [ ] **Step 3: Register the module in `cli.py`**
 
-In `booktools/cli.py`, add the import and the `CAPABILITIES` entry:
+In `books/cli.py`, add the import and the `CAPABILITIES` entry:
 
 ```python
-from booktools import (
+from books import (
     calibre_obsidian,
     goodreads_obsidian,
     highlighted_obsidian,
@@ -867,12 +867,12 @@ Create `scripts/readwise_obsidian.py`:
 #!/usr/bin/env python3
 """Standalone shim: `python readwise_obsidian.py -c readwise-data.csv -o Obsidian`.
 
-The real implementation lives in ``booktools.readwise_obsidian``. This keeps the
+The real implementation lives in ``books.readwise_obsidian``. This keeps the
 script runnable on its own while there is a single source of truth. For the full
 CLI with all capabilities, use ``books`` (see pyproject.toml).
 """
 
-from booktools.readwise_obsidian import main
+from books.readwise_obsidian import main
 
 if __name__ == "__main__":
     main()
@@ -886,7 +886,7 @@ Expected: PASS
 - [ ] **Step 6: Commit**
 
 ```bash
-git add booktools/cli.py scripts/readwise_obsidian.py tests/test_cli.py
+git add books/cli.py scripts/readwise_obsidian.py tests/test_cli.py
 git commit -m "feat(cli): register readwise capability + standalone shim"
 ```
 

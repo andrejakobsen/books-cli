@@ -4,7 +4,7 @@
 
 **Goal:** Add an Obsidian output mode to `books kobo` that writes highlights as a per-book `Highlights.md` (Obsidian callouts) embedded into the canonical book note, built on a new source-agnostic highlights layer reusable by future apps.
 
-**Architecture:** A new `booktools/highlights.py` owns a source-neutral `Highlight` model plus anchor/rendering logic. Note-orchestration (matching, find-or-create, leaf+embed writing) is promoted into `booktools/obsidian.py` so both Goodreads reviews and Kobo highlights use it. `kobo_export.py` only reads SQLite and maps rows into the shared model.
+**Architecture:** A new `books/highlights.py` owns a source-neutral `Highlight` model plus anchor/rendering logic. Note-orchestration (matching, find-or-create, leaf+embed writing) is promoted into `books/obsidian.py` so both Goodreads reviews and Kobo highlights use it. `kobo_export.py` only reads SQLite and maps rows into the shared model.
 
 **Tech Stack:** Python 3, stdlib only (sqlite3, dataclasses, re), Typer for the CLI, pytest for tests.
 
@@ -12,10 +12,10 @@
 
 ## File Structure
 
-- **Create** `booktools/highlights.py` — `Highlight` dataclass, `build_anchors`, `render_highlights`.
-- **Modify** `booktools/obsidian.py` — add `ensure_embed_section`, `BookRef`, `VaultIndex` (moves `build_index` here), `write_leaf_with_embed`.
-- **Modify** `booktools/goodreads_obsidian.py` — refactor `convert` onto `VaultIndex`/`write_leaf_with_embed`; write `Review.md` (generic) with a `## Review` embed.
-- **Modify** `booktools/kobo_export.py` — add `--obsidian` mode, row→`Highlight`/`BookRef` mapping, `export_obsidian`.
+- **Create** `books/highlights.py` — `Highlight` dataclass, `build_anchors`, `render_highlights`.
+- **Modify** `books/obsidian.py` — add `ensure_embed_section`, `BookRef`, `VaultIndex` (moves `build_index` here), `write_leaf_with_embed`.
+- **Modify** `books/goodreads_obsidian.py` — refactor `convert` onto `VaultIndex`/`write_leaf_with_embed`; write `Review.md` (generic) with a `## Review` embed.
+- **Modify** `books/kobo_export.py` — add `--obsidian` mode, row→`Highlight`/`BookRef` mapping, `export_obsidian`.
 - **Modify** `README.md` — document the Kobo Obsidian mode + the optional seamless-embed CSS snippet.
 - **Create** `tests/test_highlights.py` — unit tests for the shared highlights layer.
 - **Modify** `tests/test_obsidian.py` — tests for `ensure_embed_section`, `VaultIndex`, `write_leaf_with_embed`.
@@ -28,7 +28,7 @@
 ## Task 1: `Highlight` model + anchor building
 
 **Files:**
-- Create: `booktools/highlights.py`
+- Create: `books/highlights.py`
 - Test: `tests/test_highlights.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -38,7 +38,7 @@ Create `tests/test_highlights.py`:
 ```python
 """Unit tests for the source-agnostic highlights layer."""
 
-from booktools import highlights as hl
+from books import highlights as hl
 
 
 def test_build_anchors_chapter_and_location():
@@ -70,11 +70,11 @@ def test_build_anchors_dedupes_collisions():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_highlights.py -v`
-Expected: FAIL with `ModuleNotFoundError: No module named 'booktools.highlights'`.
+Expected: FAIL with `ModuleNotFoundError: No module named 'books.highlights'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Create `booktools/highlights.py`:
+Create `books/highlights.py`:
 
 ```python
 """Source-agnostic highlight model + Obsidian rendering.
@@ -138,7 +138,7 @@ Expected: PASS (4 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/highlights.py tests/test_highlights.py
+git add books/highlights.py tests/test_highlights.py
 git commit -m "Add source-agnostic Highlight model + anchor builder"
 ```
 
@@ -147,7 +147,7 @@ git commit -m "Add source-agnostic Highlight model + anchor builder"
 ## Task 2: `render_highlights` (callout rendering)
 
 **Files:**
-- Modify: `booktools/highlights.py`
+- Modify: `books/highlights.py`
 - Test: `tests/test_highlights.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -192,11 +192,11 @@ def test_render_label_falls_back_to_chapter_title_then_percent():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_highlights.py -v`
-Expected: FAIL with `AttributeError: module 'booktools.highlights' has no attribute 'render_highlights'`.
+Expected: FAIL with `AttributeError: module 'books.highlights' has no attribute 'render_highlights'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Append to `booktools/highlights.py`:
+Append to `books/highlights.py`:
 
 ```python
 def _label(h: Highlight) -> str:
@@ -241,7 +241,7 @@ Expected: PASS (8 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/highlights.py tests/test_highlights.py
+git add books/highlights.py tests/test_highlights.py
 git commit -m "Render highlights as Obsidian quote/note callouts with anchors"
 ```
 
@@ -250,7 +250,7 @@ git commit -m "Render highlights as Obsidian quote/note callouts with anchors"
 ## Task 3: `ensure_embed_section` in the shared layer
 
 **Files:**
-- Modify: `booktools/obsidian.py` (add near the "Filesystem helpers" section)
+- Modify: `books/obsidian.py` (add near the "Filesystem helpers" section)
 - Test: `tests/test_obsidian.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -274,11 +274,11 @@ def test_ensure_embed_section_noop_when_present():
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_obsidian.py -k ensure_embed -v`
-Expected: FAIL with `AttributeError: module 'booktools.obsidian' has no attribute 'ensure_embed_section'`.
+Expected: FAIL with `AttributeError: module 'books.obsidian' has no attribute 'ensure_embed_section'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add to `booktools/obsidian.py` after `write_stub` (in the Filesystem helpers section):
+Add to `books/obsidian.py` after `write_stub` (in the Filesystem helpers section):
 
 ```python
 def ensure_embed_section(note_text: str, heading: str, target: str) -> str:
@@ -302,7 +302,7 @@ Expected: PASS (2 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/obsidian.py tests/test_obsidian.py
+git add books/obsidian.py tests/test_obsidian.py
 git commit -m "Add ensure_embed_section shared helper"
 ```
 
@@ -311,7 +311,7 @@ git commit -m "Add ensure_embed_section shared helper"
 ## Task 4: `BookRef`, `VaultIndex`, `write_leaf_with_embed` (promote note orchestration)
 
 **Files:**
-- Modify: `booktools/obsidian.py` (move `build_index` here from goodreads; add `BookRef`, `VaultIndex`, `write_leaf_with_embed`)
+- Modify: `books/obsidian.py` (move `build_index` here from goodreads; add `BookRef`, `VaultIndex`, `write_leaf_with_embed`)
 - Test: `tests/test_obsidian.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -373,11 +373,11 @@ def test_write_leaf_with_embed_no_overwrite_keeps_existing(tmp_path):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_obsidian.py -k "vaultindex or write_leaf" -v`
-Expected: FAIL with `AttributeError: module 'booktools.obsidian' has no attribute 'VaultIndex'`.
+Expected: FAIL with `AttributeError: module 'books.obsidian' has no attribute 'VaultIndex'`.
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add to `booktools/obsidian.py`. First, near the top add a dataclass import:
+Add to `books/obsidian.py`. First, near the top add a dataclass import:
 
 ```python
 from dataclasses import dataclass, field
@@ -494,7 +494,7 @@ Expected: PASS (all, including the 4 new tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/obsidian.py tests/test_obsidian.py
+git add books/obsidian.py tests/test_obsidian.py
 git commit -m "Promote book-note matching + leaf/embed writing to shared layer"
 ```
 
@@ -503,7 +503,7 @@ git commit -m "Promote book-note matching + leaf/embed writing to shared layer"
 ## Task 5: Refactor Goodreads onto shared helpers + `Review.md` embed
 
 **Files:**
-- Modify: `booktools/goodreads_obsidian.py:141-263` (remove local `build_index`/`match_note`, rewrite `convert`)
+- Modify: `books/goodreads_obsidian.py:141-263` (remove local `build_index`/`match_note`, rewrite `convert`)
 - Modify: `tests/test_goodreads_obsidian.py:120-126` (review filename)
 - Test: `tests/test_goodreads_obsidian.py`
 
@@ -531,10 +531,10 @@ Expected: FAIL (still writes `<Title> - Review.md`, no `Review.md`, no embed).
 
 - [ ] **Step 3: Rewrite the implementation**
 
-In `booktools/goodreads_obsidian.py`, update imports (the `from booktools.obsidian import (...)` block) to add `BookRef`, `VaultIndex`, `write_leaf_with_embed` and remove now-unused `write_if_absent`:
+In `books/goodreads_obsidian.py`, update imports (the `from books.obsidian import (...)` block) to add `BookRef`, `VaultIndex`, `write_leaf_with_embed` and remove now-unused `write_if_absent`:
 
 ```python
-from booktools.obsidian import (
+from books.obsidian import (
     BOOK_PROPERTY_ORDER,
     BookRef,
     VaultIndex,
@@ -599,7 +599,7 @@ Expected: PASS (all, including idempotency and merge tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/goodreads_obsidian.py tests/test_goodreads_obsidian.py
+git add books/goodreads_obsidian.py tests/test_goodreads_obsidian.py
 git commit -m "Refactor Goodreads onto shared VaultIndex; generic Review.md + embed"
 ```
 
@@ -608,7 +608,7 @@ git commit -m "Refactor Goodreads onto shared VaultIndex; generic Review.md + em
 ## Task 6: Kobo Obsidian mode
 
 **Files:**
-- Modify: `booktools/kobo_export.py` (add ISBN to `QUERY`, add `row_to_highlight`, `export_obsidian`, `--obsidian` option)
+- Modify: `books/kobo_export.py` (add ISBN to `QUERY`, add `row_to_highlight`, `export_obsidian`, `--obsidian` option)
 - Test: `tests/test_kobo_export.py`
 
 - [ ] **Step 1: Write the failing test**
@@ -621,7 +621,7 @@ Create `tests/test_kobo_export.py`:
 import sqlite3
 from pathlib import Path
 
-from booktools import kobo_export as ke
+from books import kobo_export as ke
 
 
 def _make_db(path: Path) -> None:
@@ -700,17 +700,17 @@ def test_export_obsidian_regenerates_highlights_wholesale(tmp_path):
 - [ ] **Step 2: Run test to verify it fails**
 
 Run: `uv run pytest tests/test_kobo_export.py -v`
-Expected: FAIL with `AttributeError: module 'booktools.kobo_export' has no attribute 'row_to_highlight'`.
+Expected: FAIL with `AttributeError: module 'books.kobo_export' has no attribute 'row_to_highlight'`.
 
 - [ ] **Step 3: Write the implementation**
 
-In `booktools/kobo_export.py`:
+In `books/kobo_export.py`:
 
-3a. Add imports near the top (after `from booktools import resolve_path`):
+3a. Add imports near the top (after `from books import resolve_path`):
 
 ```python
-from booktools.highlights import Highlight, render_highlights
-from booktools.obsidian import BookRef, VaultIndex, write_leaf_with_embed, write_stub
+from books.highlights import Highlight, render_highlights
+from books.obsidian import BookRef, VaultIndex, write_leaf_with_embed, write_stub
 ```
 
 3b. In `QUERY`, add an ISBN column to the final SELECT so books can match by ISBN. Change the select list to include it (add after the `book_title`/`author` lines):
@@ -857,7 +857,7 @@ Expected: PASS (4 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/kobo_export.py tests/test_kobo_export.py
+git add books/kobo_export.py tests/test_kobo_export.py
 git commit -m "Add Kobo Obsidian highlights export mode"
 ```
 

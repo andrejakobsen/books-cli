@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-26
 **Status:** Approved
-**Component:** `booktools/covers.py`
+**Component:** `books/covers.py`
 
 ## Goal
 
@@ -56,7 +56,7 @@ directly.
 
 ### New source function
 
-Add to `booktools/covers.py`:
+Add to `books/covers.py`:
 
 ```python
 ITUNES_API = "https://itunes.apple.com/search"

@@ -1,4 +1,4 @@
-"""Tests for the master `sync` command (booktools.sync).
+"""Tests for the master `sync` command (books.sync).
 
 Covers detection predicates, run ordering, continue-on-error, and dry-run.
 Step `run` functions are monkeypatched so no real Calibre/Kobo data is needed.
@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from booktools import sync
-from booktools.cli import app
+from books import sync
+from books.cli import app
 
 runner = CliRunner()
 

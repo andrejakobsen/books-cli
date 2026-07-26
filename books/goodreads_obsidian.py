@@ -19,8 +19,8 @@ from pathlib import Path
 
 import typer
 
-from booktools import config
-from booktools.obsidian import (
+from books import config
+from books.obsidian import (
     AUTHORS_DIRNAME,
     BOOK_PROPERTY_ORDER,
     BookRef,
@@ -246,7 +246,7 @@ def goodreads_to_obsidian(
         None,
         "--output", "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/booktools/config.toml). Relative paths resolve against the current directory.",
+             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
     shelf: str = typer.Option(
         DEFAULT_SHELVES,

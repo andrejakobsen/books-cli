@@ -4,7 +4,7 @@
 
 **Goal:** Add a `books highlighted` capability importing the Highlighted app's physical-book highlights CSV into the shared Obsidian vault, with page-based labels/anchors.
 
-**Architecture:** Extend the source-agnostic `booktools/highlights.py` with a `page` dimension, then add a thin `booktools/highlighted_obsidian.py` importer that maps CSV rows into `Highlight`/`BookRef` and reuses `VaultIndex`/`render_highlights`/`write_leaf_with_embed`.
+**Architecture:** Extend the source-agnostic `books/highlights.py` with a `page` dimension, then add a thin `books/highlighted_obsidian.py` importer that maps CSV rows into `Highlight`/`BookRef` and reuses `VaultIndex`/`render_highlights`/`write_leaf_with_embed`.
 
 **Tech Stack:** Python 3, stdlib-only + Typer; `uv run pytest`.
 
@@ -13,7 +13,7 @@
 ## Task 1: Add `page` support to the shared highlights layer
 
 **Files:**
-- Modify: `booktools/highlights.py`
+- Modify: `books/highlights.py`
 - Test: `tests/test_highlights.py`
 
 - [ ] **Step 1: Write the failing tests** — append to `tests/test_highlights.py`:
@@ -49,7 +49,7 @@ def test_page_none_is_unchanged():
 Run: `uv run pytest tests/test_highlights.py -q`
 Expected: the 4 new tests FAIL (`Highlight` has no `page`).
 
-- [ ] **Step 3: Implement** in `booktools/highlights.py`:
+- [ ] **Step 3: Implement** in `books/highlights.py`:
 
 Add `import re` near the top (after `from __future__ import annotations`).
 
@@ -98,7 +98,7 @@ block:
 - [ ] **Step 6: Commit**
 
 ```bash
-git add booktools/highlights.py tests/test_highlights.py
+git add books/highlights.py tests/test_highlights.py
 git commit -m "Add page dimension to shared Highlight (label + anchor)"
 ```
 
@@ -107,9 +107,9 @@ git commit -m "Add page dimension to shared Highlight (label + anchor)"
 ## Task 2: The `highlighted` importer module + registration + shim
 
 **Files:**
-- Create: `booktools/highlighted_obsidian.py`
+- Create: `books/highlighted_obsidian.py`
 - Create: `scripts/highlighted_obsidian.py`
-- Modify: `booktools/cli.py`
+- Modify: `books/cli.py`
 - Test: `tests/test_highlighted_obsidian.py`
 
 - [ ] **Step 1: Write the failing tests** — create `tests/test_highlighted_obsidian.py`:
@@ -119,7 +119,7 @@ git commit -m "Add page dimension to shared Highlight (label + anchor)"
 
 from pathlib import Path
 
-from booktools import highlighted_obsidian as hi
+from books import highlighted_obsidian as hi
 
 HEADER = ("Highlight,Title,Author,ISBN,Collections,Reading Status,"
           "Book Added Date,Location,Tags,Note,Date,Favorite\n")
@@ -192,9 +192,9 @@ def test_convert_idempotent(tmp_path):
 - [ ] **Step 2: Run to verify failure**
 
 Run: `uv run pytest tests/test_highlighted_obsidian.py -q`
-Expected: FAIL (`No module named booktools.highlighted_obsidian`).
+Expected: FAIL (`No module named books.highlighted_obsidian`).
 
-- [ ] **Step 3: Create `booktools/highlighted_obsidian.py`:**
+- [ ] **Step 3: Create `books/highlighted_obsidian.py`:**
 
 ```python
 #!/usr/bin/env python3
@@ -220,9 +220,9 @@ from pathlib import Path
 
 import typer
 
-from booktools import resolve_path
-from booktools.highlights import Highlight, render_highlights
-from booktools.obsidian import (
+from books import resolve_path
+from books.highlights import Highlight, render_highlights
+from books.obsidian import (
     BookRef,
     VaultIndex,
     link_list,
@@ -346,29 +346,29 @@ if __name__ == "__main__":
 #!/usr/bin/env python3
 """Standalone shim: `python highlighted_obsidian.py -c export.csv -o Obsidian`.
 
-The real implementation lives in ``booktools.highlighted_obsidian``. This keeps
+The real implementation lives in ``books.highlighted_obsidian``. This keeps
 the script runnable on its own while there is a single source of truth. For the
 full CLI with all capabilities, use ``books`` (see pyproject.toml).
 """
 
-from booktools.highlighted_obsidian import main
+from books.highlighted_obsidian import main
 
 if __name__ == "__main__":
     main()
 ```
 
-- [ ] **Step 5: Register in `booktools/cli.py`:**
+- [ ] **Step 5: Register in `books/cli.py`:**
 
 Change the import line:
 
 ```python
-from booktools import calibre_obsidian, goodreads_obsidian, kobo_export
+from books import calibre_obsidian, goodreads_obsidian, kobo_export
 ```
 
 to:
 
 ```python
-from booktools import (
+from books import (
     calibre_obsidian,
     goodreads_obsidian,
     highlighted_obsidian,
@@ -384,7 +384,7 @@ the others).
 - [ ] **Step 7: Commit**
 
 ```bash
-git add booktools/highlighted_obsidian.py scripts/highlighted_obsidian.py booktools/cli.py tests/test_highlighted_obsidian.py
+git add books/highlighted_obsidian.py scripts/highlighted_obsidian.py books/cli.py tests/test_highlighted_obsidian.py
 git commit -m "Add highlighted capability: Highlighted CSV -> Obsidian highlights"
 ```
 

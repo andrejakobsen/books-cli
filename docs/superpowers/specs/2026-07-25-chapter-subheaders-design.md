@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-25
 **Status:** Design approved
-**Scope:** `booktools/highlights.py` (shared renderer), `booktools/kobo_export.py` (passes label)
+**Scope:** `books/highlights.py` (shared renderer), `books/kobo_export.py` (passes label)
 
 ## Problem
 
@@ -17,7 +17,7 @@ heading, but it is still useful to keep around (for search / disambiguation).
 
 ## Behavior
 
-All logic lives in `render_highlights` in `booktools/highlights.py` so every source
+All logic lives in `render_highlights` in `books/highlights.py` so every source
 shares one output format. The behavior is **gated on chapter data**, so page-based
 sources (Highlighted) and chapter-less exports are unaffected.
 

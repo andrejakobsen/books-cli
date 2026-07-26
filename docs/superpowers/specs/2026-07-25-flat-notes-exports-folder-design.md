@@ -75,7 +75,7 @@ separated from imported content.
 ## Architecture (Approach A)
 
 Route **all three** importers through a single layout authority in
-`booktools/obsidian.py`. Today Goodreads and Kobo already use `VaultIndex` for
+`books/obsidian.py`. Today Goodreads and Kobo already use `VaultIndex` for
 matching, but Calibre bypasses it and mirrors the Calibre library's folder tree.
 That divergence is removed: `VaultIndex` becomes the single source of truth for
 "where does the note live, where do its exports live, what's the embed path."

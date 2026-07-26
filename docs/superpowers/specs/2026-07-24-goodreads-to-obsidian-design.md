@@ -42,7 +42,7 @@ compose without clobbering each other on re-runs.
 
 ## Architecture
 
-### New shared module: `booktools/obsidian.py`
+### New shared module: `books/obsidian.py`
 
 Holds everything both importers need, so they agree on format:
 
@@ -78,9 +78,9 @@ Holds everything both importers need, so they agree on format:
   - Used by **both** create and merge paths: a new note is `update_frontmatter`
     applied to a `---\ntype: book\n---\n` skeleton, then a body appended.
 
-### `booktools/calibre_obsidian.py` changes
+### `books/calibre_obsidian.py` changes
 
-- Import helpers from `booktools.obsidian` (behavior-preserving).
+- Import helpers from `books.obsidian` (behavior-preserving).
 - `build_frontmatter` emits the full canonical schema, with Goodreads-only
   fields (`pages`, `status`, `shelves`, `date_read`) present but empty.
 - `convert` becomes merge-based for book notes: if the note exists, read it and
@@ -88,7 +88,7 @@ Holds everything both importers need, so they agree on format:
   Cover copy and author/genre stubs are unchanged (stubs already use
   `write_if_absent`).
 
-### New module: `booktools/goodreads_obsidian.py`
+### New module: `books/goodreads_obsidian.py`
 
 - `register(app)` → `goodreads-to-obsidian`; `main()` for the standalone shim.
 - CLI: `--csv/-c` (input export, required), `--output/-o` (vault, default
@@ -130,13 +130,13 @@ Holds everything both importers need, so they agree on format:
     and `Author l-f` orderings by reducing each to a `{first, last}` pair.
   - A fallback match requires **title exact AND author first/last** to agree.
 
-### `booktools/cli.py`
+### `books/cli.py`
 
 Add `goodreads_obsidian` to `CAPABILITIES`.
 
 ### `scripts/goodreads_to_obsidian.py`
 
-Standalone shim mirroring the existing ones (`from booktools.goodreads_obsidian
+Standalone shim mirroring the existing ones (`from books.goodreads_obsidian
 import main`).
 
 ## Field mapping (Goodreads → property)
@@ -185,7 +185,7 @@ Update `tests/test_calibre_to_obsidian.py` for the new schema + merge behavior:
 - Re-running Calibre preserves a manually set property value in a book note.
 - Existing assertions (covers, stubs, ignored files, html→md) still hold.
 
-`booktools/obsidian.py` gets direct unit tests for `update_frontmatter`
+`books/obsidian.py` gets direct unit tests for `update_frontmatter`
 (fill-empty, never-overwrite, no-frontmatter case) and `safe_filename`.
 
 ## Non-goals

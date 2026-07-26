@@ -13,7 +13,7 @@
 ### Task 1: Add `tags` field and `sanitize_tag` to the shared model
 
 **Files:**
-- Modify: `booktools/highlights.py`
+- Modify: `books/highlights.py`
 - Test: `tests/test_highlights.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -47,11 +47,11 @@ def test_highlight_tags_defaults_to_empty_list():
 - [ ] **Step 2: Run tests to verify they fail**
 
 Run: `uv run pytest tests/test_highlights.py -k "sanitize_tag or tags_defaults" -v`
-Expected: FAIL — `AttributeError: module 'booktools.highlights' has no attribute 'sanitize_tag'` and `TypeError`/missing `tags`.
+Expected: FAIL — `AttributeError: module 'books.highlights' has no attribute 'sanitize_tag'` and `TypeError`/missing `tags`.
 
 - [ ] **Step 3: Implement the field and helper**
 
-In `booktools/highlights.py`, change the import line:
+In `books/highlights.py`, change the import line:
 
 ```python
 from dataclasses import dataclass, field
@@ -91,7 +91,7 @@ Expected: PASS (5 tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/highlights.py tests/test_highlights.py
+git add books/highlights.py tests/test_highlights.py
 git commit -m "Add tags field + sanitize_tag helper to Highlight model"
 ```
 
@@ -100,7 +100,7 @@ git commit -m "Add tags field + sanitize_tag helper to Highlight model"
 ### Task 2: Render tags inside the quote callout
 
 **Files:**
-- Modify: `booktools/highlights.py` (the `render_highlights` function)
+- Modify: `books/highlights.py` (the `render_highlights` function)
 - Test: `tests/test_highlights.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -141,7 +141,7 @@ Expected: FAIL — tag line not present in output.
 
 - [ ] **Step 3: Implement tag rendering**
 
-In `booktools/highlights.py`, replace the body of `render_highlights` so the quote text and tags are composed before wrapping in the callout. Change this block:
+In `books/highlights.py`, replace the body of `render_highlights` so the quote text and tags are composed before wrapping in the callout. Change this block:
 
 ```python
     for h, anchor in zip(highlights, anchors):
@@ -172,7 +172,7 @@ Expected: PASS (all highlights tests, including the pre-existing ones).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/highlights.py tests/test_highlights.py
+git add books/highlights.py tests/test_highlights.py
 git commit -m "Render highlight tags inside the quote callout"
 ```
 
@@ -181,7 +181,7 @@ git commit -m "Render highlight tags inside the quote callout"
 ### Task 3: Extract Kobo hashtags from note text
 
 **Files:**
-- Modify: `booktools/kobo_export.py` (the `row_to_highlight` function; add a module-level regex + helper)
+- Modify: `books/kobo_export.py` (the `row_to_highlight` function; add a module-level regex + helper)
 - Test: `tests/test_kobo_export.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -246,16 +246,16 @@ Expected: FAIL — tags empty and note still contains hashtags.
 
 - [ ] **Step 3: Implement hashtag extraction**
 
-In `booktools/kobo_export.py`, add the import for the sanitize helper. Change:
+In `books/kobo_export.py`, add the import for the sanitize helper. Change:
 
 ```python
-from booktools.highlights import Highlight, render_highlights
+from books.highlights import Highlight, render_highlights
 ```
 
 to:
 
 ```python
-from booktools.highlights import Highlight, render_highlights, sanitize_tag
+from books.highlights import Highlight, render_highlights, sanitize_tag
 ```
 
 Add a module-level regex and helper near the top (after the imports, before `QUERY`):
@@ -331,7 +331,7 @@ Expected: PASS (new tests + pre-existing `test_row_to_highlight_maps_fields`, wh
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/kobo_export.py tests/test_kobo_export.py
+git add books/kobo_export.py tests/test_kobo_export.py
 git commit -m "Extract inline #hashtags from Kobo notes as tags"
 ```
 
@@ -340,7 +340,7 @@ git commit -m "Extract inline #hashtags from Kobo notes as tags"
 ### Task 4: Split the Highlighted CSV `Tags` column
 
 **Files:**
-- Modify: `booktools/highlighted_obsidian.py` (the `row_to_highlight` function)
+- Modify: `books/highlighted_obsidian.py` (the `row_to_highlight` function)
 - Test: `tests/test_highlighted_obsidian.py`
 
 - [ ] **Step 1: Write the failing tests**
@@ -375,10 +375,10 @@ Expected: FAIL — `h.tags` is `[]` (field exists but importer never populates i
 
 - [ ] **Step 3: Implement tag splitting**
 
-In `booktools/highlighted_obsidian.py`, add `sanitize_tag` to the import:
+In `books/highlighted_obsidian.py`, add `sanitize_tag` to the import:
 
 ```python
-from booktools.highlights import Highlight, render_highlights, sanitize_tag
+from books.highlights import Highlight, render_highlights, sanitize_tag
 ```
 
 Replace `row_to_highlight`:
@@ -418,7 +418,7 @@ Expected: PASS (new tests + pre-existing `test_parse_and_map`).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add booktools/highlighted_obsidian.py tests/test_highlighted_obsidian.py
+git add books/highlighted_obsidian.py tests/test_highlighted_obsidian.py
 git commit -m "Split Highlighted CSV Tags column into per-highlight tags"
 ```
 

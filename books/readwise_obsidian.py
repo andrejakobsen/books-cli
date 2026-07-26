@@ -23,9 +23,9 @@ from pathlib import Path
 
 import typer
 
-from booktools import config
-from booktools.highlights import Highlight, render_highlights, split_tag_column
-from booktools.obsidian import (
+from books import config
+from books.highlights import Highlight, render_highlights, split_tag_column
+from books.obsidian import (
     AUTHORS_DIRNAME,
     BookRef,
     VaultIndex,
@@ -160,7 +160,7 @@ def readwise_to_obsidian(
         None,
         "--output", "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/booktools/config.toml). Relative paths resolve against the current directory.",
+             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
 ) -> None:
     """Add Readwise CSV highlights to existing Obsidian book notes.

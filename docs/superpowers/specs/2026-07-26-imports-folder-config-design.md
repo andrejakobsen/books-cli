@@ -46,14 +46,14 @@ Obsidian/
 Add a single `imports` key to `config.py`, next to `obsidian_path`/`vault`:
 
 ```toml
-# booktools configuration
+# books configuration
 obsidian_path = "~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian"
 vault = "History"
 # Folder (inside the vault) holding raw import sources, hidden from Obsidian.
 imports = ".imports"
 ```
 
-Changes to `booktools/config.py`:
+Changes to `books/config.py`:
 
 - `Config` gains an `imports: str = DEFAULT_IMPORTS` field (`DEFAULT_IMPORTS = ".imports"`).
 - `_DEFAULT_FILE` gains the commented `imports` line.

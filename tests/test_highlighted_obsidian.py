@@ -6,8 +6,8 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from booktools import highlighted_obsidian as hi
-from booktools.cli import app
+from books import highlighted_obsidian as hi
+from books.cli import app
 
 runner = CliRunner()
 
@@ -242,7 +242,7 @@ def test_cli_empty_folder_errors(tmp_path):
 
 
 def test_highlighted_defaults_csv_to_imports(monkeypatch, tmp_path):
-    from booktools import config
+    from books import config
 
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "highlighted"

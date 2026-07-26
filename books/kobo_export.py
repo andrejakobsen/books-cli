@@ -30,9 +30,9 @@ from pathlib import Path
 
 import typer
 
-from booktools import config, resolve_path
-from booktools.highlights import Highlight, parse_markers, render_highlights
-from booktools.obsidian import (
+from books import config, resolve_path
+from books.highlights import Highlight, parse_markers, render_highlights
+from books.obsidian import (
     AUTHORS_DIRNAME,
     BookRef,
     VaultIndex,
@@ -339,7 +339,7 @@ def kobo_export(
         None, "--output", "-o",
         help="Output path. CSV mode: a .zip [default: ./kobo_highlights.zip]. "
              "Obsidian mode: a vault directory "
-             "[default: the vault from ~/.config/booktools/config.toml]. "
+             "[default: the vault from ~/.config/books/config.toml]. "
              "Relative paths resolve against the current directory.",
     ),
     csv_out: bool = typer.Option(
@@ -352,7 +352,7 @@ def kobo_export(
         False, "--obsidian",
         help="Write highlights into an Obsidian vault (flat note + Exports/) instead "
              "of CSV/zip. In this mode --output is the vault directory "
-             "[default: the vault from ~/.config/booktools/config.toml].",
+             "[default: the vault from ~/.config/books/config.toml].",
     ),
 ) -> None:
     """Export Kobo highlights & notes to per-book CSV files inside a zip archive.
@@ -375,7 +375,7 @@ def kobo_export(
     With --obsidian, writes highlights into existing Obsidian book notes instead
     (never creating notes — a book with no matching note is skipped and counted);
     --output is then the vault directory (default: the vault from
-    ~/.config/booktools/config.toml).
+    ~/.config/books/config.toml).
     """
     explicit = input_path or db
     if explicit is None:

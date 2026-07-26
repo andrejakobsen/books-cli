@@ -1,4 +1,4 @@
-"""booktools package."""
+"""books package."""
 
 from __future__ import annotations
 

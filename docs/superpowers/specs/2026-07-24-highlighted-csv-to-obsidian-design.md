@@ -3,7 +3,7 @@
 **Date:** 2026-07-24
 **Status:** Approved design, pending implementation
 **Command added:** `books highlighted` (new capability)
-**Shared-layer change:** add a `page` dimension to `booktools/highlights.py`
+**Shared-layer change:** add a `page` dimension to `books/highlights.py`
 
 ## Goal
 
@@ -48,7 +48,7 @@ any stray/erroneous captures — the user curates in-app and re-exports.
 5. **`Highlights.md` regenerated wholesale** each run (same rule as Kobo);
    personal commentary lives in notes linking to the stable anchors.
 
-## Shared-layer change (`booktools/highlights.py`)
+## Shared-layer change (`books/highlights.py`)
 
 Add one field and thread it through the two format helpers. Existing sources
 (Kobo) leave it `None` and are unaffected.
@@ -63,7 +63,7 @@ Add one field and thread it through the two format helpers. Existing sources
   Collision suffixing (`-2`, `-3`) still guarantees uniqueness — this is what
   handles multiple highlights on the same page.
 
-## New module `booktools/highlighted_obsidian.py`
+## New module `books/highlighted_obsidian.py`
 
 Mirrors `goodreads_obsidian.py`; owns only CSV parsing + field mapping, delegating
 all rendering and note-wiring to the shared layer.
@@ -82,7 +82,7 @@ all rendering and note-wiring to the shared layer.
   `--output/-o` (default `Obsidian`); paths via `resolve_path`; missing CSV →
   `typer.BadParameter`. `register(app)` + `main()` as usual.
 
-Register in `booktools/cli.py` `CAPABILITIES`; add `scripts/highlighted_obsidian.py`
+Register in `books/cli.py` `CAPABILITIES`; add `scripts/highlighted_obsidian.py`
 shim over `main()`.
 
 ## Co-existence

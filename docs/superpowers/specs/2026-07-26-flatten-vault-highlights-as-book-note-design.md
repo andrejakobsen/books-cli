@@ -71,7 +71,7 @@ notes: "[[Notes/The Deluge - Adam Tooze]]"
   it does not collide with the identically-named `Books/<stem>` note). The
   importer never creates the file — the user makes it by hand when needed.
 
-## Shared-layer changes (`booktools/obsidian.py`)
+## Shared-layer changes (`books/obsidian.py`)
 
 - `BOOK_PROPERTY_ORDER`: rename `genres` → `topics`; append `notes`.
 - Layout constants: keep `BOOKS_DIRNAME`; add `COVERS_DIRNAME="Covers"`,
