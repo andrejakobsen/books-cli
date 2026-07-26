@@ -141,6 +141,35 @@ def test_resolve_imports_honors_absolute_imports(tmp_path, monkeypatch):
     assert config.resolve_imports("calibre", None) == Path("/srv/raw/calibre")
 
 
+def test_newest_csv_picks_most_recent(tmp_path):
+    old = tmp_path / "old.csv"
+    new = tmp_path / "new.csv"
+    old.write_text("a")
+    new.write_text("b")
+    import os
+    os.utime(old, (1000, 1000))
+    os.utime(new, (2000, 2000))
+    assert config.newest_csv(tmp_path) == new
+
+
+def test_newest_csv_single_file(tmp_path):
+    only = tmp_path / "export.csv"
+    only.write_text("x")
+    assert config.newest_csv(tmp_path) == only
+
+
+def test_newest_csv_empty_folder_raises(tmp_path):
+    import pytest
+    with pytest.raises(FileNotFoundError):
+        config.newest_csv(tmp_path)
+
+
+def test_newest_csv_missing_folder_raises(tmp_path):
+    import pytest
+    with pytest.raises(FileNotFoundError):
+        config.newest_csv(tmp_path / "nope")
+
+
 def test_importer_writes_to_configured_vault_without_output(monkeypatch, tmp_path):
     """An importer invoked without --output writes into the configured vault.
 

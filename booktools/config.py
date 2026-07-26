@@ -111,3 +111,17 @@ def resolve_imports(name: str, output: Path | None = None) -> Path:
     cfg = load_config()
     root = resolve_path(Path(cfg.imports), vault)
     return root / name
+
+
+def newest_csv(folder: Path) -> Path:
+    """Return the most-recently-modified top-level ``*.csv`` in *folder*.
+
+    Non-recursive. Raises ``FileNotFoundError`` (with *folder* in the message)
+    when the folder is missing or contains no CSV files.
+    """
+    if not folder.is_dir():
+        raise FileNotFoundError(f"no CSV found in {folder}")
+    csvs = list(folder.glob("*.csv"))
+    if not csvs:
+        raise FileNotFoundError(f"no CSV found in {folder}")
+    return max(csvs, key=lambda p: p.stat().st_mtime)
