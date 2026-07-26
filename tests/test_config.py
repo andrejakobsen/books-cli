@@ -40,6 +40,23 @@ def test_load_config_falls_back_on_malformed_toml(tmp_path):
     assert cfg.vault == config.DEFAULT_VAULT
 
 
+def test_load_config_falls_back_on_non_string_value(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('obsidian_path = 5\nvault = "History"\n')
+    cfg = config.load_config(cfg_file)
+    assert cfg.obsidian_path == config.DEFAULT_OBSIDIAN_PATH
+    assert cfg.vault == "History"
+
+
+def test_load_config_falls_back_when_file_unwritable(tmp_path):
+    blocker = tmp_path / "blocker"
+    blocker.write_text("")  # a FILE where a dir is expected -> mkdir raises
+    cfg_file = blocker / "config.toml"
+    cfg = config.load_config(cfg_file)
+    assert cfg.obsidian_path == config.DEFAULT_OBSIDIAN_PATH
+    assert cfg.vault == config.DEFAULT_VAULT
+
+
 def test_config_path_respects_xdg(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
     assert config.config_path() == tmp_path / "xdg" / "booktools" / "config.toml"

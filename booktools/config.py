@@ -47,8 +47,11 @@ def load_config(path: Path | None = None) -> Config:
     """
     path = path or config_path()
     if not path.exists():
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(_DEFAULT_FILE)
+        try:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(_DEFAULT_FILE)
+        except OSError:
+            pass
         return Config()
     try:
         data = tomllib.loads(path.read_text())
