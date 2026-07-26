@@ -122,3 +122,67 @@ def google_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
             fmt=None,
         ))
     return out
+
+
+OL_SEARCH_API = "https://openlibrary.org/search.json"
+OL_ISBN_API = "https://openlibrary.org/isbn/{isbn}.json"
+OL_COVER_ID = "https://covers.openlibrary.org/b/id/{cid}-L.jpg"
+OL_COVER_ISBN = "https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
+
+
+def _norm_fmt(raw: str | None) -> str | None:
+    """Map a physical_format string to 'paperback'/'hardcover'/None."""
+    if not raw:
+        return None
+    low = raw.lower()
+    if "paper" in low or "softcover" in low:
+        return "paperback"
+    if "hard" in low:
+        return "hardcover"
+    return None
+
+
+def _fmt_rank(fmt: str | None) -> int:
+    """Sort key: paperback first, then unknown, then hardcover."""
+    return {"paperback": 0, None: 1, "hardcover": 2}.get(fmt, 1)
+
+
+def openlibrary_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
+    """Query Open Library; paperback editions (where known) rank first."""
+    out: list[Candidate] = []
+    label = _label(book.title, book.authors)
+    if book.isbn:
+        url = OL_ISBN_API.format(isbn=quote(book.isbn))
+        try:
+            data = fetch_json(url)
+        except Exception:
+            return []
+        fmt = _norm_fmt(data.get("physical_format"))
+        out.append(Candidate(
+            source="openlibrary", label=label,
+            image_url=OL_COVER_ISBN.format(isbn=quote(book.isbn)), fmt=fmt))
+        return out
+
+    params = f"title={quote(book.title)}"
+    if book.authors:
+        params += f"&author={quote(book.authors[0])}"
+    url = f"{OL_SEARCH_API}?{params}&fields=title,author_name,cover_i,editions&limit=5"
+    try:
+        data = fetch_json(url)
+    except Exception:
+        return []
+    for doc in data.get("docs", []):
+        editions = doc.get("editions", {}).get("docs", [])
+        for ed in editions:
+            cid = ed.get("cover_i")
+            if cid:
+                out.append(Candidate(
+                    source="openlibrary", label=label,
+                    image_url=OL_COVER_ID.format(cid=cid),
+                    fmt=_norm_fmt(ed.get("physical_format"))))
+        if not editions and doc.get("cover_i"):
+            out.append(Candidate(
+                source="openlibrary", label=label,
+                image_url=OL_COVER_ID.format(cid=doc["cover_i"]), fmt=None))
+    out.sort(key=lambda c: _fmt_rank(c.fmt))
+    return out

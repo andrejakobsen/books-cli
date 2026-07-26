@@ -119,3 +119,66 @@ def test_google_books_no_images_returns_empty():
     cands = covers.google_books_candidates(
         book, lambda url: {"items": [{"volumeInfo": {"title": "X"}}]})
     assert cands == []
+
+
+# Open Library search.json shape (title/author path)
+OL_SEARCH = {
+    "docs": [
+        {
+            "title": "Napoleon",
+            "author_name": ["Andrew Roberts"],
+            "cover_i": 8231856,
+            "editions": {
+                "docs": [
+                    {"physical_format": "Hardcover", "cover_i": 111},
+                    {"physical_format": "Paperback", "cover_i": 222},
+                ]
+            },
+        }
+    ]
+}
+
+
+def test_openlibrary_title_author_paperback_first():
+    book = covers.MissingBook(
+        note_path=None, title="Napoleon", authors=["Andrew Roberts"],
+        isbn=None, amazon=None)
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return OL_SEARCH
+
+    cands = covers.openlibrary_candidates(book, fake_fetch)
+    assert cands, "expected at least one candidate"
+    assert all(c.source == "openlibrary" for c in cands)
+    # paperback edition ranked ahead of hardcover
+    fmts = [c.fmt for c in cands]
+    assert fmts.index("paperback") < fmts.index("hardcover")
+    # paperback candidate points at its own cover id
+    pb = next(c for c in cands if c.fmt == "paperback")
+    assert "222-L.jpg" in pb.image_url
+    assert "title=Napoleon" in captured["url"]
+    assert "author=Andrew+Roberts" in captured["url"] or "author=Andrew%20Roberts" in captured["url"]
+
+
+def test_openlibrary_isbn_path_builds_isbn_cover_url():
+    book = covers.MissingBook(
+        note_path=None, title="X", authors=[], isbn="9780141032016", amazon=None)
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return {"physical_format": "Paperback"}
+
+    cands = covers.openlibrary_candidates(book, fake_fetch)
+    assert "/isbn/9780141032016.json" in captured["url"]
+    assert cands and "isbn/9780141032016-L.jpg" in cands[0].image_url
+    assert cands[0].fmt == "paperback"
+
+
+def test_openlibrary_no_cover_returns_empty():
+    book = covers.MissingBook(
+        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+    cands = covers.openlibrary_candidates(book, lambda url: {"docs": []})
+    assert cands == []
