@@ -21,7 +21,7 @@ from urllib.request import Request, urlopen
 
 import typer
 
-from booktools import resolve_path
+from booktools import config, resolve_path
 from booktools.obsidian import (
     BOOKS_DIRNAME,
     BookRef,
@@ -389,10 +389,11 @@ def run(vault, *, interactive, dry_run, limit,
 
 
 def covers_command(
-    output: Path = typer.Option(
-        Path("Obsidian"),
+    output: Path | None = typer.Option(
+        None,
         "--output", "-o",
-        help="Obsidian vault to scan. Relative paths resolve against the current directory.",
+        help="Obsidian vault to scan. Defaults to the vault from your config file "
+             "(~/.config/booktools/config.toml). Relative paths resolve against the current directory.",
     ),
     book: Path | None = typer.Option(
         None, "--book", "-b",
@@ -435,7 +436,7 @@ def covers_command(
         vault = note.parents[1]
     else:
         note = None
-        vault = resolve_path(output, Path.cwd())
+        vault = config.resolve_vault(output)
         if not (vault / BOOKS_DIRNAME).is_dir():
             raise typer.BadParameter(
                 f"no Books/ folder in vault: {vault}", param_hint="--output")
