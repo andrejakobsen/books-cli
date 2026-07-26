@@ -200,3 +200,26 @@ def test_cli_empty_folder_errors(tmp_path):
     out = tmp_path / "Obsidian"
     result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
     assert result.exit_code != 0
+
+
+def test_highlighted_defaults_csv_to_imports(monkeypatch, tmp_path):
+    from booktools import config
+
+    vault = tmp_path / "Vault"
+    folder = vault / ".imports" / "highlighted"
+    folder.mkdir(parents=True)
+    (folder / "export.csv").write_text(
+        "Highlight,Title,Author,ISBN,Collections,Reading Status,"
+        "Book Added Date,Location,Tags,Note,Date,Favorite\n"
+        '"A line.","The Deluge","Adam Tooze",,,,,42,,,,\n',
+        encoding="utf-8")
+    monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
+    monkeypatch.setattr(config, "resolve_imports",
+                        lambda name, output=None: vault / ".imports" / name)
+
+    app = typer.Typer()
+    hi.register(app)
+    result = CliRunner().invoke(app, [])
+
+    assert result.exit_code == 0, result.output
+    assert (vault / "Books" / "The Deluge - Adam Tooze.md").exists()
