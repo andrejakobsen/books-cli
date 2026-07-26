@@ -182,3 +182,37 @@ def test_openlibrary_no_cover_returns_empty():
         note_path=None, title="X", authors=[], isbn=None, amazon=None)
     cands = covers.openlibrary_candidates(book, lambda url: {"docs": []})
     assert cands == []
+
+
+def test_amazon_candidate_from_asin():
+    book = covers.MissingBook(
+        note_path=None, title="X", authors=["Y"], isbn=None, amazon="B00ABCDEFG")
+    cands = covers.amazon_candidates(book)
+    assert len(cands) == 1
+    assert cands[0].source == "amazon"
+    assert "B00ABCDEFG" in cands[0].image_url
+
+
+def test_amazon_no_asin_returns_empty():
+    book = covers.MissingBook(
+        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+    assert covers.amazon_candidates(book) == []
+
+
+def test_gather_candidates_source_order():
+    book = covers.MissingBook(
+        note_path=None, title="Napoleon", authors=["Andrew Roberts"],
+        isbn=None, amazon="B00ABCDEFG")
+
+    def fake_fetch(url):
+        if "googleapis" in url:
+            return GOOGLE_VOLUME
+        return OL_SEARCH
+
+    cands = covers.gather_candidates(book, fake_fetch)
+    sources = [c.source for c in cands]
+    assert sources[0] == "google"
+    assert "openlibrary" in sources
+    assert sources[-1] == "amazon"
+    # google before every openlibrary before amazon
+    assert sources.index("google") < sources.index("openlibrary") < sources.index("amazon")

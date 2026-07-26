@@ -186,3 +186,27 @@ def openlibrary_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
                 image_url=OL_COVER_ID.format(cid=doc["cover_i"]), fmt=None))
     out.sort(key=lambda c: _fmt_rank(c.fmt))
     return out
+
+
+AMAZON_IMAGE = "https://images-na.ssl-images-amazon.com/images/P/{asin}.01._SCLZZZZZZZ_.jpg"
+
+
+def amazon_candidates(book: MissingBook) -> list[Candidate]:
+    """Construct an Amazon cover URL from an existing ASIN (no scraping)."""
+    if not book.amazon:
+        return []
+    return [Candidate(
+        source="amazon",
+        label=_label(book.title, book.authors),
+        image_url=AMAZON_IMAGE.format(asin=book.amazon),
+        fmt=None,
+    )]
+
+
+def gather_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
+    """All candidates in source-priority order: Google, Open Library, Amazon."""
+    return (
+        google_books_candidates(book, fetch_json)
+        + openlibrary_candidates(book, fetch_json)
+        + amazon_candidates(book)
+    )
