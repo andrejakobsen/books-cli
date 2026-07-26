@@ -13,9 +13,11 @@ Standard library only.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 from urllib.parse import quote
+from urllib.request import Request, urlopen
 
 from booktools.obsidian import (
     BOOKS_DIRNAME,
@@ -275,3 +277,29 @@ def apply_cover(index: VaultIndex, book: MissingBook, image: bytes) -> None:
     text = update_frontmatter(text, {"cover": cover_fm})
     text = ensure_top_embed(text, cover_embed)
     book.note_path.write_text(text, encoding="utf-8")
+
+
+USER_AGENT = "booktools-covers/1.0 (+https://github.com/)"
+HTTP_TIMEOUT = 15
+
+
+def default_fetch_json(url: str) -> dict:
+    """GET *url* and parse JSON (default injected fetcher)."""
+    req = Request(url, headers={"User-Agent": USER_AGENT})
+    with urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+        return json.loads(resp.read().decode("utf-8"))
+
+
+def default_fetch_bytes(url: str) -> tuple[bytes, str | None]:
+    """GET *url* returning (body, content_type) (default injected fetcher)."""
+    req = Request(url, headers={"User-Agent": USER_AGENT})
+    with urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+        return resp.read(), resp.headers.get("Content-Type")
+
+
+def _terminal_prompt(cand: Candidate) -> str:
+    """Ask the user about one candidate; map keys to an action string."""
+    fmt = f" [{cand.fmt}]" if cand.fmt else ""
+    print(f"  {cand.source}: {cand.label}{fmt}\n    {cand.image_url}")
+    ans = input("  accept [y] / next [n] / skip book [s] / quit [q]? ").strip().lower()
+    return {"y": "accept", "n": "next", "s": "skip", "q": "quit"}.get(ans, "next")

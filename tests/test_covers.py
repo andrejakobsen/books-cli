@@ -322,3 +322,15 @@ def test_apply_cover_idempotent(tmp_path):
     second = note.read_text(encoding="utf-8")
     assert first == second   # cover already set -> no duplicate embed/frontmatter
     assert second.count("![[Exports/A/N/cover.jpg]]") == 1
+
+
+def test_terminal_prompt_maps_keys(monkeypatch):
+    answers = iter(["y", "n", "s", "q", "?"])
+    monkeypatch.setattr("builtins.input", lambda *a: next(answers))
+    cand = _cand("google")
+    assert covers._terminal_prompt(cand) == "accept"
+    assert covers._terminal_prompt(cand) == "next"
+    assert covers._terminal_prompt(cand) == "skip"
+    assert covers._terminal_prompt(cand) == "quit"
+    # unrecognized input defaults to "next" (safe, non-destructive)
+    assert covers._terminal_prompt(cand) == "next"
