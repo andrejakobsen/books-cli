@@ -1,9 +1,10 @@
-"""Integration test: multiple importers compose into one flat note + Exports.
+"""Integration test: multiple importers compose into one flat book note.
 
 The same book (matched by ISBN) is imported from Calibre (cover + description),
 Goodreads (review), and Highlighted (highlights). The result must be a single
-flat note under Books/ that embeds all three artifacts from a shared
-Exports/<Author>/<Title>/ folder, in any import order.
+flat note under Books/ that carries the cover embed (from Covers/), an inline
+'## Review' section, and an inline marker-wrapped '## Highlights' section, in any
+import order.
 """
 
 from pathlib import Path
@@ -74,20 +75,20 @@ def _assert_composed(out: Path) -> None:
     assert notes == [out / "Books" / "Napoleon - Andrew Roberts.md"]
     note = notes[0].read_text()
 
-    export = "Exports/Andrew Roberts/Napoleon_ A Life"
-    # All three artifacts embedded from the shared Exports folder.
-    assert f'cover: "[[{export}/cover.jpg]]"' in note
-    assert f"![[{export}/cover.jpg]]" in note
-    assert "## Review" in note and f"![[{export}/Review.md]]" in note
-    assert "## Highlights" in note and f"![[{export}/Highlights.md]]" in note
+    cover_rel = "Covers/Napoleon - Andrew Roberts.jpg"
+    # Cover embed from the flat Covers/ folder.
+    assert f'cover: "[[{cover_rel}]]"' in note
+    assert f"![[{cover_rel}|150]]" in note
+    # Review and highlights are inline sections in the note itself.
+    assert "## Review" in note and "A stirring review." in note
+    assert "## Highlights" in note
+    assert "%% books:highlights:start %%" in note
+    assert "A memorable passage." in note
     # Calibre description survives inline.
     assert "A great book." in note
 
-    # Artifacts exist on disk under Exports/.
-    base = out / "Exports" / "Andrew Roberts" / "Napoleon_ A Life"
-    assert (base / "cover.jpg").is_file()
-    assert "A stirring review." in (base / "Review.md").read_text()
-    assert "A memorable passage." in (base / "Highlights.md").read_text()
+    # The cover image exists on disk under Covers/.
+    assert (out / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
 
 
 def test_compose_calibre_then_goodreads_then_highlighted(tmp_path):

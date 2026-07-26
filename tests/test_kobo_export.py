@@ -57,18 +57,18 @@ def test_export_obsidian_writes_highlights_and_embed(tmp_path):
     stats = ke.export_obsidian(db, vault)
     assert stats["books"] == 1 and stats["entries"] == 2
 
-    export_dir = vault / "Exports" / "F. Scott Fitzgerald" / "The Great Gatsby"
-    highlights = (export_dir / "Highlights.md").read_text()
-    assert "source: kobo" in highlights          # provenance frontmatter
-    assert "## The Valley of Ashes" in highlights          # chapter title header
-    assert "%% Kobo ch. 2 %%" in highlights      # hidden reading-order comment
-    assert "> [!quote]+ 42%" in highlights       # locator drops the chapter
-    assert "^ch2-b17-5" in highlights
-    assert ">> my note" in highlights          # first highlight's note as nested quote
-    assert "[!note]" not in highlights         # no separate note callout
-
     note = (vault / "Books" / "The Great Gatsby - F. Scott Fitzgerald.md").read_text()
-    assert "![[Exports/F. Scott Fitzgerald/The Great Gatsby/Highlights.md]]" in note
+    # Highlights are an inline, marker-wrapped '## Highlights' section.
+    assert "## Highlights" in note
+    assert "%% books:highlights:start %%" in note
+    assert "%% books:highlights:end %%" in note
+    assert "source: kobo" in note                # provenance frontmatter
+    assert "## The Valley of Ashes" in note      # chapter title header
+    assert "%% Kobo ch. 2 %%" in note            # hidden reading-order comment
+    assert "> [!quote]+ 42%" in note             # locator drops the chapter
+    assert "^ch2-b17-5" in note
+    assert ">> my note" in note                  # first highlight's note as nested quote
+    assert "[!note]" not in note                 # no separate note callout
 
 
 def test_export_obsidian_regenerates_highlights_wholesale(tmp_path):

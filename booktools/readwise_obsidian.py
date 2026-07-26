@@ -25,13 +25,13 @@ import typer
 from booktools import config
 from booktools.highlights import Highlight, render_highlights, split_tag_column
 from booktools.obsidian import (
+    AUTHORS_DIRNAME,
     BookRef,
     VaultIndex,
     link_list,
     plain_list,
+    render_marked_section,
     update_frontmatter,
-    with_source,
-    write_leaf_with_embed,
     write_stub,
     yaml_quote,
 )
@@ -89,7 +89,7 @@ def convert(csv_path: Path, output: Path) -> dict:
     """Import every highlight, grouped by book, into the Obsidian vault."""
     stats = {"books": 0, "entries": 0, "authors": set()}
     index = VaultIndex(output)
-    authors_dir = output / "Authors"
+    authors_dir = output / AUTHORS_DIRNAME
 
     # Group rows by book (Amazon id when present, else standardized title),
     # preserving CSV order.
@@ -130,9 +130,10 @@ def convert(csv_path: Path, output: Path) -> dict:
         dest.note_path.write_text(update_frontmatter(base, updates), encoding="utf-8")
 
         highlights = [row_to_highlight(r) for r in group["rows"]]
-        write_leaf_with_embed(
-            dest.note_path, dest.export_dir, "Highlights.md",
-            with_source("readwise", render_highlights(highlights)), "Highlights")
+        text = dest.note_path.read_text(encoding="utf-8")
+        text = render_marked_section(
+            text, "Highlights", "highlights", render_highlights(highlights))
+        dest.note_path.write_text(text, encoding="utf-8")
 
         for author in authors:
             write_stub(authors_dir, author, "author")

@@ -98,16 +98,16 @@ Output defaults to the configured vault; in kobo's CSV mode `--output` is a zip
 path that defaults to `./kobo_highlights.zip`.
 
 - **`calibre`** — Convert a Calibre library into an Obsidian markdown
-  vault: copies covers, extracts `.opf` metadata into YAML properties, and links
-  authors/genres for a graph-friendly vault. `--library` defaults to
-  `~/Calibre Library`.
+  vault: copies covers into `Covers/`, extracts `.opf` metadata into YAML
+  properties, and links authors/topics for a graph-friendly vault. `--library`
+  defaults to `~/Calibre Library`.
 - **`goodreads`** — Convert a Goodreads CSV export into Obsidian book
   notes (read books by default; `--shelf all` for everything). Merges with
-  existing Calibre notes without overwriting, and extracts each review into a
-  generic `Review.md` embedded in the book note via `![](Review.md)`. `--csv`
+  existing Calibre notes without overwriting, and writes each review once into a
+  `## Review` section of the book note (never clobbered on re-runs). `--csv`
   accepts a file or a folder (newest CSV), defaulting to `<vault>/.imports/goodreads`.
 - **`readwise`** — Convert a Readwise CSV export into Obsidian book notes,
-  writing per-book `Highlights.md` callouts embedded into the book note. `--csv`
+  rendering highlights into a `## Highlights` section of the book note. `--csv`
   accepts a file or a folder (newest CSV), defaulting to `<vault>/.imports/readwise`.
 - **`kobo`** — Export Kobo highlights & notes to per-book CSVs in a zip (`--csv`,
   the default output mode); pass `--obsidian` for the Obsidian vault mode. When no
@@ -118,32 +118,36 @@ path that defaults to `./kobo_highlights.zip`.
   notes, labelled and anchored by page. `--csv` imports every CSV in a folder,
   defaulting to `<vault>/.imports/highlighted`.
 
-Every export records provenance: content leaves (`Highlights.md`/`Review.md`)
-carry a `source:` property (`kobo`/`highlighted`/`goodreads`), and the `calibre`
-and `goodreads` importers stamp `source` on the book note itself.
+Every importer records provenance: the `source:` property on the book note
+(`calibre`/`goodreads`/`kobo`/`highlighted`/`readwise`).
+
+### The vault layout
+
+Everything lives in flat, top-level folders:
+
+- `Books/` — the indexed book notes (`<Title> - <Author>.md`). Each is a single
+  self-contained file: frontmatter, a cover embed, an optional `## Review` section,
+  and a `## Highlights` section.
+- `Covers/` — cover images, named `<Title> - <Author>.jpg` to match their note.
+- `Notes/` — your own free-form notes. These are never written by the importers;
+  a book note links to its note via a `notes:` frontmatter wikilink.
+- `Authors/` and `Topics/` — stub/hub notes for the graph.
+
+Re-running an importer is safe: highlights sit between
+`%% books:highlights:start %%` / `%% books:highlights:end %%` markers and are
+regenerated wholesale, while anything you write elsewhere in the note (including a
+hand-edited `## Review`) is preserved.
 
 ### Kobo → Obsidian highlights
 
-Export highlights into an Obsidian vault (folder-per-book) instead of CSV:
+Render highlights into your Obsidian vault instead of CSV:
 
 ```bash
 books kobo /path/to/KoboReader.sqlite --obsidian --output ~/Obsidian
 ```
 
-For each book with highlights this writes `<Author>/<Title>/Highlights.md`
-(Obsidian `[!quote]`/`[!note]` callouts with stable block anchors) and embeds it
-into the book note via `![](Highlights.md)`.
-
-**Optional: seamless embeds.** By default Obsidian wraps embeds in a bordered
-box. To make `Highlights.md`/`Review.md` render as if written inline, add a CSS
-snippet at `<vault>/.obsidian/snippets/seamless-embeds.css` and enable it under
-**Settings → Appearance → CSS snippets**:
-
-```css
-.markdown-embed-title { display: none; }
-.markdown-embed { border: none; padding: 0; margin: 0; }
-.markdown-embed-link { display: none; }
-```
+For each book with highlights this fills a `## Highlights` section of the book
+note (Obsidian `[!quote]`/`[!note]` callouts with stable block anchors).
 
 ### Highlighted → Obsidian highlights
 
@@ -154,11 +158,11 @@ Import highlights captured from *physical* books with the
 books highlighted --csv "Highlights for Stalin.csv" --output ~/Obsidian
 ```
 
-Every highlight is imported and grouped by book. For each book this writes
-`<Author>/<Title>/Highlights.md` — Obsidian `[!quote]`/`[!note]` callouts labelled
-by page (`p. 45–49`) with stable `^p45-49` block anchors — and embeds it into the
-book note via `![](Highlights.md)`. Books are matched to existing notes by ISBN,
-so highlights land alongside any Calibre/Goodreads data for the same book.
+Every highlight is imported and grouped by book. For each book this fills a
+`## Highlights` section of the book note — Obsidian `[!quote]`/`[!note]` callouts
+labelled by page (`p. 45–49`) with stable `^p45-49` block anchors. Books are
+matched to existing notes by ISBN, so highlights land alongside any
+Calibre/Goodreads data for the same book.
 
 The standalone scripts in `scripts/` still work too:
 

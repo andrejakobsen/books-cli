@@ -101,14 +101,16 @@ def test_convert_writes_highlights_and_embed(tmp_path):
     note = out / "Books" / "Stalin - Stephen Kotkin.md"
     assert note.exists()
     note_text = note.read_text()
-    assert "![[Exports/Stephen Kotkin/Stalin/Highlights.md]]" in note_text
+    # Highlights are an inline, marker-wrapped '## Highlights' section.
+    assert "## Highlights" in note_text
+    assert "%% books:highlights:start %%" in note_text
+    assert "%% books:highlights:end %%" in note_text
     assert 'isbn: "9781594203794"' in note_text     # ISBN persisted for matching
-    highlights_md = (out / "Exports" / "Stephen Kotkin" / "Stalin" / "Highlights.md").read_text()
-    assert "source: highlighted" in highlights_md          # provenance frontmatter
-    assert "> [!quote]+ p. 4" in highlights_md
-    assert "^p45-49" in highlights_md
-    assert "Fear is the mind-killer" in highlights_md
-    assert "#stalin" in highlights_md   # tag rendered inside the note
+    assert "source: highlighted" in note_text              # provenance frontmatter
+    assert "> [!quote]+ p. 4" in note_text
+    assert "^p45-49" in note_text
+    assert "Fear is the mind-killer" in note_text
+    assert "#stalin" in note_text   # tag rendered inside the note
 
 
 def test_convert_merges_into_existing_note_by_isbn(tmp_path):
@@ -124,7 +126,8 @@ def test_convert_merges_into_existing_note_by_isbn(tmp_path):
     updated = note.read_text()
     assert "status: read" in updated       # existing value untouched
     assert "My body." in updated           # body preserved
-    assert "![[Exports/Stephen Kotkin/Stalin/Highlights.md]]" in updated
+    assert "## Highlights" in updated
+    assert "%% books:highlights:start %%" in updated
 
 
 def test_convert_idempotent(tmp_path):
@@ -166,7 +169,7 @@ def test_cli_folder_same_book_last_file_wins(tmp_path):
     # exactly one Stalin note (matched by ISBN, no duplicate)
     stalin_notes = list((out / "Books").glob("Stalin*"))
     assert len(stalin_notes) == 1
-    hl = (out / "Exports" / "Stephen Kotkin" / "Stalin" / "Highlights.md").read_text()
+    hl = stalin_notes[0].read_text()
     # last file (b.csv) wins: its highlight is present, the earlier file's is gone
     assert "Another line." in hl
     assert "Fear is the mind-killer" not in hl

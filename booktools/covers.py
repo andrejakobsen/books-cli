@@ -24,8 +24,8 @@ import typer
 from booktools import config, resolve_path
 from booktools.obsidian import (
     BOOKS_DIRNAME,
-    BookRef,
     VaultIndex,
+    cover_path,
     cover_refs,
     ensure_top_embed,
     extract_wikilinks,
@@ -296,14 +296,11 @@ def pick_cover(candidates, fetch_bytes, *, interactive, prompt):
 
 def apply_cover(index: VaultIndex, book: MissingBook, image: bytes) -> None:
     """Write the cover image and fill the note's cover frontmatter + embed."""
-    ref = BookRef(
-        title=book.title, authors=book.authors,
-        isbn=book.isbn, amazon=book.amazon)
-    export_dir = index.export_dir(ref)
-    export_dir.mkdir(parents=True, exist_ok=True)
-    (export_dir / "cover.jpg").write_bytes(image)
+    dst = cover_path(book.note_path)
+    dst.parent.mkdir(parents=True, exist_ok=True)
+    dst.write_bytes(image)
 
-    cover_fm, cover_embed = cover_refs(book.note_path, export_dir)
+    cover_fm, cover_embed = cover_refs(book.note_path)
     text = book.note_path.read_text(encoding="utf-8")
     text = update_frontmatter(text, {"cover": cover_fm})
     text = ensure_top_embed(text, cover_embed)

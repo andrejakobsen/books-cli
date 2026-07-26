@@ -162,9 +162,10 @@ def test_kobo_obsidian_end_to_end(tmp_path):
     assert result.exit_code == 0, result.output
     note = out / "Books" / "Dune - Frank Herbert.md"
     assert note.exists()
-    assert "![[Exports/Frank Herbert/Dune/Highlights.md]]" in note.read_text()
-    hl = out / "Exports" / "Frank Herbert" / "Dune" / "Highlights.md"
-    assert "Fear is the mind-killer" in hl.read_text()
+    note_text = note.read_text()
+    assert "## Highlights" in note_text
+    assert "%% books:highlights:start %%" in note_text
+    assert "Fear is the mind-killer" in note_text
 
 
 def _highlighted_csv(tmp_path: Path) -> Path:
@@ -184,10 +185,11 @@ def test_highlighted_end_to_end(tmp_path):
     assert result.exit_code == 0, result.output
     note = out / "Books" / "Stalin - Stephen Kotkin.md"
     assert note.exists()
-    assert "![[Exports/Stephen Kotkin/Stalin/Highlights.md]]" in note.read_text()
-    hl = (out / "Exports" / "Stephen Kotkin" / "Stalin" / "Highlights.md").read_text()
-    assert "> [!quote]+ p. 45–49" in hl
-    assert "^p45-49" in hl
+    note_text = note.read_text()
+    assert "## Highlights" in note_text
+    assert "%% books:highlights:start %%" in note_text
+    assert "> [!quote]+ p. 45–49" in note_text
+    assert "^p45-49" in note_text
 
 
 def _readwise_csv(tmp_path: Path) -> Path:

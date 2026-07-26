@@ -26,7 +26,7 @@ BOOK_PROPERTY_ORDER = (
     "type",
     "title",
     "authors",
-    "genres",
+    "topics",
     "series",
     "series_index",
     "publisher",
@@ -46,16 +46,25 @@ BOOK_PROPERTY_ORDER = (
     "date_read",
     "source",
     "cover",
+    "notes",
 )
 
 
 # --- Vault layout -----------------------------------------------------------
 
-# Book notes live flat in vault/Books/; their heavy artifacts (cover, highlights,
-# review) live nested under vault/Exports/<Author>/<Title>/ and are referenced
-# from the flat note by vault-relative wikilink.
+# Book notes live flat in vault/Books/ and are the single indexed file per book:
+# frontmatter + a cover embed + inline highlights (+ an optional review). Covers
+# live flat in vault/Covers/ (a visible folder, so the embed renders; the user
+# hides it in Obsidian). Personal notes are hand-made in vault/Notes/ and never
+# touched by the tooling — the book note only links to them.
 BOOKS_DIRNAME = "Books"
-EXPORTS_DIRNAME = "Exports"
+COVERS_DIRNAME = "Covers"
+NOTES_DIRNAME = "Notes"
+AUTHORS_DIRNAME = "Authors"
+TOPICS_DIRNAME = "Topics"
+
+# Width (in px) for the cover embed at the top of a book note.
+COVER_WIDTH = 150
 
 
 # --- YAML / link formatting -------------------------------------------------
@@ -139,25 +148,47 @@ def write_stub(hub_dir: Path, name: str, note_type: str) -> None:
     write_if_absent(hub_dir / f"{safe}.md", f"---\ntype: {note_type}\n---\n")
 
 
-def ensure_embed_section(note_text: str, heading: str, target: str) -> str:
-    """Append a '## <heading>' section embedding *target* iff not already present.
+def _marker_pair(marker: str) -> tuple[str, str]:
+    """Return the (start, end) HTML-comment markers for a generated block."""
+    return f"%% books:{marker}:start %%", f"%% books:{marker}:end %%"
 
-    Uses an Obsidian wikilink embed (``![[target]]``) where *target* is a
-    vault-relative path (e.g. ``Exports/<Author>/<Title>/Highlights.md``). This
-    keeps the reference unambiguous even though leaf names (Highlights.md,
-    Review.md, cover.jpg) repeat across books. The existing body is otherwise
-    untouched.
+
+def render_marked_section(
+    note_text: str, heading: str, marker: str, content: str) -> str:
+    """Insert-or-replace a '## <heading>' section whose body is marker-delimited.
+
+    The generated body lives between ``%% books:<marker>:start %%`` and
+    ``%% books:<marker>:end %%`` comment markers. On a re-run only the text
+    between the markers is replaced — the heading and everything outside the
+    markers (a hand-written ``## Review`` section, note body, etc.) is left
+    untouched. When the markers are absent the whole ``## heading`` section is
+    appended. Idempotent for a given *content*.
+    """
+    start, end = _marker_pair(marker)
+    block = f"{start}\n{content.rstrip(chr(10))}\n{end}"
+    pattern = re.compile(rf"{re.escape(start)}.*?{re.escape(end)}", re.DOTALL)
+    if pattern.search(note_text):
+        return pattern.sub(lambda _m: block, note_text)
+    sep = "" if note_text.endswith("\n") else "\n"
+    return f"{note_text}{sep}\n## {heading}\n{block}\n"
+
+
+def ensure_section(note_text: str, heading: str, content: str) -> str:
+    """Append a '## <heading>' section with inline *content* iff heading absent.
+
+    Write-once: if the note already has a ``## <heading>`` the note is returned
+    unchanged (used for the imported review, which must never be clobbered).
     """
     if re.search(rf"(?m)^##\s+{re.escape(heading)}\s*$", note_text):
         return note_text
     sep = "" if note_text.endswith("\n") else "\n"
-    return f"{note_text}{sep}\n## {heading}\n![[{target}]]\n"
+    return f"{note_text}{sep}\n## {heading}\n{content.rstrip(chr(10))}\n"
 
 
 def ensure_top_embed(note_text: str, embed: str) -> str:
     """Insert *embed* at the top of the note body iff not already present.
 
-    *embed* is a full embed line (e.g. ``![[Exports/.../cover.jpg]]``). The line
+    *embed* is a full embed line (e.g. ``![[Covers/<stem>.jpg|150]]``). The line
     is placed immediately after the frontmatter block, above any existing body.
     A no-op when the exact embed already appears anywhere in the note.
     """
@@ -172,34 +203,33 @@ def ensure_top_embed(note_text: str, embed: str) -> str:
     return f"{front}\n{embed}\n\n{body}" if body else f"{front}\n{embed}\n"
 
 
-def embed_target(note_path: Path, leaf: Path) -> str:
-    """Vault-relative POSIX path for a wikilink embed/reference.
+def cover_path(note_path: Path) -> Path:
+    """The flat cover-image path for a book note: ``vault/Covers/<stem>.jpg``.
 
-    Book notes always live at ``vault/Books/<name>.md``, so the vault root is the
-    note's grandparent and *leaf* (under ``vault/Exports/...``) resolves cleanly.
+    Keyed to the note's own filename stem (which VaultIndex already keeps unique),
+    so the cover file matches its note one-to-one.
     """
     vault = note_path.parents[1]
-    return leaf.relative_to(vault).as_posix()
+    return vault / COVERS_DIRNAME / f"{note_path.stem}.jpg"
 
 
-def cover_refs(note_path: Path, export_dir: Path) -> tuple[str, str]:
+def cover_refs(note_path: Path) -> tuple[str, str]:
     """Return (frontmatter_value, body_embed) wikilinks for a book's cover.
 
-    The frontmatter value is quoted for YAML; the body embed is a bare embed
-    line. Both point at ``<export_dir>/cover.jpg`` by vault-relative path.
+    The frontmatter value is a plain quoted wikilink (for gallery/Bases views);
+    the body embed carries the fixed display width (``|150``).
     """
-    target = embed_target(note_path, export_dir / "cover.jpg")
-    return yaml_quote(f"[[{target}]]"), f"![[{target}]]"
+    target = cover_path(note_path).relative_to(note_path.parents[1]).as_posix()
+    return yaml_quote(f"[[{target}]]"), f"![[{target}|{COVER_WIDTH}]]"
 
 
-def with_source(source: str, body: str) -> str:
-    """Prepend a minimal ``source:`` frontmatter block to a leaf-file *body*.
+def notes_ref(note_path: Path) -> str:
+    """Yaml-quoted, path-qualified wikilink to the book's personal-notes file.
 
-    Used for content leaves (Highlights.md / Review.md) so provenance travels with
-    the content. The block carries no ``type`` key, so build_index/VaultIndex skip
-    these files rather than treating them as book notes.
+    Path-qualified (``[[Notes/<stem>]]``) so it does not collide with the
+    identically-named ``Books/<stem>`` note. The file itself is hand-made.
     """
-    return f"---\nsource: {source}\n---\n\n{body}"
+    return yaml_quote(f"[[{NOTES_DIRNAME}/{note_path.stem}]]")
 
 
 # --- Frontmatter reading ----------------------------------------------------
@@ -308,9 +338,8 @@ class BookRef:
 
 @dataclass
 class BookNote:
-    """Where a book's flat note and its Exports artifacts live in the vault."""
+    """The flat book note for a ref (the single indexed file per book)."""
     note_path: Path      # vault/Books/<name>.md
-    export_dir: Path     # vault/Exports/<Author>/<Title>/
     created: bool        # True if the note was created by this call
 
 
@@ -344,11 +373,11 @@ def build_index(vault: Path) -> tuple[dict[str, Path], dict[tuple, Path], dict[s
 
 
 class VaultIndex:
-    """The single layout authority: match books to flat notes, place exports.
+    """The single layout authority: match books to flat notes.
 
-    Owns where a book note lives (flat, in ``Books/``), where its heavy artifacts
-    live (``Exports/<Author>/<Title>/``), and how flat filenames are
-    disambiguated when two different books share a title.
+    Owns where a book note lives (flat, in ``Books/``) and how flat filenames are
+    disambiguated when two different books share a title. A book's cover lives at
+    ``cover_path(note)`` (flat, in ``Covers/``), keyed to the note's own stem.
     """
 
     def __init__(self, vault: Path) -> None:
@@ -383,12 +412,6 @@ class VaultIndex:
         if ref.title and ref.authors:
             self.by_ta.setdefault(
                 (norm_title(ref.title), author_key(ref.authors[0])), note)
-
-    def export_dir(self, ref: BookRef) -> Path:
-        """The Exports/<Author>/<Title>/ dir for *ref* (deterministic from ref)."""
-        author = ref.authors[0] if ref.authors else "Unknown Author"
-        return (self.vault / EXPORTS_DIRNAME
-                / safe_filename(author) / safe_filename(ref.title))
 
     def _new_note_path(self, ref: BookRef) -> Path:
         """Pick a flat, collision-free note filename for a brand-new book.
@@ -427,34 +450,11 @@ class VaultIndex:
             stub = update_frontmatter("---\ntype: book\n---\n", {
                 "title": yaml_quote(ref.title) if ref.title else "",
                 "authors": link_list(ref.authors) if ref.authors else "",
+                "notes": notes_ref(note),
             })
             note.write_text(stub, encoding="utf-8")
         self._register(ref, note)
-        return BookNote(note, self.export_dir(ref), created)
-
-
-def write_leaf_with_embed(
-    note_path: Path, export_dir: Path, leaf_name: str, content: str, heading: str,
-    overwrite: bool = True,
-) -> bool:
-    """Write ``<export_dir>/<leaf_name>`` and ensure a '## heading' embed in note.
-
-    The embed points at the leaf by vault-relative wikilink. With
-    ``overwrite=False`` an existing leaf is left untouched (used for reviews); the
-    embed section is still ensured either way. Returns True if the leaf was
-    written.
-    """
-    leaf = export_dir / leaf_name
-    wrote = False
-    if overwrite or not leaf.exists():
-        leaf.parent.mkdir(parents=True, exist_ok=True)
-        leaf.write_text(content, encoding="utf-8")
-        wrote = True
-    text = note_path.read_text(encoding="utf-8")
-    updated = ensure_embed_section(text, heading, embed_target(note_path, leaf))
-    if updated != text:
-        note_path.write_text(updated, encoding="utf-8")
-    return wrote
+        return BookNote(note, created)
 
 
 # --- HTML -> Markdown -------------------------------------------------------

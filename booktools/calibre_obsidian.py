@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """Convert a Calibre library into an Obsidian-friendly markdown vault.
 
-Reads each book's ``metadata.opf`` (XML), copies ``cover.jpg``, and writes a
-markdown note with YAML frontmatter (Obsidian properties). Authors and genres
-become ``[[wikilinks]]`` so they cluster in Obsidian's graph, and stub hub notes
-are generated for each. Ebook files and Calibre internals are ignored.
+Reads each book's ``metadata.opf`` (XML), copies ``cover.jpg`` into ``Covers/``,
+and writes a markdown note with YAML frontmatter (Obsidian properties). Authors
+and topics become ``[[wikilinks]]`` so they cluster in Obsidian's graph, and stub
+hub notes are generated for each. Ebook files and Calibre internals are ignored.
 
 Standard library only.
 """
@@ -19,8 +19,11 @@ import typer
 
 from booktools import config, resolve_path
 from booktools.obsidian import (
+    AUTHORS_DIRNAME,
+    TOPICS_DIRNAME,
     BookRef,
     VaultIndex,
+    cover_path,
     cover_refs,
     ensure_top_embed,
     format_rating,
@@ -172,7 +175,7 @@ def _calibre_updates(meta: BookMetadata, cover_fm: str) -> dict[str, str]:
     u: dict[str, str] = {}
     u["title"] = yaml_quote(meta.title) if meta.title else ""
     u["authors"] = link_list(meta.authors) if meta.authors else ""
-    u["genres"] = link_list(meta.genres) if meta.genres else ""
+    u["topics"] = link_list(meta.genres) if meta.genres else ""
     u["series"] = yaml_quote(meta.series) if meta.series else ""
     u["series_index"] = meta.series_index or ""
     u["publisher"] = yaml_quote(meta.publisher) if meta.publisher else ""
@@ -218,12 +221,12 @@ def write_note(note_path: Path, meta: BookMetadata,
 # --- Main conversion -------------------------------------------------------
 
 def convert(library: Path, output: Path) -> dict:
-    stats = {"books": 0, "covers": 0, "skipped": 0, "authors": set(), "genres": set()}
+    stats = {"books": 0, "covers": 0, "skipped": 0, "authors": set(), "topics": set()}
 
     output.mkdir(parents=True, exist_ok=True)
     index = VaultIndex(output)
-    authors_dir = output / "Authors"
-    genres_dir = output / "Genres"
+    authors_dir = output / AUTHORS_DIRNAME
+    topics_dir = output / TOPICS_DIRNAME
 
     for opf_path in sorted(library.rglob("metadata.opf")):
         # Skip anything inside ignored top-level dirs (.caltrash etc.).
@@ -248,9 +251,10 @@ def convert(library: Path, output: Path) -> dict:
         cover_src = book_src / "cover.jpg"
         cover_fm = cover_embed = ""
         if cover_src.is_file():
-            book.export_dir.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(cover_src, book.export_dir / "cover.jpg")
-            cover_fm, cover_embed = cover_refs(book.note_path, book.export_dir)
+            cover_dst = cover_path(book.note_path)
+            cover_dst.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(cover_src, cover_dst)
+            cover_fm, cover_embed = cover_refs(book.note_path)
             stats["covers"] += 1
 
         write_note(book.note_path, meta, cover_fm, cover_embed)
@@ -259,9 +263,9 @@ def convert(library: Path, output: Path) -> dict:
         for author in meta.authors:
             write_stub(authors_dir, author, "author")
             stats["authors"].add(author)
-        for genre in meta.genres:
-            write_stub(genres_dir, genre, "genre")
-            stats["genres"].add(genre)
+        for topic in meta.genres:
+            write_stub(topics_dir, topic, "topic")
+            stats["topics"].add(topic)
 
     return stats
 
@@ -291,8 +295,8 @@ def calibre_to_obsidian(
     OUTPUT (--output): an Obsidian vault folder. Relative paths resolve against
     the current directory; default: ./Obsidian. For each book it writes a flat
     markdown note under Books/ (YAML properties from the opf + cover embed +
-    description), copies cover.jpg into Exports/<Author>/<Title>/, and creates
-    linked stub notes under Authors/ and Genres/. Re-running is safe: it never
+    description), copies cover.jpg into Covers/<Title> - <Author>.jpg, and creates
+    linked stub notes under Authors/ and Topics/. Re-running is safe: it never
     overwrites notes it did not create or existing note bodies.
     """
     if library is None:
@@ -308,7 +312,7 @@ def calibre_to_obsidian(
     stats = convert(library, output)
     typer.echo(
         f"Done. {stats['books']} books, {stats['covers']} covers, "
-        f"{len(stats['authors'])} authors, {len(stats['genres'])} genres, "
+        f"{len(stats['authors'])} authors, {len(stats['topics'])} topics, "
         f"{stats['skipped']} skipped.\nOutput: {output}"
     )
 

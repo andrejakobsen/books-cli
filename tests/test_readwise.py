@@ -101,17 +101,18 @@ def test_convert_writes_highlights_and_frontmatter(tmp_path):
     note = out / "Books" / "Stalin - Stephen Kotkin.md"
     assert note.exists()
     note_text = note.read_text()
-    assert "![[Exports/Stephen Kotkin/Stalin_ Volume I/Highlights.md]]" in note_text
+    # Highlights are an inline, marker-wrapped '## Highlights' section.
+    assert "## Highlights" in note_text
+    assert "%% books:highlights:start %%" in note_text
+    assert "%% books:highlights:end %%" in note_text
     assert 'amazon: "B00INIXPYE"' in note_text
     assert 'series: "Stalin"' in note_text
     assert "series_index: 1" in note_text
     assert 'shelves: ["favorites"]' in note_text
-    highlights_md = (out / "Exports" / "Stephen Kotkin" / "Stalin_ Volume I"
-                     / "Highlights.md").read_text()
-    assert "source: readwise" in highlights_md
-    assert "> [!quote]+ p. 3" in highlights_md
-    assert "First passage." in highlights_md
-    assert "#history" in highlights_md
+    assert "source: readwise" in note_text
+    assert "> [!quote]+ p. 3" in note_text
+    assert "First passage." in note_text
+    assert "#history" in note_text
 
 
 def test_convert_merges_into_existing_note_by_amazon(tmp_path):
@@ -127,7 +128,8 @@ def test_convert_merges_into_existing_note_by_amazon(tmp_path):
     updated = note.read_text()
     assert "status: read" in updated       # existing value untouched
     assert "My body." in updated           # body preserved
-    assert "![[Exports/Stephen Kotkin/Stalin_ Volume I/Highlights.md]]" in updated
+    assert "## Highlights" in updated
+    assert "%% books:highlights:start %%" in updated
 
 
 def test_convert_idempotent(tmp_path):
@@ -169,8 +171,8 @@ def test_convert_same_title_different_authors_no_amazon_stay_separate(tmp_path):
         encoding="utf-8")
     stats = rw.convert(csv, out)
     assert stats["books"] == 2
-    assert (out / "Exports" / "Author A" / "Selected Essays" / "Highlights.md").exists()
-    assert (out / "Exports" / "Author B" / "Selected Essays" / "Highlights.md").exists()
+    assert (out / "Books" / "Selected Essays - Author A.md").exists()
+    assert (out / "Books" / "Selected Essays - Author B.md").exists()
 
 
 def test_convert_same_amazon_different_title_rows_group_together(tmp_path):

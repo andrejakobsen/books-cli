@@ -5,9 +5,8 @@ Reads the CSV Goodreads produces from "My Books -> Import and export", and for
 each *read* or *currently-reading* book (by default) creates or merges an
 Obsidian note in the same
 shape as the Calibre importer. Existing information is never overwritten: only
-absent/empty properties are filled. A review is written to
-"Exports/<Author>/<Title>/Review.md" and embedded into the flat book note under
-a "## Review" heading.
+absent/empty properties are filled. A review is written once into a "## Review"
+section of the book note and never clobbered on re-runs.
 
 Standard library only.
 """
@@ -22,16 +21,16 @@ import typer
 
 from booktools import config
 from booktools.obsidian import (
+    AUTHORS_DIRNAME,
     BOOK_PROPERTY_ORDER,
     BookRef,
     VaultIndex,
+    ensure_section,
     format_rating,
     html_to_markdown,
     link_list,
     plain_list,
     update_frontmatter,
-    with_source,
-    write_leaf_with_embed,
     write_stub,
     yaml_quote,
 )
@@ -171,16 +170,17 @@ def _goodreads_updates(book: GoodreadsBook) -> dict[str, str]:
 
 
 def _review_markdown(book: GoodreadsBook) -> str | None:
+    """Body for the note's write-once ``## Review`` section (no leading H1)."""
     if not book.review and not book.private_notes:
         return None
-    parts = [f"# {book.title} — Review", ""]
+    parts: list[str] = []
     if book.date_read:
         parts += [f"*Read: {book.date_read}*", ""]
     if book.review:
         parts += [html_to_markdown(book.review), ""]
     if book.private_notes:
-        parts += ["## Private Notes", "", html_to_markdown(book.private_notes), ""]
-    return "\n".join(parts)
+        parts += ["### Private Notes", "", html_to_markdown(book.private_notes), ""]
+    return "\n".join(parts).rstrip("\n") + "\n"
 
 
 DEFAULT_SHELVES = "read,currently-reading"
@@ -199,7 +199,7 @@ def _parse_shelves(shelf: str) -> set[str] | None:
 def convert(csv_path: Path, output: Path, shelf: str = DEFAULT_SHELVES) -> dict:
     stats = {"created": 0, "merged": 0, "reviews": 0, "skipped": 0, "authors": set()}
     index = VaultIndex(output)
-    authors_dir = output / "Authors"
+    authors_dir = output / AUTHORS_DIRNAME
     wanted = _parse_shelves(shelf)
 
     for book in parse_csv(csv_path):
@@ -224,10 +224,12 @@ def convert(csv_path: Path, output: Path, shelf: str = DEFAULT_SHELVES) -> dict:
             stats["authors"].add(author)
 
         review = _review_markdown(book)
-        if review and write_leaf_with_embed(
-                dest.note_path, dest.export_dir, "Review.md",
-                with_source("goodreads", review), "Review", overwrite=False):
-            stats["reviews"] += 1
+        if review:
+            text = dest.note_path.read_text(encoding="utf-8")
+            updated = ensure_section(text, "Review", review)
+            if updated != text:
+                dest.note_path.write_text(updated, encoding="utf-8")
+                stats["reviews"] += 1
 
     return stats
 
@@ -258,9 +260,9 @@ def goodreads_to_obsidian(
     (pass --shelf to narrow, e.g. '--shelf read', or 'all' for everything).
     Existing notes are
     never overwritten: only empty/absent properties are filled, and a review is
-    written to 'Exports/<Author>/<Title>/Review.md' and embedded into the flat
-    book note under a '## Review' heading. Books are matched to existing notes by
-    ISBN, then by a strict Author/Title comparison.
+    written once into a '## Review' section of the book note (never clobbered on
+    re-runs). Books are matched to existing notes by ISBN, then by a strict
+    Author/Title comparison.
     """
     try:
         csv = config.resolve_csv_arg(csv, "goodreads", output)

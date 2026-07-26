@@ -31,11 +31,11 @@ create `booktools/<feature>.py` with a `register(app)` function that attaches it
 
 Six capabilities exist today:
 - `booktools/calibre_obsidian.py` → `calibre` — reads a Calibre library's `metadata.opf` (XML) + `cover.jpg` per book and writes Obsidian notes. `--library` defaults to `~/Calibre Library`.
-- `booktools/goodreads_obsidian.py` → `goodreads` — reads a Goodreads CSV export and writes/merges Obsidian notes, plus a separate `<Title> - Review.md`. `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/goodreads`.
-- `booktools/kobo_export.py` → `kobo` — reads `KoboReader.sqlite` (opened **read-only** via `file:...?mode=ro`) and exports per-book highlight CSVs into a zip. Has a `--csv` flag (the default output mode) and an `--obsidian` flag that writes per-book `Highlights.md` notes (rendered via the shared `booktools/highlights.py`) embedded into the canonical book note. Note markers follow the `#tag` / `@link` convention (parsed via `highlights.parse_markers`). When no DB path is given, a mounted Kobo (`/Volumes/KOBOeReader/.kobo/KoboReader.sqlite`) is safely snapshotted into `<vault>/.imports/kobo/` via SQLite's read-only backup API (the device file is never modified) and read from there; otherwise the existing copy (or newest `*.sqlite`) in that folder is used.
-- `booktools/highlighted_obsidian.py` → `highlighted` — reads a Highlighted app CSV export (highlights from physical books, page-located) and writes per-book `Highlights.md` notes (via the shared `booktools/highlights.py`) embedded into the canonical book note. `--csv` accepts a single CSV file or a folder of CSV exports (every top-level `*.csv` is imported in sorted order; a file that fails to parse is skipped and reported), defaulting to `<vault>/.imports/highlighted`. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
-- `booktools/readwise_obsidian.py` → `readwise` — reads a Readwise CSV export and writes per-book `Highlights.md` notes (via `booktools/highlights.py`) embedded into the canonical book note. `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/readwise`. Fills `amazon`/`shelves`/`series`/`series_index` frontmatter, renders type-aware location labels (`p.`/`loc.`), and matches existing notes by Amazon id then standardized title/author. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
-- `booktools/covers.py` → `covers` — scans an existing vault for `type: book` notes with a blank `cover:` field and fetches a cover image. Sources are tried in order — Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping). Stdlib-only (`urllib`); all network I/O is injected for testing. Writes `cover.jpg` into `Exports/<Author>/<Title>/` and fills the note's `cover:` frontmatter + top embed via the shared `obsidian.py` helpers (never overwriting an existing cover). Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run. `--book PATH` targets a single note under `Books/` (vault inferred from the path) and is interactive by default.
+- `booktools/goodreads_obsidian.py` → `goodreads` — reads a Goodreads CSV export and writes/merges Obsidian notes. A review is written once into a write-once `## Review` section of the book note (never clobbered on re-runs). `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/goodreads`.
+- `booktools/kobo_export.py` → `kobo` — reads `KoboReader.sqlite` (opened **read-only** via `file:...?mode=ro`) and exports per-book highlight CSVs into a zip. Has a `--csv` flag (the default output mode) and an `--obsidian` flag that renders highlights (via the shared `booktools/highlights.py`) into a marker-wrapped `## Highlights` section of the canonical book note. Note markers follow the `#tag` / `@link` convention (parsed via `highlights.parse_markers`). When no DB path is given, a mounted Kobo (`/Volumes/KOBOeReader/.kobo/KoboReader.sqlite`) is safely snapshotted into `<vault>/.imports/kobo/` via SQLite's read-only backup API (the device file is never modified) and read from there; otherwise the existing copy (or newest `*.sqlite`) in that folder is used.
+- `booktools/highlighted_obsidian.py` → `highlighted` — reads a Highlighted app CSV export (highlights from physical books, page-located) and renders highlights (via the shared `booktools/highlights.py`) into a marker-wrapped `## Highlights` section of the canonical book note. `--csv` accepts a single CSV file or a folder of CSV exports (every top-level `*.csv` is imported in sorted order; a file that fails to parse is skipped and reported), defaulting to `<vault>/.imports/highlighted`. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
+- `booktools/readwise_obsidian.py` → `readwise` — reads a Readwise CSV export and renders highlights (via `booktools/highlights.py`) into a marker-wrapped `## Highlights` section of the canonical book note. `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/readwise`. Fills `amazon`/`shelves`/`series`/`series_index` frontmatter, renders type-aware location labels (`p.`/`loc.`), and matches existing notes by Amazon id then standardized title/author. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
+- `booktools/covers.py` → `covers` — scans an existing vault for `type: book` notes with a blank `cover:` field and fetches a cover image. Sources are tried in order — Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping). Stdlib-only (`urllib`); all network I/O is injected for testing. Writes `<Title> - <Author>.jpg` into the flat `Covers/` folder and fills the note's `cover:` frontmatter + top embed (at width 150) via the shared `obsidian.py` helpers (never overwriting an existing cover). Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run. `--book PATH` targets a single note under `Books/` (vault inferred from the path) and is interactive by default.
 
 ### Configuration
 
@@ -95,27 +95,51 @@ be reading order); Kobo's SQL `ORDER BY` produces the same order and is merely r
 `booktools/obsidian.py` is the heart of the design and the reason the Calibre and
 Goodreads importers compose. Read it before changing either importer. It owns:
 
+- **The flat vault layout.** Everything lives in top-level folders — `Books/` (the
+  indexed book notes), `Covers/` (flat cover images named `<Title> - <Author>.jpg`),
+  `Notes/` (fully manual personal notes), `Authors/` and `Topics/` (stub/hub notes).
+  There is no per-book `Exports/<Author>/<Title>/` folder any more; a book note is a
+  single self-contained file. The folder names are constants in `obsidian.py`
+  (`BOOKS_DIRNAME`, `COVERS_DIRNAME`, `NOTES_DIRNAME`, `AUTHORS_DIRNAME`, `TOPICS_DIRNAME`).
+- **The book note anatomy.** A book note is frontmatter + a cover embed
+  (`![[Covers/<stem>.jpg|150]]`, width from `COVER_WIDTH`) + an optional write-once
+  `## Review` section + a marker-wrapped `## Highlights` section. Personal notes are not
+  in the book note: the importer only fills a `notes:` frontmatter wikilink pointing at
+  `[[Notes/<stem>]]`, which the user authors by hand.
 - **A canonical frontmatter schema** (`BOOK_PROPERTY_ORDER`). Every book note emits
   all keys (empty when unknown) so any importer or a manual edit can fill a field later.
+  The key is `topics` (not `genres`), and `notes` follows `cover`.
 - **The "never overwrite" merge rule** (`update_frontmatter`): fills only absent or
   blank keys, leaves non-empty values and the note body untouched, appends new keys in
   canonical order. This is what lets Calibre → Goodreads (in either order) plus hand
   edits accumulate without clobbering. `write_if_absent` enforces the same rule at the
-  file level (used for hub/stub notes and reviews).
+  file level (used for hub/stub notes).
+- **Section helpers** for idempotent re-imports. `render_marked_section(text, heading,
+  marker, content)` wraps `content` between `%% books:<marker>:start %%` / `:end %%`
+  comment markers under a `## heading`; on re-runs it replaces everything between the
+  markers wholesale (used for `## Highlights`, so the last importer wins and hand edits
+  outside the markers survive). `ensure_section(text, heading, content)` is write-once:
+  it appends a `## heading` section only if that heading is absent (used for `## Review`,
+  so a hand-edited review is never clobbered).
+- **Cover/notes reference helpers**: `cover_path(note_path)` maps a book note to its flat
+  `Covers/<stem>.jpg` file; `cover_refs(note_path)` returns the `(frontmatter, embed)`
+  pair (the embed carrying `|150`); `notes_ref(note_path)` returns the quoted
+  `[[Notes/<stem>]]` wikilink.
 - **Matching normalization** used to detect that a Goodreads row and an existing Calibre
   note are the same book: `norm_title`, `norm_isbn`, `author_key` (reduces names to
   (first, last), handling "Last, First"), and `fold` (accent/case folding).
 - **Flat note filenames** (`VaultIndex._new_note_path` + `strip_subtitle`): new book notes
   are named `<Title> - <Author>.md` with the subtitle (anything after the first `:`) dropped
   — e.g. `The Deluge - Adam Tooze.md`. Only the filename is decluttered; the frontmatter
-  `title` and the `Exports/<Author>/<Title>/` folder keep the full title (matching uses the
-  full title, so this is safe). When the clean stem is already taken (e.g. two Kotkin
-  "Stalin" volumes), the colliding note restores its subtitle to disambiguate, rendering the
-  illegal `:` as `,` (`Stalin, Waiting for Hitler, 1929-1941 - Stephen Kotkin.md`); a numeric
-  `(n)` suffix is the last resort. Existing notes are matched by frontmatter and never renamed,
-  so only newly-created notes use this scheme.
+  `title` keeps the full title (matching uses the full title, so this is safe). When the
+  clean stem is already taken (e.g. two Kotkin "Stalin" volumes), the colliding note
+  restores its subtitle to disambiguate, rendering the illegal `:` as `,`
+  (`Stalin, Waiting for Hitler, 1929-1941 - Stephen Kotkin.md`); a numeric `(n)` suffix is
+  the last resort. Existing notes are matched by frontmatter and never renamed, so only
+  newly-created notes use this scheme. The note stem also names the book's `Covers/` image
+  and `Notes/` note, keeping the three in lockstep.
 - **Formatting + parsing helpers**: `yaml_quote`, `wikilink`/`link_list` (authors and
-  genres become `[[wikilinks]]` for Obsidian's graph), `html_to_markdown` (book
+  topics become `[[wikilinks]]` for Obsidian's graph), `html_to_markdown` (book
   descriptions/reviews), and frontmatter readers (`frontmatter_values`, `unquote`,
   `extract_wikilinks`).
 

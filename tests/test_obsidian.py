@@ -65,40 +65,84 @@ def test_html_to_markdown_list():
     assert "Intro" in md and "- one" in md and "- two" in md
 
 
-def test_ensure_embed_section_adds_when_absent():
+def test_render_marked_section_inserts_when_absent():
     note = '---\ntype: book\n---\n\nBody.\n'
-    out = ob.ensure_embed_section(note, "Highlights", "Exports/A/B/Highlights.md")
+    out = ob.render_marked_section(note, "Highlights", "highlights", "> quote one\n")
     assert "## Highlights" in out
-    assert "![[Exports/A/B/Highlights.md]]" in out
+    assert "%% books:highlights:start %%" in out
+    assert "%% books:highlights:end %%" in out
+    assert "> quote one" in out
     assert "Body." in out
 
 
-def test_ensure_embed_section_noop_when_present():
-    note = '---\ntype: book\n---\n\n## Highlights\n![[Exports/A/B/Highlights.md]]\n'
-    assert ob.ensure_embed_section(note, "Highlights", "Exports/A/B/Highlights.md") == note
+def test_render_marked_section_replaces_only_between_markers():
+    note = (
+        '---\ntype: book\n---\n\n'
+        '## Review\nMy own words.\n\n'
+        '## Highlights\n%% books:highlights:start %%\nOLD\n%% books:highlights:end %%\n'
+    )
+    out = ob.render_marked_section(note, "Highlights", "highlights", "NEW\n")
+    assert "NEW" in out
+    assert "OLD" not in out
+    assert "My own words." in out            # content outside markers untouched
+    assert out.count("## Highlights") == 1    # heading not duplicated
+    assert out.count("%% books:highlights:start %%") == 1
+
+
+def test_render_marked_section_idempotent():
+    note = '---\ntype: book\n---\n'
+    once = ob.render_marked_section(note, "Highlights", "highlights", "A\n")
+    twice = ob.render_marked_section(once, "Highlights", "highlights", "A\n")
+    assert once == twice
+
+
+def test_ensure_section_appends_once():
+    note = '---\ntype: book\n---\n\nBody.\n'
+    out = ob.ensure_section(note, "Review", "My review.\n")
+    assert "## Review" in out
+    assert "My review." in out
+    # Write-once: a second call with different content is a no-op.
+    again = ob.ensure_section(out, "Review", "Different.\n")
+    assert again == out
+    assert "Different." not in again
 
 
 def test_ensure_top_embed_inserts_after_frontmatter():
     note = '---\ntype: book\ntitle: "T"\n---\n\nDescription here.\n'
-    out = ob.ensure_top_embed(note, "![[Exports/A/B/cover.jpg]]")
+    out = ob.ensure_top_embed(note, "![[Covers/T.jpg|150]]")
     lines = out.splitlines()
     # Embed appears immediately after the closing frontmatter fence.
     fence = lines.index("---", 1)
-    assert lines[fence + 1] == "" and lines[fence + 2] == "![[Exports/A/B/cover.jpg]]"
+    assert lines[fence + 1] == "" and lines[fence + 2] == "![[Covers/T.jpg|150]]"
     assert "Description here." in out
 
 
 def test_ensure_top_embed_noop_when_present():
-    note = '---\ntype: book\n---\n\n![[Exports/A/B/cover.jpg]]\n\nBody.\n'
-    assert ob.ensure_top_embed(note, "![[Exports/A/B/cover.jpg]]") == note
+    note = '---\ntype: book\n---\n\n![[Covers/T.jpg|150]]\n\nBody.\n'
+    assert ob.ensure_top_embed(note, "![[Covers/T.jpg|150]]") == note
 
 
-def test_cover_refs_builds_vault_relative_wikilinks(tmp_path):
-    note_path = tmp_path / "Books" / "Napoleon_ A Life.md"
-    export_dir = tmp_path / "Exports" / "Andrew Roberts" / "Napoleon_ A Life"
-    fm, embed = ob.cover_refs(note_path, export_dir)
-    assert fm == '"[[Exports/Andrew Roberts/Napoleon_ A Life/cover.jpg]]"'
-    assert embed == "![[Exports/Andrew Roberts/Napoleon_ A Life/cover.jpg]]"
+def test_cover_path_is_flat_keyed_to_note_stem(tmp_path):
+    note_path = tmp_path / "Books" / "Napoleon - Andrew Roberts.md"
+    assert ob.cover_path(note_path) == tmp_path / "Covers" / "Napoleon - Andrew Roberts.jpg"
+
+
+def test_cover_refs_builds_vault_relative_wikilinks_with_width(tmp_path):
+    note_path = tmp_path / "Books" / "Napoleon - Andrew Roberts.md"
+    fm, embed = ob.cover_refs(note_path)
+    assert fm == '"[[Covers/Napoleon - Andrew Roberts.jpg]]"'
+    assert embed == "![[Covers/Napoleon - Andrew Roberts.jpg|150]]"
+
+
+def test_notes_ref_is_path_qualified_wikilink(tmp_path):
+    note_path = tmp_path / "Books" / "Napoleon - Andrew Roberts.md"
+    assert ob.notes_ref(note_path) == '"[[Notes/Napoleon - Andrew Roberts]]"'
+
+
+def test_property_order_uses_topics_and_notes():
+    assert "topics" in ob.BOOK_PROPERTY_ORDER
+    assert "genres" not in ob.BOOK_PROPERTY_ORDER
+    assert "notes" in ob.BOOK_PROPERTY_ORDER
 
 
 def test_vaultindex_creates_new_note_with_stub(tmp_path):
@@ -108,12 +152,12 @@ def test_vaultindex_creates_new_note_with_stub(tmp_path):
     assert bn.created is True
     # Filename drops the subtitle after ':' and appends '- <Author>'...
     assert bn.note_path == tmp_path / "Books" / "Napoleon - Andrew Roberts.md"
-    # ...but the export folder and stored title keep the full title.
-    assert bn.export_dir == tmp_path / "Exports" / "Andrew Roberts" / "Napoleon_ A Life"
     text = bn.note_path.read_text()
     assert "type: book" in text
     assert 'title: "Napoleon: A Life"' in text
     assert "[[Andrew Roberts]]" in text
+    # The note links to where a hand-made personal note would live.
+    assert 'notes: "[[Notes/Napoleon - Andrew Roberts]]"' in text
 
 
 def test_vaultindex_matches_existing_by_title_author(tmp_path):
@@ -138,8 +182,6 @@ def test_vaultindex_disambiguates_same_title_different_book(tmp_path):
     # Author is always in the filename, so same-title different-author never collide.
     assert a.note_path == tmp_path / "Books" / "Selected Poems - W. H. Auden.md"
     assert b.note_path == tmp_path / "Books" / "Selected Poems - Emily Dickinson.md"
-    # Distinct export dirs too.
-    assert a.export_dir != b.export_dir
 
 
 def test_new_note_filename_strips_subtitle_and_appends_author(tmp_path):
@@ -182,51 +224,6 @@ def test_new_note_filename_counter_when_full_title_also_collides(tmp_path):
     assert a.note_path.name == "Poems.md"
     assert b.note_path.name == "Poems, Selected.md"
     assert c.note_path.name == "Poems, Selected (2).md"
-
-
-def test_write_leaf_with_embed_overwrites_and_embeds(tmp_path):
-    note = tmp_path / "Books" / "Book.md"
-    note.parent.mkdir(parents=True)
-    note.write_text('---\ntype: book\n---\n\nBody.\n', encoding="utf-8")
-    export_dir = tmp_path / "Exports" / "Auth" / "Book"
-    target = "Exports/Auth/Book/Highlights.md"
-    wrote = ob.write_leaf_with_embed(note, export_dir, "Highlights.md", "content v1\n", "Highlights")
-    assert wrote is True
-    assert (export_dir / "Highlights.md").read_text() == "content v1\n"
-    assert f"![[{target}]]" in note.read_text()
-    # Second call overwrites the leaf but does not duplicate the embed.
-    ob.write_leaf_with_embed(note, export_dir, "Highlights.md", "content v2\n", "Highlights")
-    assert (export_dir / "Highlights.md").read_text() == "content v2\n"
-    assert note.read_text().count("## Highlights") == 1
-
-
-def test_write_leaf_with_embed_no_overwrite_keeps_existing(tmp_path):
-    note = tmp_path / "Books" / "Book.md"
-    note.parent.mkdir(parents=True)
-    note.write_text('---\ntype: book\n---\n', encoding="utf-8")
-    export_dir = tmp_path / "Exports" / "Auth" / "Book"
-    export_dir.mkdir(parents=True)
-    (export_dir / "Review.md").write_text("original\n", encoding="utf-8")
-    wrote = ob.write_leaf_with_embed(note, export_dir, "Review.md", "new\n", "Review", overwrite=False)
-    assert wrote is False
-    assert (export_dir / "Review.md").read_text() == "original\n"  # not clobbered
-    assert "![[Exports/Auth/Book/Review.md]]" in note.read_text()  # embed still ensured
-
-
-def test_with_source_prepends_frontmatter():
-    from booktools import obsidian as ob
-    out = ob.with_source("kobo", "> [!quote]+ p. 4\n> Hi\n^p4\n")
-    assert out.startswith("---\nsource: kobo\n---\n")
-    assert "> [!quote]+ p. 4" in out
-    assert "^p4" in out
-
-
-def test_with_source_frontmatter_has_no_book_type():
-    from booktools import obsidian as ob
-    out = ob.with_source("highlighted", "body\n")
-    # A leaf must not look like a book note to the vault index.
-    assert ob.unquote(ob.frontmatter_values(out).get("type", "")) != "book"
-    assert ob.frontmatter_values(out).get("source") == "highlighted"
 
 
 def test_source_in_property_order():

@@ -312,15 +312,15 @@ def test_apply_cover_writes_file_and_frontmatter(tmp_path):
 
     covers.apply_cover(index, book, b"\xff\xd8\xffJPEGDATA" + b"x" * 2000)
 
-    # cover.jpg written under Exports/<Author>/<Title>/
-    cover_file = tmp_path / "Exports" / "Andrew Roberts" / "Napoleon" / "cover.jpg"
+    # cover written flat under Covers/, keyed to the note stem
+    cover_file = tmp_path / "Covers" / "Napoleon - Andrew Roberts.jpg"
     assert cover_file.is_file()
 
     text = note.read_text(encoding="utf-8")
-    # frontmatter cover filled with a wikilink to the exported cover
-    assert 'cover: "[[Exports/Andrew Roberts/Napoleon/cover.jpg]]"' in text
-    # body embed added; original body preserved
-    assert "![[Exports/Andrew Roberts/Napoleon/cover.jpg]]" in text
+    # frontmatter cover filled with a wikilink (no width)
+    assert 'cover: "[[Covers/Napoleon - Andrew Roberts.jpg]]"' in text
+    # body embed added (with display width); original body preserved
+    assert "![[Covers/Napoleon - Andrew Roberts.jpg|150]]" in text
     assert "body" in text
 
 
@@ -338,7 +338,7 @@ def test_apply_cover_idempotent(tmp_path):
     covers.apply_cover(index, book, b"x" * 2000)
     second = note.read_text(encoding="utf-8")
     assert first == second   # cover already set -> no duplicate embed/frontmatter
-    assert second.count("![[Exports/A/N/cover.jpg]]") == 1
+    assert second.count("![[Covers/N - A.jpg|150]]") == 1
 
 
 def test_terminal_prompt_maps_keys(monkeypatch):
@@ -374,7 +374,7 @@ def test_run_fetches_and_applies(tmp_path):
     assert stats["missing"] == 1
     assert stats["fetched"] == 1
     assert stats["by_source"]["google"] == 1
-    cover_file = tmp_path / "Exports" / "Andrew Roberts" / "Napoleon" / "cover.jpg"
+    cover_file = tmp_path / "Covers" / "Napoleon - Andrew Roberts.jpg"
     assert cover_file.is_file()
 
 
@@ -389,7 +389,7 @@ def test_run_dry_run_writes_nothing(tmp_path):
         fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"), prompt=None)
 
     assert stats["fetched"] == 1   # would-fetch is still counted
-    assert not (tmp_path / "Exports").exists()
+    assert not (tmp_path / "Covers").exists()
 
 
 def test_run_limit_caps_processing(tmp_path):
@@ -449,8 +449,8 @@ def test_run_single_book_only_processes_that_note(tmp_path):
     assert stats["scanned"] == 1
     assert stats["missing"] == 1
     assert stats["fetched"] == 1
-    assert (tmp_path / "Exports" / "Andrew Roberts" / "Napoleon" / "cover.jpg").is_file()
-    assert not (tmp_path / "Exports" / "X").exists()
+    assert (tmp_path / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
+    assert not (tmp_path / "Covers" / "Other - X.jpg").exists()
 
 
 def test_run_single_book_ineligible_is_no_op(tmp_path):
@@ -494,7 +494,7 @@ def test_cli_covers_dry_run(tmp_path, monkeypatch):
         app, ["covers", "-o", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0, result.output
     assert "missing" in result.output.lower()
-    assert not (tmp_path / "Exports").exists()
+    assert not (tmp_path / "Covers").exists()
 
 
 def test_cli_covers_registered():
@@ -522,8 +522,8 @@ def test_cli_covers_single_book_interactive_by_default(tmp_path, monkeypatch):
 
     result = CliRunner().invoke(app, ["covers", "-b", str(note)])
     assert result.exit_code == 0, result.output
-    assert (tmp_path / "Exports" / "Andrew Roberts" / "Napoleon" / "cover.jpg").is_file()
-    assert not (tmp_path / "Exports" / "X").exists()
+    assert (tmp_path / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
+    assert not (tmp_path / "Covers" / "Other - X.jpg").exists()
 
 
 def test_cli_covers_single_book_rejects_note_outside_books(tmp_path):

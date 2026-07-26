@@ -27,12 +27,12 @@ import typer
 from booktools import config, resolve_path
 from booktools.highlights import Highlight, render_highlights, split_tag_column
 from booktools.obsidian import (
+    AUTHORS_DIRNAME,
     BookRef,
     VaultIndex,
     link_list,
+    render_marked_section,
     update_frontmatter,
-    with_source,
-    write_leaf_with_embed,
     write_stub,
     yaml_quote,
 )
@@ -76,7 +76,7 @@ def convert(csv_path: Path, output: Path) -> dict:
     """Import every highlight, grouped by book, into the Obsidian vault."""
     stats = {"books": 0, "entries": 0, "authors": set()}
     index = VaultIndex(output)
-    authors_dir = output / "Authors"
+    authors_dir = output / AUTHORS_DIRNAME
 
     # Group rows by book (ISBN when present, else title), preserving CSV order.
     groups: dict[str, dict] = {}
@@ -101,12 +101,14 @@ def convert(csv_path: Path, output: Path) -> dict:
             "title": yaml_quote(group["title"]),
             "authors": link_list(authors) if authors else "",
             "isbn": yaml_quote(group["isbn"]) if group["isbn"] else "",
+            "source": "highlighted",
         }), encoding="utf-8")
 
         highlights = [row_to_highlight(r) for r in group["rows"]]
-        write_leaf_with_embed(
-            dest.note_path, dest.export_dir, "Highlights.md",
-            with_source("highlighted", render_highlights(highlights)), "Highlights")
+        text = dest.note_path.read_text(encoding="utf-8")
+        text = render_marked_section(
+            text, "Highlights", "highlights", render_highlights(highlights))
+        dest.note_path.write_text(text, encoding="utf-8")
 
         for author in authors:
             write_stub(authors_dir, author, "author")

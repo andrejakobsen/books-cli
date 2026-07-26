@@ -32,12 +32,15 @@ import typer
 from booktools import config, resolve_path
 from booktools.highlights import Highlight, parse_markers, render_highlights
 from booktools.obsidian import (
+    AUTHORS_DIRNAME,
     BookRef,
     VaultIndex,
+    link_list,
+    render_marked_section,
     safe_filename,
-    with_source,
-    write_leaf_with_embed,
+    update_frontmatter,
     write_stub,
+    yaml_quote,
 )
 
 
@@ -206,7 +209,7 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
 
     vault.mkdir(parents=True, exist_ok=True)
     index = VaultIndex(vault)
-    authors_dir = vault / "Authors"
+    authors_dir = vault / AUTHORS_DIRNAME
 
     # Group rows by book, preserving the query's reading order.
     books: dict[str, list] = {}
@@ -221,11 +224,22 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
         ref = BookRef(title=title, authors=authors, isbn=isbn)
 
         dest = index.find_or_create(ref)
+
+        updates = {
+            "title": yaml_quote(title),
+            "authors": link_list(authors) if authors else "",
+            "isbn": yaml_quote(isbn) if isbn else "",
+            "source": "kobo",
+        }
+        base = dest.note_path.read_text(encoding="utf-8")
+        dest.note_path.write_text(update_frontmatter(base, updates), encoding="utf-8")
+
         highlights = [row_to_highlight(r) for r in book_rows]
-        write_leaf_with_embed(
-            dest.note_path, dest.export_dir, "Highlights.md",
-            with_source("kobo", render_highlights(highlights, chapter_label="Kobo ch.")),
-            "Highlights")
+        text = dest.note_path.read_text(encoding="utf-8")
+        text = render_marked_section(
+            text, "Highlights", "highlights",
+            render_highlights(highlights, chapter_label="Kobo ch."))
+        dest.note_path.write_text(text, encoding="utf-8")
         for a in authors:
             write_stub(authors_dir, a, "author")
         entries += len(highlights)

@@ -66,7 +66,7 @@ def test_full_conversion(tmp_path):
     assert stats["covers"] == 1
 
     note = (out / "Books" / "Napoleon - Andrew Roberts.md").read_text()
-    cover_rel = "Exports/Andrew Roberts/Napoleon_ A Life/cover.jpg"
+    cover_rel = "Covers/Napoleon - Andrew Roberts.jpg"
     # Frontmatter values
     assert "type: book" in note
     assert 'title: "Napoleon: A Life"' in note
@@ -83,12 +83,12 @@ def test_full_conversion(tmp_path):
     assert "date_added: 2026-06-04" in note
     assert "source: calibre" in note
     assert f'cover: "[[{cover_rel}]]"' in note
-    # Body
-    assert f"![[{cover_rel}]]" in note
+    # Body (cover embed carries the fixed display width)
+    assert f"![[{cover_rel}|150]]" in note
     assert "**great**" in note
 
-    # Cover copied into Exports
-    assert (out / "Exports" / "Andrew Roberts" / "Napoleon_ A Life" / "cover.jpg").is_file()
+    # Cover copied into the flat Covers/ folder
+    assert (out / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
 
 
 def test_missing_cover(tmp_path):
@@ -100,7 +100,7 @@ def test_missing_cover(tmp_path):
     assert "cover:\n" in note or note.rstrip().endswith("cover:")  # empty placeholder
     assert "cover.jpg" not in note                                 # no body embed / ref
     assert "rating:" in note  # empty rating still present
-    assert not (out / "Exports" / "Jane Doe" / "No Cover Book" / "cover.jpg").exists()
+    assert not (out / "Covers" / "No Cover Book - Jane Doe.jpg").exists()
 
 
 def test_book_note_has_goodreads_placeholders(tmp_path):
@@ -143,8 +143,8 @@ def test_stub_hub_notes(tmp_path):
 
     author = (out / "Authors" / "Andrew Roberts.md").read_text()
     assert "type: author" in author
-    genre = (out / "Genres" / "Biography & Autobiography.md").read_text()
-    assert "type: genre" in genre
+    topic = (out / "Topics" / "Biography & Autobiography.md").read_text()
+    assert "type: topic" in topic
 
 
 def test_rerun_preserves_user_files(tmp_path):
@@ -152,16 +152,16 @@ def test_rerun_preserves_user_files(tmp_path):
     out = tmp_path / "Obsidian"
     c2o.convert(lib, out)
 
-    # User adds a highlights note and edits an author stub.
-    hl = out / "Exports" / "Andrew Roberts" / "Napoleon_ A Life" / "Highlights.md"
-    hl.parent.mkdir(parents=True, exist_ok=True)
-    hl.write_text("# My highlights\n- quote", encoding="utf-8")
+    # User adds a personal note and edits an author stub.
+    note = out / "Notes" / "Napoleon - Andrew Roberts.md"
+    note.parent.mkdir(parents=True, exist_ok=True)
+    note.write_text("# My thoughts\n- a point", encoding="utf-8")
     author_stub = out / "Authors" / "Andrew Roberts.md"
     author_stub.write_text("---\ntype: author\n---\nMy notes on Roberts.", encoding="utf-8")
 
     c2o.convert(lib, out)  # re-run
 
-    assert hl.read_text() == "# My highlights\n- quote"
+    assert note.read_text() == "# My thoughts\n- a point"
     assert "My notes on Roberts." in author_stub.read_text()
 
 

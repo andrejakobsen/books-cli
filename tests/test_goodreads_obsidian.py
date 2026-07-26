@@ -135,20 +135,29 @@ def test_convert_shelf_all_imports_everything(tmp_path):
     assert stats["created"] == 3
 
 
-def test_convert_writes_review_file(tmp_path):
+def test_convert_writes_review_section(tmp_path):
     out = tmp_path / "Obsidian"
     gr.convert(write_csv(tmp_path), out)
-    reviews = list(out.rglob("Review.md"))
-    assert len(reviews) == 1
-    text = reviews[0].read_text()
-    assert "source: goodreads" in text            # provenance frontmatter
-    assert "Great book." in text and "Loved it." in text
-    # The review lives under Exports/ and the flat note embeds it.
-    assert reviews[0] == out / "Exports" / "Andrew Roberts" / "Napoleon_ A Life" / "Review.md"
+    # No separate Review.md leaf files any more.
+    assert list(out.rglob("Review.md")) == []
     note = out / "Books" / "Napoleon - Andrew Roberts.md"
     note_text = note.read_text()
-    assert "![[Exports/Andrew Roberts/Napoleon_ A Life/Review.md]]" in note_text
+    # The review is a write-once '## Review' section inside the book note.
+    assert "## Review" in note_text
+    assert "Great book." in note_text and "Loved it." in note_text
     assert "source: goodreads" in note_text       # book note stamped
+
+
+def test_convert_review_section_not_clobbered_on_rerun(tmp_path):
+    out = tmp_path / "Obsidian"
+    csv = write_csv(tmp_path)
+    gr.convert(csv, out)
+    note = out / "Books" / "Napoleon - Andrew Roberts.md"
+    edited = note.read_text().replace("Great book.", "Great book. (my edit)")
+    note.write_text(edited, encoding="utf-8")
+
+    gr.convert(csv, out)  # re-run must not clobber the edited review
+    assert "(my edit)" in note.read_text()
 
 
 def test_convert_merges_into_existing_note_by_isbn(tmp_path):
