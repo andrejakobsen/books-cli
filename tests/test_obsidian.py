@@ -67,3 +67,54 @@ def test_ensure_embed_section_adds_when_absent():
 def test_ensure_embed_section_noop_when_present():
     note = '---\ntype: book\n---\n\n## Highlights\n![](Highlights.md)\n'
     assert ob.ensure_embed_section(note, "Highlights", "Highlights.md") == note
+
+
+def test_vaultindex_creates_new_note_with_stub(tmp_path):
+    idx = ob.VaultIndex(tmp_path)
+    ref = ob.BookRef(title="Napoleon: A Life", authors=["Andrew Roberts"], isbn=None)
+    note, created = idx.find_or_create(ref)
+    assert created is True
+    assert note == tmp_path / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md"
+    text = note.read_text()
+    assert "type: book" in text
+    assert 'title: "Napoleon: A Life"' in text
+    assert "[[Andrew Roberts]]" in text
+
+
+def test_vaultindex_matches_existing_by_title_author(tmp_path):
+    book_dir = tmp_path / "Andrew Roberts" / "Napoleon A Life"
+    book_dir.mkdir(parents=True)
+    note = book_dir / "Napoleon A Life.md"
+    note.write_text(
+        '---\ntype: book\ntitle: "Napoleon - A Life"\n'
+        'authors: ["[[Andrew Roberts]]"]\n---\nBody.\n', encoding="utf-8")
+    idx = ob.VaultIndex(tmp_path)
+    found, created = idx.find_or_create(
+        ob.BookRef(title="Napoleon: A Life", authors=["Andrew Roberts"], isbn=None))
+    assert created is False
+    assert found == note
+
+
+def test_write_leaf_with_embed_overwrites_and_embeds(tmp_path):
+    note = tmp_path / "Book" / "Book.md"
+    note.parent.mkdir(parents=True)
+    note.write_text('---\ntype: book\n---\n\nBody.\n', encoding="utf-8")
+    wrote = ob.write_leaf_with_embed(note, "Highlights.md", "content v1\n", "Highlights")
+    assert wrote is True
+    assert (note.parent / "Highlights.md").read_text() == "content v1\n"
+    assert "![](Highlights.md)" in note.read_text()
+    # Second call overwrites the leaf but does not duplicate the embed.
+    ob.write_leaf_with_embed(note, "Highlights.md", "content v2\n", "Highlights")
+    assert (note.parent / "Highlights.md").read_text() == "content v2\n"
+    assert note.read_text().count("## Highlights") == 1
+
+
+def test_write_leaf_with_embed_no_overwrite_keeps_existing(tmp_path):
+    note = tmp_path / "Book" / "Book.md"
+    note.parent.mkdir(parents=True)
+    note.write_text('---\ntype: book\n---\n', encoding="utf-8")
+    (note.parent / "Review.md").write_text("original\n", encoding="utf-8")
+    wrote = ob.write_leaf_with_embed(note, "Review.md", "new\n", "Review", overwrite=False)
+    assert wrote is False
+    assert (note.parent / "Review.md").read_text() == "original\n"  # not clobbered
+    assert "![](Review.md)" in note.read_text()  # embed still ensured
