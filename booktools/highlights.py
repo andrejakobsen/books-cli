@@ -49,3 +49,37 @@ def build_anchors(highlights: list[Highlight]) -> list[str]:
         seen.add(anchor)
         anchors.append(anchor)
     return anchors
+
+
+def _label(h: Highlight) -> str:
+    parts: list[str] = []
+    if h.chapter_index is not None:
+        parts.append(f"ch. {h.chapter_index}")
+    elif h.chapter_title:
+        parts.append(h.chapter_title)
+    if h.progress is not None:
+        parts.append(f"{round(h.progress * 100)}%")
+    return " · ".join(parts)
+
+
+def _callout(kind: str, title: str, body: str, expanded: bool) -> str:
+    marker = "+" if expanded else "-"
+    head = f"> [!{kind}]{marker}"
+    if title:
+        head += f" {title}"
+    body_lines = "\n".join(f"> {ln}" if ln.strip() else ">"
+                           for ln in body.split("\n"))
+    return f"{head}\n{body_lines}"
+
+
+def render_highlights(highlights: list[Highlight]) -> str:
+    """Render an ordered list of highlights as an Obsidian ``Highlights.md`` body."""
+    anchors = build_anchors(highlights)
+    blocks: list[str] = []
+    for h, anchor in zip(highlights, anchors):
+        block = f"{_callout('quote', _label(h), h.text, expanded=True)}\n^{anchor}"
+        if h.note and h.note.strip():
+            note = _callout("note", "", h.note, expanded=False)
+            block += f"\n\n{note}\n^{anchor}-note"
+        blocks.append(block)
+    return "\n\n".join(blocks) + "\n"
