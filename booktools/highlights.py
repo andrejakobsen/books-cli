@@ -102,7 +102,11 @@ def render_highlights(highlights: list[Highlight]) -> str:
     anchors = build_anchors(highlights)
     blocks: list[str] = []
     for h, anchor in zip(highlights, anchors):
-        block = f"{_callout('quote', _label(h), h.text, expanded=True)}\n^{anchor}"
+        body = h.text
+        if h.tags:
+            tag_line = " ".join(f"#{t}" for t in h.tags)
+            body = f"{body}\n\n{tag_line}"
+        block = f"{_callout('quote', _label(h), body, expanded=True)}\n^{anchor}"
         if h.note and h.note.strip():
             note = _callout("note", "", h.note, expanded=False)
             block += f"\n\n{note}\n^{anchor}-note"

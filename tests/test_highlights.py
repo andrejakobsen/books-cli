@@ -113,3 +113,29 @@ def test_sanitize_tag_none_returns_none():
 def test_highlight_tags_defaults_to_empty_list():
     h = hl.Highlight(text="x")
     assert h.tags == []
+
+
+def test_render_tags_inside_quote_callout_above_anchor():
+    hs = [hl.Highlight(text="A line", chapter_index=2, block="17", segment="5",
+                       tags=["Stalin", "USSR"])]
+    out = hl.render_highlights(hs)
+    # tag line lives inside the callout (prefixed with "> ")
+    assert "> #Stalin #USSR" in out
+    # ...above the block anchor, below the quoted text
+    quote_block = out.split("^ch2-b17-5")[0]
+    assert quote_block.index("> A line") < quote_block.index("> #Stalin #USSR")
+
+
+def test_render_no_tags_callout_unchanged():
+    hs = [hl.Highlight(text="A line", chapter_index=2, block="17", segment="5")]
+    out = hl.render_highlights(hs)
+    assert "#" not in out.split("^ch2-b17-5")[0]  # no tag line in the quote block
+
+
+def test_render_tags_and_note_both_present():
+    hs = [hl.Highlight(text="A line", note="my thought", chapter_index=2,
+                       block="1", segment="0", tags=["Stalin"])]
+    out = hl.render_highlights(hs)
+    assert "> #Stalin" in out          # tag inside quote callout
+    assert "> [!note]-" in out         # note callout still rendered
+    assert out.index("> #Stalin") < out.index("> [!note]-")
