@@ -80,6 +80,7 @@ def test_full_conversion(tmp_path):
     assert 'isbn: "9780698176287"' in note
     assert 'google: "rjVBAwAAQBAJ"' in note
     assert "date_added: 2026-06-04" in note
+    assert "source: calibre" in note
     assert 'cover: "[[cover.jpg]]"' in note
     # Body
     assert "![[cover.jpg]]" in note

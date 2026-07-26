@@ -118,3 +118,33 @@ def test_write_leaf_with_embed_no_overwrite_keeps_existing(tmp_path):
     assert wrote is False
     assert (note.parent / "Review.md").read_text() == "original\n"  # not clobbered
     assert "![](Review.md)" in note.read_text()  # embed still ensured
+
+
+def test_with_source_prepends_frontmatter():
+    from booktools import obsidian as ob
+    out = ob.with_source("kobo", "> [!quote]+ p. 4\n> Hi\n^p4\n")
+    assert out.startswith("---\nsource: kobo\n---\n")
+    assert "> [!quote]+ p. 4" in out
+    assert "^p4" in out
+
+
+def test_with_source_frontmatter_has_no_book_type():
+    from booktools import obsidian as ob
+    out = ob.with_source("highlighted", "body\n")
+    # A leaf must not look like a book note to the vault index.
+    assert ob.unquote(ob.frontmatter_values(out).get("type", "")) != "book"
+    assert ob.frontmatter_values(out).get("source") == "highlighted"
+
+
+def test_source_in_property_order():
+    from booktools import obsidian as ob
+    assert "source" in ob.BOOK_PROPERTY_ORDER
+
+
+def test_source_never_overwrites_existing():
+    # "First metadata importer wins" on a shared note (spec addendum).
+    from booktools import obsidian as ob
+    note = "---\ntype: book\nsource: calibre\n---\n\nBody.\n"
+    out = ob.update_frontmatter(note, {"source": "goodreads"})
+    assert "source: calibre" in out
+    assert "source: goodreads" not in out

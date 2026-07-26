@@ -56,13 +56,13 @@ def _goodreads_csv(tmp_path: Path) -> Path:
 def test_all_capabilities_registered():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("calibre", "goodreads", "kobo"):
+    for command in ("calibre", "goodreads", "highlighted", "kobo"):
         assert command in result.output
 
 
 def test_capabilities_count_matches_module_list():
     # One command name per registered capability module.
-    assert len(CAPABILITIES) == 3
+    assert len(CAPABILITIES) == 4
 
 
 def test_no_args_shows_help():
@@ -72,7 +72,7 @@ def test_no_args_shows_help():
 
 
 def test_subcommand_help():
-    for command in ("calibre", "goodreads", "kobo"):
+    for command in ("calibre", "goodreads", "highlighted", "kobo"):
         result = runner.invoke(app, [command, "--help"])
         assert result.exit_code == 0, command
         assert command in result.output or "Usage" in result.output
@@ -164,3 +164,26 @@ def test_kobo_obsidian_end_to_end(tmp_path):
     assert note.exists()
     assert "![](Highlights.md)" in note.read_text()
     assert "Fear is the mind-killer" in (note.parent / "Highlights.md").read_text()
+
+
+def _highlighted_csv(tmp_path: Path) -> Path:
+    header = ("Highlight,Title,Author,ISBN,Collections,Reading Status,"
+              "Book Added Date,Location,Tags,Note,Date,Favorite\n")
+    row = ('"Fear is the mind-killer",Stalin,Stephen Kotkin,9781594203794,,'
+           'Reading,2026-07-24,45-49,Stalin,,2026-07-24 11:15:47,N\n')
+    p = tmp_path / "Highlights for Stalin.csv"
+    p.write_text(header + row, encoding="utf-8")
+    return p
+
+
+def test_highlighted_end_to_end(tmp_path):
+    csv_path = _highlighted_csv(tmp_path)
+    out = tmp_path / "Obsidian"
+    result = runner.invoke(app, ["highlighted", "--csv", str(csv_path), "--output", str(out)])
+    assert result.exit_code == 0, result.output
+    note = out / "Stephen Kotkin" / "Stalin" / "Stalin.md"
+    assert note.exists()
+    assert "![](Highlights.md)" in note.read_text()
+    hl = (note.parent / "Highlights.md").read_text()
+    assert "> [!quote]+ p. 45–49" in hl
+    assert "^p45-49" in hl

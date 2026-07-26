@@ -73,6 +73,13 @@ books kobo ~/KoboReader.sqlite --csv -o kobo_highlights.zip
   generic `Review.md` embedded in the book note via `![](Review.md)`.
 - **`kobo`** — Export Kobo highlights & notes to per-book CSVs in a zip (`--csv`,
   the default output mode); pass `--obsidian` for the Obsidian vault mode.
+- **`highlighted`** — Import highlights captured from *physical* books with the
+  [Highlighted](https://highlighted.app) app (CSV export) into Obsidian book
+  notes, labelled and anchored by page.
+
+Every export records provenance: content leaves (`Highlights.md`/`Review.md`)
+carry a `source:` property (`kobo`/`highlighted`/`goodreads`), and the `calibre`
+and `goodreads` importers stamp `source` on the book note itself.
 
 ### Kobo → Obsidian highlights
 
@@ -96,6 +103,21 @@ snippet at `<vault>/.obsidian/snippets/seamless-embeds.css` and enable it under
 .markdown-embed { border: none; padding: 0; margin: 0; }
 .markdown-embed-link { display: none; }
 ```
+
+### Highlighted → Obsidian highlights
+
+Import highlights captured from *physical* books with the
+[Highlighted](https://highlighted.app) app (CSV export):
+
+```bash
+books highlighted --csv "Highlights for Stalin.csv" --output ~/Obsidian
+```
+
+Every highlight is imported and grouped by book. For each book this writes
+`<Author>/<Title>/Highlights.md` — Obsidian `[!quote]`/`[!note]` callouts labelled
+by page (`p. 45–49`) with stable `^p45-49` block anchors — and embeds it into the
+book note via `![](Highlights.md)`. Books are matched to existing notes by ISBN,
+so highlights land alongside any Calibre/Goodreads data for the same book.
 
 The standalone scripts in `scripts/` still work too:
 

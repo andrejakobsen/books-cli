@@ -28,6 +28,7 @@ from booktools.obsidian import (
     link_list,
     plain_list,
     update_frontmatter,
+    with_source,
     write_leaf_with_embed,
     write_stub,
     yaml_quote,
@@ -163,6 +164,7 @@ def _goodreads_updates(book: GoodreadsBook) -> dict[str, str]:
         u["date_added"] = book.date_added
     if book.date_read:
         u["date_read"] = book.date_read
+    u["source"] = "goodreads"
     return u
 
 
@@ -207,7 +209,8 @@ def convert(csv_path: Path, output: Path, shelf: str = "read") -> dict:
 
         review = _review_markdown(book)
         if review and write_leaf_with_embed(
-                note_path, "Review.md", review, "Review", overwrite=False):
+                note_path, "Review.md", with_source("goodreads", review),
+                "Review", overwrite=False):
             stats["reviews"] += 1
 
     return stats

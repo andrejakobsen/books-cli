@@ -123,10 +123,13 @@ def test_convert_writes_review_file(tmp_path):
     reviews = list(out.rglob("Review.md"))
     assert len(reviews) == 1
     text = reviews[0].read_text()
+    assert "source: goodreads" in text            # provenance frontmatter
     assert "Great book." in text and "Loved it." in text
     # The book note embeds the review.
     note = out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md"
-    assert "![](Review.md)" in note.read_text()
+    note_text = note.read_text()
+    assert "![](Review.md)" in note_text
+    assert "source: goodreads" in note_text       # book note stamped
 
 
 def test_convert_merges_into_existing_note_by_isbn(tmp_path):

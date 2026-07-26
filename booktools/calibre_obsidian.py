@@ -189,6 +189,7 @@ def _calibre_updates(meta: BookMetadata, has_cover: bool) -> dict[str, str]:
     u["calibre_id"] = meta.calibre_id or ""
     u["date_added"] = meta.date_added or ""
     u["date_read"] = ""
+    u["source"] = "calibre"
     u["cover"] = yaml_quote("[[cover.jpg]]") if has_cover else ""
     return u
 

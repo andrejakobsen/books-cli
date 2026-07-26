@@ -1,8 +1,9 @@
 """Shared helpers for writing Obsidian book-note vaults.
 
-Both the Calibre and Goodreads importers write book notes with the same YAML
-frontmatter schema and the same "never overwrite" rule, so their data (plus your
-own manual edits) composes without clobbering. Everything they share lives here.
+All importers (Calibre, Goodreads, Kobo, Highlighted) write book notes with the
+same YAML frontmatter schema and the same "never overwrite" rule, so their data
+(plus your own manual edits) composes without clobbering. Everything they share
+lives here.
 
 Standard library only.
 """
@@ -43,6 +44,7 @@ BOOK_PROPERTY_ORDER = (
     "calibre_id",
     "date_added",
     "date_read",
+    "source",
     "cover",
 )
 
@@ -116,6 +118,16 @@ def ensure_embed_section(note_text: str, heading: str, target: str) -> str:
         return note_text
     sep = "" if note_text.endswith("\n") else "\n"
     return f"{note_text}{sep}\n## {heading}\n![]({target})\n"
+
+
+def with_source(source: str, body: str) -> str:
+    """Prepend a minimal ``source:`` frontmatter block to a leaf-file *body*.
+
+    Used for content leaves (Highlights.md / Review.md) so provenance travels with
+    the content. The block carries no ``type`` key, so build_index/VaultIndex skip
+    these files rather than treating them as book notes.
+    """
+    return f"---\nsource: {source}\n---\n\n{body}"
 
 
 # --- Frontmatter reading ----------------------------------------------------
