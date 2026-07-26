@@ -169,6 +169,32 @@ def test_kobo_copies_from_mounted_device(monkeypatch, tmp_path):
     assert device.is_file()
 
 
+def test_safe_copy_db_removes_partial_snapshot_on_failure(tmp_path):
+    src = tmp_path / "device.sqlite"
+    _make_db(src)
+    dest = tmp_path / "imports" / "kobo" / "KoboReader.sqlite"
+
+    class _Boom(sqlite3.Connection):
+        def backup(self, *a, **k):
+            raise sqlite3.OperationalError("device yanked mid-backup")
+
+    orig_connect = sqlite3.connect
+
+    def fake_connect(target, *a, **k):
+        # source.backup(target) is called on the read-only source (uri=True);
+        # make that connection's backup() boom mid-copy.
+        if k.get("uri"):
+            return orig_connect(target, *a, factory=_Boom, **k)
+        return orig_connect(target, *a, **k)
+
+    import unittest.mock as mock
+    with mock.patch.object(sqlite3, "connect", fake_connect):
+        with pytest.raises(sqlite3.OperationalError):
+            ke._safe_copy_db(src, dest)
+
+    assert not dest.exists()
+
+
 def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner

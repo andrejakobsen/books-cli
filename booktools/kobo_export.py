@@ -59,6 +59,12 @@ def _safe_copy_db(src: Path, dest: Path) -> Path:
         target = sqlite3.connect(dest)
         try:
             source.backup(target)
+        except BaseException:
+            # A backup that fails partway leaves a corrupt snapshot; remove it so
+            # a later run doesn't try to read a half-written DB.
+            target.close()
+            dest.unlink(missing_ok=True)
+            raise
         finally:
             target.close()
     finally:
