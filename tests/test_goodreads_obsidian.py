@@ -1,0 +1,137 @@
+"""Tests for the Goodreads -> Obsidian importer."""
+
+from pathlib import Path
+
+from booktools import goodreads_obsidian as gr
+
+
+HEADER = (
+    "Book Id,Title,Author,Author l-f,Additional Authors,ISBN,ISBN13,My Rating,"
+    "Publisher,Binding,Number of Pages,Year Published,Original Publication Year,"
+    "Date Read,Date Added,Bookshelves,Bookshelves with positions,Exclusive Shelf,"
+    "My Review,Spoiler,Private Notes,Read Count,Owned Copies\n"
+)
+
+# A read book with review, a to-read book, and a currently-reading book.
+ROWS = (
+    '1,"Napoleon: A Life",Andrew Roberts,"Roberts, Andrew",,'
+    '"=""0141032014""","=""9780141032016""",5.0,Penguin,Paperback,976,2015,2014,'
+    '2026/07/17,2026/05/04,history,history (#1),read,'
+    '"Great book.<br/><br/>Loved it.",,note-to-self,1,0\n'
+    '2,"The Cold War: A New History",John Lewis Gaddis,"Gaddis, John Lewis",,'
+    '"=""0143038273""","=""9780143038276""",0,Penguin,Paperback,352,2006,2005,,'
+    '2026/07/14,to-read,to-read (#2),to-read,,,,0,0\n'
+    '3,"Stalin: Paradoxes of Power",Stephen Kotkin,"Kotkin, Stephen",,'
+    '"=""1594203792""","=""9781594203794""",0,Penguin,Hardcover,976,2014,2014,,'
+    '2026/04/30,,,currently-reading,,,,1,0\n'
+)
+
+
+def write_csv(tmp_path: Path) -> Path:
+    p = tmp_path / "goodreads_library_export.csv"
+    p.write_text(HEADER + ROWS, encoding="utf-8")
+    return p
+
+
+def test_parse_csv_fields(tmp_path):
+    books = gr.parse_csv(write_csv(tmp_path))
+    assert len(books) == 3
+    nap = books[0]
+    assert nap.title == "Napoleon: A Life"
+    assert nap.authors == ["Andrew Roberts"]
+    assert nap.isbn13 == "9780141032016"
+    assert nap.isbn == "0141032014"
+    assert nap.rating == 5
+    assert nap.pages == "976"
+    assert nap.status == "read"
+    assert nap.date_read == "2026-07-17"
+    assert nap.date_added == "2026-05-04"
+    assert nap.shelves == ["history"]
+    assert "Great book." in nap.review
+
+    unrated = books[1]
+    assert unrated.rating is None          # My Rating 0 -> unrated
+    assert unrated.status == "to-read"
+
+    reading = books[2]
+    assert reading.status == "reading"     # currently-reading normalized
+
+
+def test_normalization_helpers():
+    from booktools import obsidian as ob
+    assert ob.norm_isbn('="9780698176287"') == "9780698176287"
+    assert ob.norm_title("The Cold War: A New History") == \
+        ob.norm_title("The Cold War - A New History")
+    assert ob.author_key("Terry Martin") == ob.author_key("Terry L. Martin")
+    assert ob.author_key("Roberts, Andrew") == ob.author_key("Andrew Roberts")
+    assert ob.author_key("Broué, Pierre") == ob.author_key("Pierre Broue")
+
+
+def test_convert_creates_only_read_books(tmp_path):
+    out = tmp_path / "Obsidian"
+    stats = gr.convert(write_csv(tmp_path), out)
+    # Only the "read" book (Napoleon) is created by default.
+    assert stats["created"] == 1
+    assert stats["skipped"] == 2
+    # safe_filename turns the illegal ':' into '_'.
+    assert (out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md").exists()
+
+
+def test_convert_shelf_all_imports_everything(tmp_path):
+    out = tmp_path / "Obsidian"
+    stats = gr.convert(write_csv(tmp_path), out, shelf="all")
+    assert stats["created"] == 3
+
+
+def test_convert_writes_review_file(tmp_path):
+    out = tmp_path / "Obsidian"
+    gr.convert(write_csv(tmp_path), out)
+    reviews = list(out.rglob("*- Review.md"))
+    assert len(reviews) == 1
+    text = reviews[0].read_text()
+    assert "Great book." in text and "Loved it." in text
+
+
+def test_convert_merges_into_existing_note_by_isbn(tmp_path):
+    out = tmp_path / "Obsidian"
+    # Pre-create a note as if from Calibre: has title, empty status/pages.
+    book_dir = out / "Andrew Roberts" / "Napoleon_ A Life"
+    book_dir.mkdir(parents=True)
+    note = book_dir / "Napoleon_ A Life.md"
+    note.write_text(
+        '---\ntype: book\ntitle: "Napoleon: A Life"\nisbn: "9780141032016"\n'
+        'status:\npages:\nrating: 4\n---\n\nMy body.\n',
+        encoding="utf-8",
+    )
+    stats = gr.convert(write_csv(tmp_path), out)
+    assert stats["merged"] == 1 and stats["created"] == 0
+    updated = note.read_text()
+    assert "status: read" in updated       # blank filled
+    assert "pages: 976" in updated         # blank filled
+    assert "rating: 4" in updated          # existing value NOT overwritten (was 4, GR is 5)
+    assert "My body." in updated           # body preserved
+
+
+def test_convert_merges_by_strict_title_author(tmp_path):
+    out = tmp_path / "Obsidian"
+    book_dir = out / "Andrew Roberts" / "Napoleon A Life"
+    book_dir.mkdir(parents=True)
+    note = book_dir / "Napoleon A Life.md"
+    # No ISBN -> must match on normalized title + author.
+    note.write_text(
+        '---\ntype: book\ntitle: "Napoleon - A Life"\n'
+        'authors: ["[[Andrew Roberts]]"]\nstatus:\n---\n\nBody.\n',
+        encoding="utf-8",
+    )
+    stats = gr.convert(write_csv(tmp_path), out)
+    assert stats["merged"] == 1 and stats["created"] == 0
+    assert "status: read" in note.read_text()
+
+
+def test_convert_idempotent(tmp_path):
+    out = tmp_path / "Obsidian"
+    gr.convert(write_csv(tmp_path), out)
+    before = {p: p.read_text() for p in out.rglob("*.md")}
+    gr.convert(write_csv(tmp_path), out)  # second run
+    after = {p: p.read_text() for p in out.rglob("*.md")}
+    assert before == after

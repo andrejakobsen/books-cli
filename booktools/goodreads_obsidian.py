@@ -1,0 +1,292 @@
+#!/usr/bin/env python3
+"""Convert a Goodreads library CSV export into an Obsidian book vault.
+
+Reads the CSV Goodreads produces from "My Books -> Import and export", and for
+each *read* book (by default) creates or merges an Obsidian note in the same
+shape as the Calibre importer. Existing information is never overwritten: only
+absent/empty properties are filled. Reviews are written to a separate
+"<Title> - Review.md" note alongside any highlights.
+
+Standard library only.
+"""
+
+from __future__ import annotations
+
+import csv as _csv
+from dataclasses import dataclass, field
+from pathlib import Path
+
+import typer
+
+from booktools import resolve_path
+from booktools.obsidian import (
+    BOOK_PROPERTY_ORDER,
+    author_key,
+    extract_wikilinks,
+    frontmatter_values,
+    html_to_markdown,
+    link_list,
+    norm_isbn,
+    norm_title,
+    plain_list,
+    safe_filename,
+    unquote,
+    update_frontmatter,
+    write_if_absent,
+    write_stub,
+    yaml_quote,
+)
+
+
+@dataclass
+class GoodreadsBook:
+    title: str
+    authors: list[str] = field(default_factory=list)
+    isbn: str | None = None
+    isbn13: str | None = None
+    rating: int | None = None
+    publisher: str | None = None
+    pages: str | None = None
+    published: str | None = None      # year only
+    date_read: str | None = None
+    date_added: str | None = None
+    status: str | None = None         # reading status (Exclusive Shelf)
+    shelves: list[str] = field(default_factory=list)
+    review: str | None = None
+    private_notes: str | None = None
+    exclusive_shelf: str | None = None
+
+
+def _strip_isbn(raw: str) -> str | None:
+    """Unwrap Goodreads' ="..." Excel escaping; '=""' -> None."""
+    raw = (raw or "").strip()
+    if raw.startswith('="') and raw.endswith('"'):
+        raw = raw[2:-1]
+    return raw.strip('"').strip() or None
+
+
+def _norm_date(raw: str) -> str | None:
+    raw = (raw or "").strip()
+    return raw.replace("/", "-") or None
+
+
+def _split_authors(author: str, additional: str) -> list[str]:
+    authors = [author.strip()] if (author or "").strip() else []
+    for extra in (additional or "").split(","):
+        if extra.strip():
+            authors.append(extra.strip())
+    return authors
+
+
+def _norm_status(shelf: str) -> str | None:
+    shelf = (shelf or "").strip()
+    if not shelf:
+        return None
+    return "reading" if shelf == "currently-reading" else shelf
+
+
+def parse_csv(path: Path) -> list[GoodreadsBook]:
+    books: list[GoodreadsBook] = []
+    with open(path, newline="", encoding="utf-8") as fh:
+        for row in _csv.DictReader(fh):
+            rating_raw = (row.get("My Rating") or "").strip()
+            try:
+                rating = int(float(rating_raw))
+            except ValueError:
+                rating = 0
+            shelves = [s.strip() for s in (row.get("Bookshelves") or "").split(",") if s.strip()]
+            books.append(GoodreadsBook(
+                title=(row.get("Title") or "").strip(),
+                authors=_split_authors(row.get("Author", ""), row.get("Additional Authors", "")),
+                isbn=_strip_isbn(row.get("ISBN", "")),
+                isbn13=_strip_isbn(row.get("ISBN13", "")),
+                rating=rating if rating > 0 else None,
+                publisher=(row.get("Publisher") or "").strip() or None,
+                pages=(row.get("Number of Pages") or "").strip() or None,
+                published=(row.get("Year Published") or "").strip() or None,
+                date_read=_norm_date(row.get("Date Read", "")),
+                date_added=_norm_date(row.get("Date Added", "")),
+                status=_norm_status(row.get("Exclusive Shelf", "")),
+                shelves=shelves,
+                review=(row.get("My Review") or "").strip() or None,
+                private_notes=(row.get("Private Notes") or "").strip() or None,
+                exclusive_shelf=(row.get("Exclusive Shelf") or "").strip() or None,
+            ))
+    return books
+
+
+# --- Matching against an existing vault -------------------------------------
+
+def build_index(output: Path) -> tuple[dict[str, Path], dict[tuple, Path]]:
+    """Index existing book notes by normalized ISBN and (title, author)."""
+    by_isbn: dict[str, Path] = {}
+    by_title_author: dict[tuple, Path] = {}
+    for md in output.rglob("*.md"):
+        if md.parent.name in ("Authors", "Genres"):
+            continue
+        try:
+            text = md.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fm = frontmatter_values(text)
+        if unquote(fm.get("type", "")) != "book":
+            continue
+        isbn = norm_isbn(unquote(fm.get("isbn", "")))
+        if isbn:
+            by_isbn.setdefault(isbn, md)
+        title = unquote(fm.get("title", ""))
+        authors = extract_wikilinks(fm.get("authors", ""))
+        if title and authors:
+            by_title_author.setdefault((norm_title(title), author_key(authors[0])), md)
+    return by_isbn, by_title_author
+
+
+def match_note(book: GoodreadsBook, by_isbn, by_title_author) -> Path | None:
+    for isbn in (norm_isbn(book.isbn13), norm_isbn(book.isbn)):
+        if isbn and isbn in by_isbn:
+            return by_isbn[isbn]
+    if book.title and book.authors:
+        key = (norm_title(book.title), author_key(book.authors[0]))
+        if key in by_title_author:
+            return by_title_author[key]
+    return None
+
+
+# --- Note construction ------------------------------------------------------
+
+def _goodreads_updates(book: GoodreadsBook) -> dict[str, str]:
+    """Canonical property -> formatted value; empty for fields Goodreads lacks."""
+    u = {k: "" for k in BOOK_PROPERTY_ORDER if k != "type"}
+    if book.title:
+        u["title"] = yaml_quote(book.title)
+    if book.authors:
+        u["authors"] = link_list(book.authors)
+    if book.publisher:
+        u["publisher"] = yaml_quote(book.publisher)
+    if book.published:
+        u["published"] = book.published
+    if book.pages:
+        u["pages"] = book.pages
+    if book.status:
+        u["status"] = book.status  # safe plain scalar (read / reading / to-read)
+    if book.shelves:
+        u["shelves"] = plain_list(book.shelves)
+    if book.rating is not None:
+        u["rating"] = str(book.rating)
+    isbn = book.isbn13 or book.isbn
+    if isbn:
+        u["isbn"] = yaml_quote(isbn)
+    if book.date_added:
+        u["date_added"] = book.date_added
+    if book.date_read:
+        u["date_read"] = book.date_read
+    return u
+
+
+def _review_markdown(book: GoodreadsBook) -> str | None:
+    if not book.review and not book.private_notes:
+        return None
+    parts = [f"# {book.title} — Review", ""]
+    if book.date_read:
+        parts += [f"*Read: {book.date_read}*", ""]
+    if book.review:
+        parts += [html_to_markdown(book.review), ""]
+    if book.private_notes:
+        parts += ["## Private Notes", "", html_to_markdown(book.private_notes), ""]
+    return "\n".join(parts)
+
+
+def convert(csv_path: Path, output: Path, shelf: str = "read") -> dict:
+    stats = {"created": 0, "merged": 0, "reviews": 0, "skipped": 0, "authors": set()}
+    by_isbn, by_ta = build_index(output)
+    authors_dir = output / "Authors"
+
+    for book in parse_csv(csv_path):
+        if shelf != "all" and (book.exclusive_shelf or "") != shelf:
+            stats["skipped"] += 1
+            continue
+        if not book.title or not book.authors:
+            stats["skipped"] += 1
+            continue
+
+        note_path = match_note(book, by_isbn, by_ta)
+        if note_path is not None:
+            base = note_path.read_text(encoding="utf-8")
+            stats["merged"] += 1
+        else:
+            folder = output / safe_filename(book.authors[0]) / safe_filename(book.title)
+            note_path = folder / f"{safe_filename(book.title)}.md"
+            base = "---\ntype: book\n---\n"
+            stats["created"] += 1
+
+        note_path.parent.mkdir(parents=True, exist_ok=True)
+        note_path.write_text(update_frontmatter(base, _goodreads_updates(book)), encoding="utf-8")
+
+        # Keep the index current so later rows can match this note.
+        isbn = norm_isbn(book.isbn13) or norm_isbn(book.isbn)
+        if isbn:
+            by_isbn.setdefault(isbn, note_path)
+        by_ta.setdefault((norm_title(book.title), author_key(book.authors[0])), note_path)
+
+        for author in book.authors:
+            write_stub(authors_dir, author, "author")
+            stats["authors"].add(author)
+
+        review = _review_markdown(book)
+        if review and write_if_absent(note_path.parent / f"{note_path.stem} - Review.md", review):
+            stats["reviews"] += 1
+
+    return stats
+
+
+def goodreads_to_obsidian(
+    csv: Path = typer.Option(
+        ...,
+        "--csv", "-c",
+        help="Path to the Goodreads library CSV export. Relative paths resolve against the current directory.",
+    ),
+    output: Path = typer.Option(
+        Path("Obsidian"),
+        "--output", "-o",
+        help="Output Obsidian vault. Relative paths resolve against the current directory.",
+    ),
+    shelf: str = typer.Option(
+        "read",
+        "--shelf",
+        help="Only import books on this Goodreads exclusive shelf (read/currently-reading/to-read). Use 'all' for every book.",
+    ),
+) -> None:
+    """Convert a Goodreads CSV export into Obsidian book notes.
+
+    By default only books on the 'read' shelf are imported. Existing notes are
+    never overwritten: only empty/absent properties are filled, and reviews are
+    written to a separate '<Title> - Review.md' note. Books are matched to
+    existing notes by ISBN, then by a strict Author/Title comparison.
+    """
+    csv = resolve_path(csv, Path.cwd())
+    output = resolve_path(output, Path.cwd())
+
+    if not csv.is_file():
+        raise typer.BadParameter(f"CSV not found: {csv}", param_hint="--csv")
+
+    output.mkdir(parents=True, exist_ok=True)
+    stats = convert(csv, output, shelf=shelf)
+    typer.echo(
+        f"Done. {stats['created']} created, {stats['merged']} merged, "
+        f"{stats['reviews']} reviews, {len(stats['authors'])} authors, "
+        f"{stats['skipped']} skipped.\nOutput: {output}"
+    )
+
+
+def register(app: typer.Typer) -> None:
+    """Register this capability's command(s) on the shared Typer app."""
+    app.command("goodreads-to-obsidian")(goodreads_to_obsidian)
+
+
+def main() -> None:
+    """Standalone entry point so the shim script keeps working on its own."""
+    typer.run(goodreads_to_obsidian)
+
+
+if __name__ == "__main__":
+    main()
