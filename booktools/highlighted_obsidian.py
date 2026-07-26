@@ -141,14 +141,33 @@ def highlighted_to_obsidian(
     csv = resolve_path(csv, Path.cwd())
     output = config.resolve_vault(output)
 
-    if not csv.is_file():
+    if not csv.is_file() and not csv.is_dir():
         raise typer.BadParameter(f"CSV not found: {csv}", param_hint="--csv")
 
+    csv_paths = resolve_csv_paths(csv)
+
     output.mkdir(parents=True, exist_ok=True)
-    stats = convert(csv, output)
+
+    totals = {"books": 0, "entries": 0, "authors": set()}
+    skipped = 0
+    for path in csv_paths:
+        try:
+            stats = convert(path, output)
+        except Exception as exc:  # noqa: BLE001 - skip and continue on any bad file
+            skipped += 1
+            typer.echo(f"Skipped {path.name}: {exc}", err=True)
+            continue
+        totals["books"] += stats["books"]
+        totals["entries"] += stats["entries"]
+        totals["authors"].update(stats["authors"])
+
+    files = len(csv_paths)
+    files_word = "file" if files == 1 else "files"
+    skipped_note = f" ({skipped} skipped)" if skipped else ""
     typer.echo(
-        f"Done. {stats['books']} books, {stats['entries']} highlights, "
-        f"{len(stats['authors'])} authors.\nOutput: {output}"
+        f"Done. {files} {files_word}{skipped_note}, {totals['books']} books, "
+        f"{totals['entries']} highlights, {len(totals['authors'])} authors.\n"
+        f"Output: {output}"
     )
 
 

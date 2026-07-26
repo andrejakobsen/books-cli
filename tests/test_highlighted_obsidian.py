@@ -4,8 +4,12 @@ from pathlib import Path
 
 import pytest
 import typer
+from typer.testing import CliRunner
 
 from booktools import highlighted_obsidian as hi
+from booktools.cli import app
+
+runner = CliRunner()
 
 HEADER = ("Highlight,Title,Author,ISBN,Collections,Reading Status,"
           "Book Added Date,Location,Tags,Note,Date,Favorite\n")
@@ -14,6 +18,12 @@ ROWS = (
     '2026-07-24,4,Stalin,That is true,2026-07-24 10:37:51,N\n'
     '"A longer passage.",Stalin,Stephen Kotkin,9781594203794,,Reading,'
     '2026-07-24,45-49,Stalin,,2026-07-24 11:15:47,N\n'
+)
+
+# A second book, distinct ISBN, for the multi-file folder test.
+ROWS_TROTSKY = (
+    '"Ideas are more powerful than guns.",The Prophet Armed,Isaac Deutscher,'
+    '9781781683118,,Read,2026-07-25,88,Trotsky,,2026-07-25 09:00:00,N\n'
 )
 
 
@@ -124,3 +134,69 @@ def test_convert_idempotent(tmp_path):
     hi.convert(write_csv(tmp_path), out)
     after = {p: p.read_text() for p in out.rglob("*.md")}
     assert before == after
+
+
+def test_cli_folder_imports_all_and_sums(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "stalin.csv").write_text(HEADER + ROWS, encoding="utf-8")
+    (src / "trotsky.csv").write_text(HEADER + ROWS_TROTSKY, encoding="utf-8")
+    out = tmp_path / "Obsidian"
+    result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "2 files" in result.output
+    assert (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
+    assert (out / "Books" / "The Prophet Armed - Isaac Deutscher.md").exists()
+    # books/entries summed across both files
+    assert "2 books" in result.output
+    assert "3 highlights" in result.output
+
+
+def test_cli_folder_same_book_last_file_wins(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "a.csv").write_text(HEADER + ROWS, encoding="utf-8")
+    # same ISBN -> confirmed same book; the later file's highlights win
+    (src / "b.csv").write_text(
+        HEADER + '"Another line.",Stalin,Stephen Kotkin,9781594203794,,Reading,'
+        '2026-07-24,60,Stalin,,2026-07-24 12:00:00,N\n', encoding="utf-8")
+    out = tmp_path / "Obsidian"
+    result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    # exactly one Stalin note (matched by ISBN, no duplicate)
+    stalin_notes = list((out / "Books").glob("Stalin*"))
+    assert len(stalin_notes) == 1
+    hl = (out / "Exports" / "Stephen Kotkin" / "Stalin" / "Highlights.md").read_text()
+    # last file (b.csv) wins: its highlight is present, the earlier file's is gone
+    assert "Another line." in hl
+    assert "Fear is the mind-killer" not in hl
+
+
+def test_cli_folder_skips_bad_csv(tmp_path):
+    src = tmp_path / "src"
+    src.mkdir()
+    (src / "good.csv").write_text(HEADER + ROWS, encoding="utf-8")
+    # bytes that are not valid UTF-8, so parse_csv raises inside convert
+    (src / "bad.csv").write_bytes(b"\xff\xfe\x00not a valid utf-8 csv\x00")
+    out = tmp_path / "Obsidian"
+    result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "1 skipped" in result.output
+    assert (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
+
+
+def test_cli_single_file_shows_one_file(tmp_path):
+    csv = write_csv(tmp_path)
+    out = tmp_path / "Obsidian"
+    result = runner.invoke(app, ["highlighted", "-c", str(csv), "-o", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "1 file" in result.output
+    assert (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
+
+
+def test_cli_empty_folder_errors(tmp_path):
+    src = tmp_path / "empty"
+    src.mkdir()
+    out = tmp_path / "Obsidian"
+    result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
+    assert result.exit_code != 0
