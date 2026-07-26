@@ -446,3 +446,62 @@ def test_run_single_book_ineligible_is_no_op(tmp_path):
         prompt=None, book_path=target)
     assert stats["missing"] == 0
     assert stats["fetched"] == 0
+
+
+def test_cli_covers_dry_run(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+    from booktools.cli import app
+
+    _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\n'
+        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+
+    # stub the network so the CLI test stays offline
+    monkeypatch.setattr(covers, "default_fetch_json", lambda url: GOOGLE_VOLUME)
+    monkeypatch.setattr(
+        covers, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
+
+    result = CliRunner().invoke(
+        app, ["covers", "-o", str(tmp_path), "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "missing" in result.output.lower()
+    assert not (tmp_path / "Exports").exists()
+
+
+def test_cli_covers_registered():
+    from booktools.cli import app
+    names = {c.name for c in app.registered_commands}
+    assert "covers" in names
+
+
+def test_cli_covers_single_book_interactive_by_default(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+    from booktools.cli import app
+
+    note = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\n'
+        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+    # another missing-cover book that must NOT be touched
+    _write_note(tmp_path, "Other - X.md",
+        '---\ntype: book\ntitle: "Other"\nauthors: ["[[X]]"]\ncover:\n---\n')
+
+    monkeypatch.setattr(covers, "default_fetch_json", lambda url: GOOGLE_VOLUME)
+    monkeypatch.setattr(
+        covers, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
+    # single-book mode is interactive by default -> the prompt is used; accept it.
+    monkeypatch.setattr(covers, "_terminal_prompt", lambda c: "accept")
+
+    result = CliRunner().invoke(app, ["covers", "-b", str(note)])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "Exports" / "Andrew Roberts" / "Napoleon" / "cover.jpg").is_file()
+    assert not (tmp_path / "Exports" / "X").exists()
+
+
+def test_cli_covers_single_book_rejects_note_outside_books(tmp_path):
+    from typer.testing import CliRunner
+    from booktools.cli import app
+
+    stray = tmp_path / "stray.md"
+    stray.write_text('---\ntype: book\ntitle: "S"\ncover:\n---\n', encoding="utf-8")
+    result = CliRunner().invoke(app, ["covers", "-b", str(stray)])
+    assert result.exit_code != 0

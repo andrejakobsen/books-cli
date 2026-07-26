@@ -19,6 +19,9 @@ from pathlib import Path
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
+import typer
+
+from booktools import resolve_path
 from booktools.obsidian import (
     BOOKS_DIRNAME,
     BookRef,
@@ -367,3 +370,88 @@ def run(vault, *, interactive, dry_run, limit,
             apply_cover(index, book, data)
             print(f"  ✓ {cand.source}: {book.title}")
     return stats
+
+
+def covers_command(
+    output: Path = typer.Option(
+        Path("Obsidian"),
+        "--output", "-o",
+        help="Obsidian vault to scan. Relative paths resolve against the current directory.",
+    ),
+    book: Path | None = typer.Option(
+        None, "--book", "-b",
+        help="Fetch a cover for a single book note (path to a file under Books/). "
+             "Interactive by default; the vault is inferred from the path, so --output is ignored.",
+    ),
+    interactive: bool | None = typer.Option(
+        None, "--interactive/--no-interactive",
+        help="Confirm each candidate: accept / next / skip book / quit. "
+             "Defaults on for a single --book, off for a full-vault scan.",
+    ),
+    dry_run: bool = typer.Option(
+        False, "--dry-run",
+        help="Report the chosen cover per book without writing anything.",
+    ),
+    limit: int | None = typer.Option(
+        None, "--limit",
+        help="Process at most this many books missing a cover (ignored with --book).",
+    ),
+) -> None:
+    """Find book notes missing a cover and fetch one.
+
+    Scans OUTPUT (an Obsidian vault) for 'type: book' notes whose 'cover:'
+    frontmatter is blank and fetches a cover from Google Books, then Open Library
+    (paperback editions preferred where known), then Amazon (only when the note
+    already carries an 'amazon' ASIN). By default the best match is written
+    automatically; use --interactive to approve each candidate, or --dry-run to
+    preview. Pass --book PATH to fetch a cover for a single note under Books/
+    (interactive by default). Existing covers, note bodies, and filenames are
+    never changed.
+    """
+    if book is not None:
+        note = resolve_path(book, Path.cwd())
+        if not note.is_file():
+            raise typer.BadParameter(f"book note not found: {note}", param_hint="--book")
+        if note.parent.name != BOOKS_DIRNAME:
+            raise typer.BadParameter(
+                f"book note must live under a '{BOOKS_DIRNAME}/' folder: {note}",
+                param_hint="--book")
+        vault = note.parents[1]
+    else:
+        note = None
+        vault = resolve_path(output, Path.cwd())
+        if not (vault / BOOKS_DIRNAME).is_dir():
+            raise typer.BadParameter(
+                f"no Books/ folder in vault: {vault}", param_hint="--output")
+
+    # Interactive is on by default for a single book, off for a full scan,
+    # unless the user set it explicitly with --interactive/--no-interactive.
+    if interactive is None:
+        interactive = book is not None
+
+    stats = run(
+        vault, interactive=interactive, dry_run=dry_run, limit=limit,
+        fetch_json=default_fetch_json, fetch_bytes=default_fetch_bytes,
+        prompt=_terminal_prompt, book_path=note,
+    )
+    bs = stats["by_source"]
+    typer.echo(
+        f"Scanned {stats['scanned']} notes, {stats['missing']} missing covers → "
+        f"{stats['fetched']} fetched "
+        f"(google {bs['google']}, openlibrary {bs['openlibrary']}, amazon {bs['amazon']}), "
+        f"{stats['not_found']} not found."
+    )
+
+
+def register(app: typer.Typer) -> None:
+    """Register this capability's command(s) on the shared Typer app."""
+    app.command("covers")(covers_command)
+
+
+def main() -> None:
+    """Standalone entry point so the shim script keeps working on its own."""
+    typer.run(covers_command)
+
+
+if __name__ == "__main__":
+    main()
