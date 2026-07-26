@@ -20,6 +20,7 @@ from booktools import (
     highlighted_obsidian,
     kobo_export,
     readwise_obsidian,
+    sync,
 )
 
 # Modules that expose a register(app) function. Add new capabilities here.
@@ -30,6 +31,7 @@ CAPABILITIES = (
     highlighted_obsidian,
     kobo_export,
     readwise_obsidian,
+    sync,
 )
 
 app = typer.Typer(

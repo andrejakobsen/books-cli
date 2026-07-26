@@ -65,13 +65,13 @@ def _goodreads_csv(tmp_path: Path) -> Path:
 def test_all_capabilities_registered():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("calibre", "goodreads", "highlighted", "kobo", "readwise"):
+    for command in ("calibre", "goodreads", "highlighted", "kobo", "readwise", "sync"):
         assert command in result.output
 
 
 def test_capabilities_count_matches_module_list():
     # One command name per registered capability module.
-    assert len(CAPABILITIES) == 6
+    assert len(CAPABILITIES) == 7
 
 
 def test_no_args_shows_help():
