@@ -80,6 +80,11 @@ subfolder and the importer finds it. (`calibre` is the exception: it defaults to
 ## Commands
 
 ```bash
+# One command to refresh the whole vault — runs every importer in order,
+# skipping any whose source is missing:
+books sync           # calibre → goodreads → kobo → highlighted → readwise
+books sync --dry-run # show which steps would run (and from where) without writing
+
 # With sources dropped into <vault>/.imports/<name>/ and a configured vault,
 # every importer runs with no arguments (output defaults to the configured vault):
 books calibre        # imports ~/Calibre Library
@@ -97,6 +102,17 @@ books kobo ~/KoboReader.sqlite --obsidian
 Output defaults to the configured vault; in kobo's CSV mode `--output` is a zip
 path that defaults to `./kobo_highlights.zip`.
 
+- **`sync`** — Master orchestrator: runs every importer in dependency order
+  (`calibre` → `goodreads` → `kobo` → `highlighted` → `readwise`) using each
+  command's default options, so one command refreshes the whole vault. The
+  note-creating importers run first to establish book identity; the highlight
+  enrichers follow and only fill existing notes. Each step is **skipped when its
+  source is absent** (calibre: `~/Calibre Library` exists; goodreads/highlighted/
+  readwise: a `*.csv` in the matching `.imports/<name>` folder; kobo: a mounted
+  device or a `*.sqlite` in `.imports/kobo`), and a step that **fails is reported
+  but never stops the others**. Covers are out of scope — run `covers` separately.
+  `--output` overrides the vault; `--dry-run` prints the detection plan without
+  writing. A colored per-step and summary report is printed at the end.
 - **`calibre`** — Convert a Calibre library into an Obsidian markdown
   vault: copies covers into `Covers/`, extracts `.opf` metadata into YAML
   properties, and links authors/topics for a graph-friendly vault. `--library`
