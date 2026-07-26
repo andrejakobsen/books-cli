@@ -68,3 +68,12 @@ def test_resolve_vault_uses_config_when_output_none(tmp_path, monkeypatch):
     cfg_file.write_text('obsidian_path = "/data/Obs"\nvault = "History"\n')
     monkeypatch.setattr(config, "config_path", lambda: cfg_file)
     assert config.resolve_vault(None) == Path("/data/Obs/History")
+
+
+def test_importers_use_config_default(monkeypatch, tmp_path):
+    """resolve_vault(None) is the single source every importer relies on."""
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('obsidian_path = "/vaults"\nvault = "History"\n')
+    monkeypatch.setattr(config, "config_path", lambda: cfg_file)
+    from booktools import config as cfg_mod
+    assert cfg_mod.resolve_vault(None) == Path("/vaults/History")

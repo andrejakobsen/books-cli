@@ -20,7 +20,7 @@ from pathlib import Path
 
 import typer
 
-from booktools import resolve_path
+from booktools import config, resolve_path
 from booktools.obsidian import (
     BOOK_PROPERTY_ORDER,
     BookRef,
@@ -237,10 +237,11 @@ def goodreads_to_obsidian(
         "--csv", "-c",
         help="Path to the Goodreads library CSV export. Relative paths resolve against the current directory.",
     ),
-    output: Path = typer.Option(
-        Path("Obsidian"),
+    output: Path | None = typer.Option(
+        None,
         "--output", "-o",
-        help="Output Obsidian vault. Relative paths resolve against the current directory.",
+        help="Output Obsidian vault. Defaults to the vault from your config file "
+             "(~/.config/booktools/config.toml). Relative paths resolve against the current directory.",
     ),
     shelf: str = typer.Option(
         DEFAULT_SHELVES,
@@ -259,7 +260,7 @@ def goodreads_to_obsidian(
     ISBN, then by a strict Author/Title comparison.
     """
     csv = resolve_path(csv, Path.cwd())
-    output = resolve_path(output, Path.cwd())
+    output = config.resolve_vault(output)
 
     if not csv.is_file():
         raise typer.BadParameter(f"CSV not found: {csv}", param_hint="--csv")

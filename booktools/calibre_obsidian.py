@@ -17,7 +17,7 @@ from xml.etree import ElementTree as ET
 
 import typer
 
-from booktools import resolve_path
+from booktools import config, resolve_path
 from booktools.obsidian import (
     BookRef,
     VaultIndex,
@@ -275,10 +275,11 @@ def calibre_to_obsidian(
         "--library", "-l",
         help="Path to the Calibre library. Relative paths resolve against your home directory.",
     ),
-    output: Path = typer.Option(
-        Path("Obsidian"),
+    output: Path | None = typer.Option(
+        None,
         "--output", "-o",
-        help="Output Obsidian vault. Relative paths resolve against the current directory.",
+        help="Output Obsidian vault. Defaults to the vault from your config file "
+             "(~/.config/booktools/config.toml). Relative paths resolve against the current directory.",
     ),
 ) -> None:
     """Convert a Calibre library into an Obsidian markdown vault.
@@ -296,7 +297,7 @@ def calibre_to_obsidian(
     overwrites notes it did not create or existing note bodies.
     """
     library = resolve_path(library, Path.home())
-    output = resolve_path(output, Path.cwd())
+    output = config.resolve_vault(output)
 
     if not library.is_dir():
         raise typer.BadParameter(f"library not found: {library}", param_hint="--library")
