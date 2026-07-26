@@ -48,6 +48,7 @@ class GoodreadsBook:
     publisher: str | None = None
     pages: str | None = None
     published: str | None = None      # year only
+    binding: str | None = None        # Goodreads "Binding" (Hardcover, Kindle Edition, ...)
     date_read: str | None = None
     date_added: str | None = None
     status: str | None = None         # reading status (Exclusive Shelf)
@@ -85,6 +86,25 @@ def _norm_status(shelf: str) -> str | None:
     return "reading" if shelf == "currently-reading" else shelf
 
 
+# Goodreads "Binding" values grouped into our canonical `format` property.
+_EBOOK_BINDINGS = {"kindle edition", "ebook", "nook", "e-book"}
+_AUDIO_BINDINGS = {"audiobook", "audio cd", "audible audio"}
+
+
+def _norm_format(binding: str | None) -> str:
+    """Map a Goodreads binding to a canonical format; default to physical.
+
+    Goodreads exports are predominantly physical editions, so an unknown or
+    missing binding falls back to "physical".
+    """
+    b = (binding or "").strip().lower()
+    if b in _EBOOK_BINDINGS:
+        return "ebook"
+    if b in _AUDIO_BINDINGS:
+        return "audiobook"
+    return "physical"
+
+
 def parse_csv(path: Path) -> list[GoodreadsBook]:
     books: list[GoodreadsBook] = []
     with open(path, newline="", encoding="utf-8") as fh:
@@ -104,6 +124,7 @@ def parse_csv(path: Path) -> list[GoodreadsBook]:
                 publisher=(row.get("Publisher") or "").strip() or None,
                 pages=(row.get("Number of Pages") or "").strip() or None,
                 published=(row.get("Year Published") or "").strip() or None,
+                binding=(row.get("Binding") or "").strip() or None,
                 date_read=_norm_date(row.get("Date Read", "")),
                 date_added=_norm_date(row.get("Date Added", "")),
                 status=_norm_status(row.get("Exclusive Shelf", "")),
@@ -165,6 +186,9 @@ def _goodreads_updates(book: GoodreadsBook) -> dict[str, str]:
         u["publisher"] = yaml_quote(book.publisher)
     if book.published:
         u["published"] = book.published
+    # Derived from Goodreads' Binding; the "never overwrite" merge rule keeps an
+    # existing value (e.g. a Calibre-set "ebook") intact when merging.
+    u["format"] = _norm_format(book.binding)
     if book.pages:
         u["pages"] = book.pages
     if book.status:
@@ -280,7 +304,7 @@ def goodreads_to_obsidian(
 
 def register(app: typer.Typer) -> None:
     """Register this capability's command(s) on the shared Typer app."""
-    app.command("goodreads-to-obsidian")(goodreads_to_obsidian)
+    app.command("goodreads")(goodreads_to_obsidian)
 
 
 def main() -> None:

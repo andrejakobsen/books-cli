@@ -30,6 +30,7 @@ BOOK_PROPERTY_ORDER = (
     "publisher",
     "published",
     "language",
+    "format",
     "pages",
     "status",
     "shelves",

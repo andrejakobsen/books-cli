@@ -59,19 +59,20 @@ uv run books --help     # run via uv without a global install
 ## Commands
 
 ```bash
-books calibre-to-obsidian --library ~/"Calibre Library" --output ~/Obsidian
-books goodreads-to-obsidian --csv ~/goodreads_library_export.csv --output ~/Obsidian
-books kobo-export ~/KoboReader.sqlite -o kobo_highlights.zip
+books calibre --library ~/"Calibre Library" --output ~/Obsidian
+books goodreads --csv ~/goodreads_library_export.csv --output ~/Obsidian
+books kobo ~/KoboReader.sqlite --csv -o kobo_highlights.zip
 ```
 
-- **`calibre-to-obsidian`** — Convert a Calibre library into an Obsidian markdown
+- **`calibre`** — Convert a Calibre library into an Obsidian markdown
   vault: copies covers, extracts `.opf` metadata into YAML properties, and links
   authors/genres for a graph-friendly vault.
-- **`goodreads-to-obsidian`** — Convert a Goodreads CSV export into Obsidian book
+- **`goodreads`** — Convert a Goodreads CSV export into Obsidian book
   notes (read books by default; `--shelf all` for everything). Merges with
   existing Calibre notes without overwriting, and extracts each review into a
   separate `<Title> - Review.md`.
-- **`kobo-export`** — Export Kobo highlights & notes to per-book CSVs in a zip.
+- **`kobo`** — Export Kobo highlights & notes to per-book CSVs in a zip (`--csv`,
+  the default output mode; an Obsidian mode will be added later).
 
 The standalone scripts in `scripts/` still work too:
 

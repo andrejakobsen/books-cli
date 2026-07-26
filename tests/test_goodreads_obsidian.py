@@ -77,6 +77,40 @@ def test_convert_creates_only_read_books(tmp_path):
     assert (out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md").exists()
 
 
+def test_norm_format_maps_bindings():
+    assert gr._norm_format("Paperback") == "physical"
+    assert gr._norm_format("Hardcover") == "physical"
+    assert gr._norm_format("Mass Market Paperback") == "physical"
+    assert gr._norm_format("Kindle Edition") == "ebook"
+    assert gr._norm_format("ebook") == "ebook"
+    assert gr._norm_format("Audiobook") == "audiobook"
+    assert gr._norm_format(None) == "physical"   # unknown/missing -> physical
+    assert gr._norm_format("") == "physical"
+
+
+def test_convert_sets_format_from_binding(tmp_path):
+    out = tmp_path / "Obsidian"
+    gr.convert(write_csv(tmp_path), out)  # Napoleon is a Paperback
+    note = (out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md").read_text()
+    assert "format: physical" in note
+
+
+def test_merge_preserves_existing_ebook_format(tmp_path):
+    out = tmp_path / "Obsidian"
+    book_dir = out / "Andrew Roberts" / "Napoleon_ A Life"
+    book_dir.mkdir(parents=True)
+    note = book_dir / "Napoleon_ A Life.md"
+    # Pre-existing note (e.g. from Calibre) already marked as an ebook.
+    note.write_text(
+        '---\ntype: book\ntitle: "Napoleon: A Life"\nisbn: "9780141032016"\n'
+        'format: ebook\n---\n\nBody.\n',
+        encoding="utf-8",
+    )
+    gr.convert(write_csv(tmp_path), out)  # Goodreads says Paperback -> physical
+    assert "format: ebook" in note.read_text()      # not overwritten
+    assert "format: physical" not in note.read_text()
+
+
 def test_convert_shelf_all_imports_everything(tmp_path):
     out = tmp_path / "Obsidian"
     stats = gr.convert(write_csv(tmp_path), out, shelf="all")

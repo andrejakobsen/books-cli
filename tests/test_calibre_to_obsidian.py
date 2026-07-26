@@ -75,6 +75,7 @@ def test_full_conversion(tmp_path):
     assert 'publisher: "Penguin"' in note
     assert "published: 2014-11-03" in note
     assert "language: eng" in note
+    assert "format: ebook" in note  # Calibre books default to ebook
     assert "rating: 4" in note  # 8/2
     assert 'isbn: "9780698176287"' in note
     assert 'google: "rjVBAwAAQBAJ"' in note

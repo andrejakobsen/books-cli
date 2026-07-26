@@ -173,6 +173,7 @@ def _calibre_updates(meta: BookMetadata, has_cover: bool) -> dict[str, str]:
     u["publisher"] = yaml_quote(meta.publisher) if meta.publisher else ""
     u["published"] = meta.published or ""
     u["language"] = meta.language or ""
+    u["format"] = "ebook"  # everything in a Calibre library is an ebook
     u["pages"] = ""
     u["status"] = ""
     u["shelves"] = ""
@@ -307,7 +308,7 @@ def calibre_to_obsidian(
 
 def register(app: typer.Typer) -> None:
     """Register this capability's command(s) on the shared Typer app."""
-    app.command("calibre-to-obsidian")(calibre_to_obsidian)
+    app.command("calibre")(calibre_to_obsidian)
 
 
 def main() -> None:
