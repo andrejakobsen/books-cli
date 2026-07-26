@@ -58,3 +58,64 @@ def test_find_missing_selects_blank_cover_book_notes(tmp_path):
 
 def test_find_missing_no_books_dir_returns_empty(tmp_path):
     assert covers.find_missing(tmp_path) == []
+
+
+GOOGLE_VOLUME = {
+    "items": [
+        {
+            "volumeInfo": {
+                "title": "The Deluge",
+                "authors": ["Adam Tooze"],
+                "imageLinks": {
+                    "smallThumbnail": "http://books.google.com/x?zoom=5&edge=curl",
+                    "thumbnail": "http://books.google.com/x?zoom=1&edge=curl",
+                    "large": "http://books.google.com/x?zoom=3",
+                },
+            }
+        }
+    ]
+}
+
+
+def test_google_books_prefers_largest_and_upgrades_url():
+    book = covers.MissingBook(
+        note_path=None, title="The Deluge", authors=["Adam Tooze"],
+        isbn=None, amazon=None)
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return GOOGLE_VOLUME
+
+    cands = covers.google_books_candidates(book, fake_fetch)
+    assert len(cands) == 1
+    c = cands[0]
+    assert c.source == "google"
+    assert c.fmt is None
+    # 'large' beats the thumbnails
+    assert c.image_url.startswith("https://")   # http -> https
+    assert "zoom=3" in c.image_url
+    # title/author query when no ISBN
+    assert "intitle" in captured["url"]
+    assert "inauthor" in captured["url"]
+
+
+def test_google_books_uses_isbn_query_when_present():
+    book = covers.MissingBook(
+        note_path=None, title="X", authors=[], isbn="9780141032016", amazon=None)
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return {"items": []}
+
+    covers.google_books_candidates(book, fake_fetch)
+    assert "isbn:9780141032016" in captured["url"]
+
+
+def test_google_books_no_images_returns_empty():
+    book = covers.MissingBook(
+        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+    cands = covers.google_books_candidates(
+        book, lambda url: {"items": [{"volumeInfo": {"title": "X"}}]})
+    assert cands == []

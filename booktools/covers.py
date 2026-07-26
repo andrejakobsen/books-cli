@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 from booktools.obsidian import (
     BOOKS_DIRNAME,
@@ -70,5 +71,54 @@ def find_missing(vault: Path) -> list[MissingBook]:
             authors=extract_wikilinks(fm.get("authors", "")),
             isbn=(unquote(fm.get("isbn", "")).strip() or None),
             amazon=(unquote(fm.get("amazon", "")).strip() or None),
+        ))
+    return out
+
+
+GOOGLE_API = "https://www.googleapis.com/books/v1/volumes"
+
+# imageLinks keys from best to worst.
+_GOOGLE_IMAGE_KEYS = (
+    "extraLarge", "large", "medium", "small", "thumbnail", "smallThumbnail",
+)
+
+
+def _label(title: str, authors: list[str]) -> str:
+    return f"{title} — {authors[0]}" if authors else title
+
+
+def _upgrade_google_url(url: str) -> str:
+    """Prefer https and a larger zoom; drop the page-curl overlay."""
+    url = url.replace("http://", "https://")
+    url = url.replace("&edge=curl", "").replace("edge=curl&", "").replace("edge=curl", "")
+    return url
+
+
+def google_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
+    """Query Google Books; return one candidate per volume that has an image."""
+    if book.isbn:
+        q = f"isbn:{book.isbn}"
+    else:
+        parts = [f'intitle:{book.title}']
+        if book.authors:
+            parts.append(f"inauthor:{book.authors[0]}")
+        q = " ".join(parts)
+    url = f"{GOOGLE_API}?q={quote(q, safe=':')}&maxResults=5"
+    try:
+        data = fetch_json(url)
+    except Exception:
+        return []
+    out: list[Candidate] = []
+    for item in data.get("items", []):
+        info = item.get("volumeInfo", {})
+        links = info.get("imageLinks", {})
+        chosen = next((links[k] for k in _GOOGLE_IMAGE_KEYS if links.get(k)), None)
+        if not chosen:
+            continue
+        out.append(Candidate(
+            source="google",
+            label=_label(info.get("title", book.title), info.get("authors", [])),
+            image_url=_upgrade_google_url(chosen),
+            fmt=None,
         ))
     return out
