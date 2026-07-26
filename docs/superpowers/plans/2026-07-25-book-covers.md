@@ -1530,6 +1530,161 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
+## Task 14: Fix Open Library paperback preference on the title/author path
+
+**Why:** The title/author OL path requested editions inline via
+`search.json?...&fields=editions`, but the live API returns an empty
+`editions.docs` for that query shape — so the paperback-sorting branch never ran
+in production and paperback preference only worked on the ISBN path. The reliable
+way to get editions (with `physical_format` and `covers`) is the works-editions
+endpoint: `search.json` gives a work `key` (`/works/OL…W`), then
+`https://openlibrary.org/works/OL…W/editions.json` returns `entries` each with
+`physical_format` and a `covers` list. The old unit test masked the gap by using
+hand-crafted `editions.docs` that don't match the real API.
+
+**Files:**
+- Modify: `booktools/covers.py`
+- Test: `tests/test_covers.py`
+
+- [ ] **Step 1: Replace the misleading test and add coverage**
+
+Replace the existing `test_openlibrary_title_author_paperback_first` and the
+`OL_SEARCH` fixture with realistic ones, and add a fallback test. Find the current
+`OL_SEARCH = {...}` fixture and `test_openlibrary_title_author_paperback_first`
+function in `tests/test_covers.py` and replace BOTH with:
+
+```python
+# Open Library title/author path: search.json returns a work key; then
+# /works/<id>/editions.json returns editions with physical_format + covers.
+OL_SEARCH = {"docs": [{"key": "/works/OL1W", "cover_i": 999}]}
+OL_EDITIONS = {"entries": [
+    {"physical_format": "Hardcover", "covers": [111]},
+    {"physical_format": "Paperback", "covers": [222]},
+]}
+
+
+def test_openlibrary_title_author_paperback_first():
+    book = covers.MissingBook(
+        note_path=None, title="Napoleon", authors=["Andrew Roberts"],
+        isbn=None, amazon=None)
+    urls = []
+
+    def fake_fetch(url):
+        urls.append(url)
+        return OL_EDITIONS if "editions.json" in url else OL_SEARCH
+
+    cands = covers.openlibrary_candidates(book, fake_fetch)
+    assert cands, "expected at least one candidate"
+    assert all(c.source == "openlibrary" for c in cands)
+    # paperback edition ranked ahead of hardcover
+    fmts = [c.fmt for c in cands]
+    assert fmts.index("paperback") < fmts.index("hardcover")
+    pb = next(c for c in cands if c.fmt == "paperback")
+    assert "222-L.jpg" in pb.image_url
+    # search queried by title/author, then editions fetched for the work key
+    assert any("title=Napoleon" in u for u in urls)
+    assert any("/works/OL1W/editions.json" in u for u in urls)
+
+
+def test_openlibrary_falls_back_to_search_cover_when_no_editions():
+    book = covers.MissingBook(
+        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+
+    def fake_fetch(url):
+        if "editions.json" in url:
+            return {"entries": []}
+        return {"docs": [{"key": "/works/OL9W", "cover_i": 555}]}
+
+    cands = covers.openlibrary_candidates(book, fake_fetch)
+    assert cands and "555-L.jpg" in cands[0].image_url
+    assert cands[0].fmt is None
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+Run: `uv run pytest tests/test_covers.py -k openlibrary -v`
+Expected: `test_openlibrary_title_author_paperback_first` FAILS (old code fetches
+`fields=editions` and never hits `/works/.../editions.json`); the fallback test
+may also fail.
+
+- [ ] **Step 3: Rewrite the title/author branch of `openlibrary_candidates`**
+
+Add the editions-endpoint constant near the other OL constants:
+
+```python
+OL_WORK_EDITIONS = "https://openlibrary.org{work}/editions.json?limit=50"
+```
+
+Leave the ISBN path unchanged. Replace the title/author search block (the part
+after the `if book.isbn:` branch) with this version, which fetches the best work's
+editions for format-aware, paperback-first candidates and falls back to the
+work-level `cover_i` when no edition cover is found:
+
+```python
+    params = f"title={quote(book.title)}"
+    if book.authors:
+        params += f"&author={quote(book.authors[0])}"
+    url = f"{OL_SEARCH_API}?{params}&fields=key,cover_i&limit=5"
+    try:
+        data = fetch_json(url) or {}
+    except Exception:
+        return []
+    docs = data.get("docs", [])
+
+    # Expand the best-matching work's editions so we can prefer paperback where
+    # the format is known. Only the first work with editions is expanded (bounds
+    # the number of requests); other works fall back to their work-level cover.
+    for doc in docs:
+        work_key = doc.get("key")
+        if not work_key:
+            continue
+        try:
+            eds = fetch_json(OL_WORK_EDITIONS.format(work=work_key)) or {}
+        except Exception:
+            eds = {}
+        seen: set[int] = set()
+        for ed in eds.get("entries", []):
+            covers_list = ed.get("covers") or []
+            cid = next((c for c in covers_list if isinstance(c, int) and c > 0), None)
+            if cid is None or cid in seen:
+                continue
+            seen.add(cid)
+            out.append(Candidate(
+                source="openlibrary", label=label,
+                image_url=OL_COVER_ID.format(cid=cid),
+                fmt=_norm_fmt(ed.get("physical_format"))))
+        if out:
+            break
+
+    # Fallback: no edition covers found -> use work-level cover thumbnails.
+    if not out:
+        for doc in docs:
+            if doc.get("cover_i"):
+                out.append(Candidate(
+                    source="openlibrary", label=label,
+                    image_url=OL_COVER_ID.format(cid=doc["cover_i"]), fmt=None))
+    out.sort(key=lambda c: _fmt_rank(c.fmt))
+    return out
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+Run: `uv run pytest tests/test_covers.py -k openlibrary -v`
+Expected: PASS. Then run the whole file: `uv run pytest tests/test_covers.py -v`
+(the `gather_candidates` test still passes because its OL fetcher returns a doc
+with `cover_i`, so the fallback yields one OL candidate).
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add booktools/covers.py tests/test_covers.py
+git commit -m "fix(covers): real Open Library paperback preference via editions endpoint
+
+Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
+```
+
+---
+
 ## Final verification
 
 - [ ] **Run the whole suite:** `uv run pytest -q` → all green.

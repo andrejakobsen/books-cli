@@ -85,11 +85,16 @@ class Candidate:
   (Google Books does not report binding reliably).
 
 - `openlibrary_candidates(book, fetch_json) -> list[Candidate]`
-  ISBN path: `https://openlibrary.org/isbn/<isbn>.json`. Title/author path:
-  `https://openlibrary.org/search.json?title=…&author=…` (use `cover_i` /
-  `cover_edition_key`). Where edition `physical_format` is available, tag `fmt`
-  and **sort paperbacks first**. Cover URL:
-  `https://covers.openlibrary.org/b/id/<cover_id>-L.jpg` (or `/b/isbn/<isbn>-L.jpg`).
+  ISBN path: `https://openlibrary.org/isbn/<isbn>.json` (reads `physical_format`).
+  Title/author path: `https://openlibrary.org/search.json?title=…&author=…` yields
+  a work `key`, then `https://openlibrary.org/works/<id>/editions.json` returns
+  `entries` each with `physical_format` and a `covers` list. Editions with a cover
+  become candidates tagged with `fmt` and **sorted paperbacks first**; if no
+  edition cover is found, fall back to the work-level `cover_i` (`fmt=None`). Only
+  the first work with editions is expanded, to bound requests. Cover URL:
+  `https://covers.openlibrary.org/b/id/<cover_id>-L.jpg?default=false` (ISBN path
+  uses `/b/isbn/<isbn>-L.jpg?default=false`). The `?default=false` makes a missing
+  cover 404 instead of returning a blank 1×1 placeholder.
 
 - `amazon_candidates(book) -> list[Candidate]`
   Only when `book.amazon` is set. Construct
