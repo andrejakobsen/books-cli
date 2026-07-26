@@ -49,6 +49,15 @@ BOOK_PROPERTY_ORDER = (
 )
 
 
+# --- Vault layout -----------------------------------------------------------
+
+# Book notes live flat in vault/Books/; their heavy artifacts (cover, highlights,
+# review) live nested under vault/Exports/<Author>/<Title>/ and are referenced
+# from the flat note by vault-relative wikilink.
+BOOKS_DIRNAME = "Books"
+EXPORTS_DIRNAME = "Exports"
+
+
 # --- YAML / link formatting -------------------------------------------------
 
 def yaml_quote(value: str) -> str:
@@ -110,14 +119,54 @@ def write_stub(hub_dir: Path, name: str, note_type: str) -> None:
 def ensure_embed_section(note_text: str, heading: str, target: str) -> str:
     """Append a '## <heading>' section embedding *target* iff not already present.
 
-    Uses a relative Markdown embed (``![](target)``) so generic leaf filenames
-    (Highlights.md/Review.md) resolve against the note's own folder. The existing
-    body is otherwise untouched.
+    Uses an Obsidian wikilink embed (``![[target]]``) where *target* is a
+    vault-relative path (e.g. ``Exports/<Author>/<Title>/Highlights.md``). This
+    keeps the reference unambiguous even though leaf names (Highlights.md,
+    Review.md, cover.jpg) repeat across books. The existing body is otherwise
+    untouched.
     """
     if re.search(rf"(?m)^##\s+{re.escape(heading)}\s*$", note_text):
         return note_text
     sep = "" if note_text.endswith("\n") else "\n"
-    return f"{note_text}{sep}\n## {heading}\n![]({target})\n"
+    return f"{note_text}{sep}\n## {heading}\n![[{target}]]\n"
+
+
+def ensure_top_embed(note_text: str, embed: str) -> str:
+    """Insert *embed* at the top of the note body iff not already present.
+
+    *embed* is a full embed line (e.g. ``![[Exports/.../cover.jpg]]``). The line
+    is placed immediately after the frontmatter block, above any existing body.
+    A no-op when the exact embed already appears anywhere in the note.
+    """
+    if embed in note_text:
+        return note_text
+    if not note_text.startswith("---"):
+        body = note_text.lstrip("\n")
+        return f"{embed}\n\n{body}" if body else f"{embed}\n"
+    fm_lines, body = _split_frontmatter(note_text)
+    front = "---\n" + "\n".join(fm_lines) + "\n---\n"
+    body = body.lstrip("\n")
+    return f"{front}\n{embed}\n\n{body}" if body else f"{front}\n{embed}\n"
+
+
+def embed_target(note_path: Path, leaf: Path) -> str:
+    """Vault-relative POSIX path for a wikilink embed/reference.
+
+    Book notes always live at ``vault/Books/<name>.md``, so the vault root is the
+    note's grandparent and *leaf* (under ``vault/Exports/...``) resolves cleanly.
+    """
+    vault = note_path.parents[1]
+    return leaf.relative_to(vault).as_posix()
+
+
+def cover_refs(note_path: Path, export_dir: Path) -> tuple[str, str]:
+    """Return (frontmatter_value, body_embed) wikilinks for a book's cover.
+
+    The frontmatter value is quoted for YAML; the body embed is a bare embed
+    line. Both point at ``<export_dir>/cover.jpg`` by vault-relative path.
+    """
+    target = embed_target(note_path, export_dir / "cover.jpg")
+    return yaml_quote(f"[[{target}]]"), f"![[{target}]]"
 
 
 def with_source(source: str, body: str) -> str:
@@ -233,13 +282,22 @@ class BookRef:
     isbn: str | None = None
 
 
+@dataclass
+class BookNote:
+    """Where a book's flat note and its Exports artifacts live in the vault."""
+    note_path: Path      # vault/Books/<name>.md
+    export_dir: Path     # vault/Exports/<Author>/<Title>/
+    created: bool        # True if the note was created by this call
+
+
 def build_index(vault: Path) -> tuple[dict[str, Path], dict[tuple, Path]]:
-    """Index existing book notes by normalized ISBN and (title, author)."""
+    """Index existing flat book notes by normalized ISBN and (title, author)."""
     by_isbn: dict[str, Path] = {}
     by_title_author: dict[tuple, Path] = {}
-    for md in vault.rglob("*.md"):
-        if md.parent.name in ("Authors", "Genres"):
-            continue
+    books_dir = vault / BOOKS_DIRNAME
+    if not books_dir.is_dir():
+        return by_isbn, by_title_author
+    for md in sorted(books_dir.glob("*.md")):
         try:
             text = md.read_text(encoding="utf-8")
         except OSError:
@@ -258,11 +316,21 @@ def build_index(vault: Path) -> tuple[dict[str, Path], dict[tuple, Path]]:
 
 
 class VaultIndex:
-    """Match books to existing notes, creating stub notes when absent."""
+    """The single layout authority: match books to flat notes, place exports.
+
+    Owns where a book note lives (flat, in ``Books/``), where its heavy artifacts
+    live (``Exports/<Author>/<Title>/``), and how flat filenames are
+    disambiguated when two different books share a title.
+    """
 
     def __init__(self, vault: Path) -> None:
         self.vault = vault
         self.by_isbn, self.by_ta = build_index(vault)
+        books_dir = vault / BOOKS_DIRNAME
+        self.used_stems: set[str] = (
+            {p.stem.lower() for p in books_dir.glob("*.md")}
+            if books_dir.is_dir() else set()
+        )
 
     def _match(self, ref: BookRef) -> Path | None:
         isbn = norm_isbn(ref.isbn)
@@ -282,42 +350,61 @@ class VaultIndex:
             self.by_ta.setdefault(
                 (norm_title(ref.title), author_key(ref.authors[0])), note)
 
-    def find_or_create(self, ref: BookRef) -> tuple[Path, bool]:
-        """Return (note_path, created). Creates a stub note+folder when absent."""
+    def export_dir(self, ref: BookRef) -> Path:
+        """The Exports/<Author>/<Title>/ dir for *ref* (deterministic from ref)."""
+        author = ref.authors[0] if ref.authors else "Unknown Author"
+        return (self.vault / EXPORTS_DIRNAME
+                / safe_filename(author) / safe_filename(ref.title))
+
+    def _new_note_path(self, ref: BookRef) -> Path:
+        """Pick a flat, collision-free note filename for a brand-new book."""
+        base = safe_filename(ref.title)
+        stem = base
+        if stem.lower() in self.used_stems:
+            author = ref.authors[0] if ref.authors else "Unknown Author"
+            stem = safe_filename(f"{ref.title} ({author})")
+            n = 2
+            while stem.lower() in self.used_stems:
+                stem = safe_filename(f"{ref.title} ({author}) ({n})")
+                n += 1
+        self.used_stems.add(stem.lower())
+        return self.vault / BOOKS_DIRNAME / f"{stem}.md"
+
+    def find_or_create(self, ref: BookRef) -> BookNote:
+        """Return a BookNote, creating a flat stub note when the book is new."""
         note = self._match(ref)
         created = note is None
         if created:
-            author = ref.authors[0] if ref.authors else "Unknown Author"
-            folder = self.vault / safe_filename(author) / safe_filename(ref.title)
-            folder.mkdir(parents=True, exist_ok=True)
-            note = folder / f"{safe_filename(ref.title)}.md"
+            note = self._new_note_path(ref)
+            note.parent.mkdir(parents=True, exist_ok=True)
             stub = update_frontmatter("---\ntype: book\n---\n", {
                 "title": yaml_quote(ref.title) if ref.title else "",
                 "authors": link_list(ref.authors) if ref.authors else "",
             })
             note.write_text(stub, encoding="utf-8")
         self._register(ref, note)
-        return note, created
+        return BookNote(note, self.export_dir(ref), created)
 
 
 def write_leaf_with_embed(
-    note_path: Path, leaf_name: str, content: str, heading: str,
+    note_path: Path, export_dir: Path, leaf_name: str, content: str, heading: str,
     overwrite: bool = True,
 ) -> bool:
-    """Write ``<folder>/<leaf_name>`` and ensure a '## heading' embed in the note.
+    """Write ``<export_dir>/<leaf_name>`` and ensure a '## heading' embed in note.
 
-    With ``overwrite=False`` an existing leaf is left untouched (used for reviews);
-    the embed section is still ensured either way. Returns True if the leaf was
+    The embed points at the leaf by vault-relative wikilink. With
+    ``overwrite=False`` an existing leaf is left untouched (used for reviews); the
+    embed section is still ensured either way. Returns True if the leaf was
     written.
     """
-    leaf = note_path.parent / leaf_name
+    leaf = export_dir / leaf_name
     wrote = False
     if overwrite or not leaf.exists():
         leaf.parent.mkdir(parents=True, exist_ok=True)
         leaf.write_text(content, encoding="utf-8")
         wrote = True
     text = note_path.read_text(encoding="utf-8")
-    updated = ensure_embed_section(text, heading, leaf_name)
+    updated = ensure_embed_section(text, heading, embed_target(note_path, leaf))
     if updated != text:
         note_path.write_text(updated, encoding="utf-8")
     return wrote

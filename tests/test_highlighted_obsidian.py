@@ -61,12 +61,12 @@ def test_convert_writes_highlights_and_embed(tmp_path):
     out = tmp_path / "Obsidian"
     stats = hi.convert(write_csv(tmp_path), out)
     assert stats["books"] == 1 and stats["entries"] == 2
-    note = out / "Stephen Kotkin" / "Stalin" / "Stalin.md"
+    note = out / "Books" / "Stalin.md"
     assert note.exists()
     note_text = note.read_text()
-    assert "![](Highlights.md)" in note_text
+    assert "![[Exports/Stephen Kotkin/Stalin/Highlights.md]]" in note_text
     assert 'isbn: "9781594203794"' in note_text     # ISBN persisted for matching
-    highlights_md = (note.parent / "Highlights.md").read_text()
+    highlights_md = (out / "Exports" / "Stephen Kotkin" / "Stalin" / "Highlights.md").read_text()
     assert "source: highlighted" in highlights_md          # provenance frontmatter
     assert "> [!quote]+ p. 4" in highlights_md
     assert "^p45-49" in highlights_md
@@ -76,7 +76,7 @@ def test_convert_writes_highlights_and_embed(tmp_path):
 
 def test_convert_merges_into_existing_note_by_isbn(tmp_path):
     out = tmp_path / "Obsidian"
-    book_dir = out / "Stephen Kotkin" / "Stalin"
+    book_dir = out / "Books"
     book_dir.mkdir(parents=True)
     note = book_dir / "Stalin.md"
     note.write_text(
@@ -87,7 +87,7 @@ def test_convert_merges_into_existing_note_by_isbn(tmp_path):
     updated = note.read_text()
     assert "status: read" in updated       # existing value untouched
     assert "My body." in updated           # body preserved
-    assert "![](Highlights.md)" in updated
+    assert "![[Exports/Stephen Kotkin/Stalin/Highlights.md]]" in updated
 
 
 def test_convert_idempotent(tmp_path):

@@ -9,7 +9,7 @@ notes, writes a CSV containing:
     Date Created
 
 All CSVs are bundled into a single compressed .zip archive. With --obsidian the
-highlights are written into an Obsidian vault (folder-per-book) instead.
+highlights are written into an Obsidian vault (flat note + Exports/) instead.
 
 Usage:
     python kobo_export.py                       # uses ~/KoboReader.sqlite
@@ -155,7 +155,7 @@ def row_to_highlight(row: sqlite3.Row) -> Highlight:
 
 
 def export_obsidian(db_path: Path, vault: Path) -> dict:
-    """Export Kobo highlights into an Obsidian vault (folder-per-book).
+    """Export Kobo highlights into an Obsidian vault (flat note + Exports/).
 
     Writes a per-book Highlights.md and embeds it in the canonical note. Returns
     {"books": int, "entries": int}. Raises FileNotFoundError if the db is missing.
@@ -186,10 +186,10 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
         isbn = (book_rows[0]["isbn"] or "").strip() or None
         ref = BookRef(title=title, authors=authors, isbn=isbn)
 
-        note_path, _ = index.find_or_create(ref)
+        dest = index.find_or_create(ref)
         highlights = [row_to_highlight(r) for r in book_rows]
         write_leaf_with_embed(
-            note_path, "Highlights.md",
+            dest.note_path, dest.export_dir, "Highlights.md",
             with_source("kobo", render_highlights(highlights)), "Highlights")
         for a in authors:
             write_stub(authors_dir, a, "author")
@@ -288,7 +288,7 @@ def kobo_export(
     ),
     obsidian: bool = typer.Option(
         False, "--obsidian",
-        help="Write highlights into an Obsidian vault (folder-per-book) instead "
+        help="Write highlights into an Obsidian vault (flat note + Exports/) instead "
              "of CSV/zip. In this mode --output is the vault directory "
              "[default: ./Obsidian].",
     ),
@@ -307,7 +307,7 @@ def kobo_export(
     Note, Location in Chapter (%), KoboSpan Block (N), KoboSpan Segment (M),
     Date Created. Rows are ordered by book reading order.
 
-    With --obsidian, writes highlights into an Obsidian vault (folder-per-book)
+    With --obsidian, writes highlights into an Obsidian vault (flat note + Exports/)
     instead; --output is then the vault directory (default: ./Obsidian).
     """
     db_path = resolve_path(input_path or db or Path("KoboReader.sqlite"), Path.cwd())

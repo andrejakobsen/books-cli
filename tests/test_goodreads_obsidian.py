@@ -73,8 +73,8 @@ def test_convert_creates_only_read_books(tmp_path):
     # Only the "read" book (Napoleon) is created by default.
     assert stats["created"] == 1
     assert stats["skipped"] == 2
-    # safe_filename turns the illegal ':' into '_'.
-    assert (out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md").exists()
+    # safe_filename turns the illegal ':' into '_'; notes are flat under Books/.
+    assert (out / "Books" / "Napoleon_ A Life.md").exists()
 
 
 def test_norm_format_maps_bindings():
@@ -91,13 +91,13 @@ def test_norm_format_maps_bindings():
 def test_convert_sets_format_from_binding(tmp_path):
     out = tmp_path / "Obsidian"
     gr.convert(write_csv(tmp_path), out)  # Napoleon is a Paperback
-    note = (out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md").read_text()
+    note = (out / "Books" / "Napoleon_ A Life.md").read_text()
     assert "format: physical" in note
 
 
 def test_merge_preserves_existing_ebook_format(tmp_path):
     out = tmp_path / "Obsidian"
-    book_dir = out / "Andrew Roberts" / "Napoleon_ A Life"
+    book_dir = out / "Books"
     book_dir.mkdir(parents=True)
     note = book_dir / "Napoleon_ A Life.md"
     # Pre-existing note (e.g. from Calibre) already marked as an ebook.
@@ -125,17 +125,18 @@ def test_convert_writes_review_file(tmp_path):
     text = reviews[0].read_text()
     assert "source: goodreads" in text            # provenance frontmatter
     assert "Great book." in text and "Loved it." in text
-    # The book note embeds the review.
-    note = out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md"
+    # The review lives under Exports/ and the flat note embeds it.
+    assert reviews[0] == out / "Exports" / "Andrew Roberts" / "Napoleon_ A Life" / "Review.md"
+    note = out / "Books" / "Napoleon_ A Life.md"
     note_text = note.read_text()
-    assert "![](Review.md)" in note_text
+    assert "![[Exports/Andrew Roberts/Napoleon_ A Life/Review.md]]" in note_text
     assert "source: goodreads" in note_text       # book note stamped
 
 
 def test_convert_merges_into_existing_note_by_isbn(tmp_path):
     out = tmp_path / "Obsidian"
     # Pre-create a note as if from Calibre: has title, empty status/pages.
-    book_dir = out / "Andrew Roberts" / "Napoleon_ A Life"
+    book_dir = out / "Books"
     book_dir.mkdir(parents=True)
     note = book_dir / "Napoleon_ A Life.md"
     note.write_text(
@@ -154,7 +155,7 @@ def test_convert_merges_into_existing_note_by_isbn(tmp_path):
 
 def test_convert_merges_by_strict_title_author(tmp_path):
     out = tmp_path / "Obsidian"
-    book_dir = out / "Andrew Roberts" / "Napoleon A Life"
+    book_dir = out / "Books"
     book_dir.mkdir(parents=True)
     note = book_dir / "Napoleon A Life.md"
     # No ISBN -> must match on normalized title + author.

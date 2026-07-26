@@ -57,16 +57,16 @@ def test_export_obsidian_writes_highlights_and_embed(tmp_path):
     stats = ke.export_obsidian(db, vault)
     assert stats["books"] == 1 and stats["entries"] == 2
 
-    folder = vault / "F. Scott Fitzgerald" / "The Great Gatsby"
-    highlights = (folder / "Highlights.md").read_text()
+    export_dir = vault / "Exports" / "F. Scott Fitzgerald" / "The Great Gatsby"
+    highlights = (export_dir / "Highlights.md").read_text()
     assert "source: kobo" in highlights          # provenance frontmatter
     assert "> [!quote]+ ch. 2 · 42%" in highlights
     assert "^ch2-b17-5" in highlights
     assert "> [!note]-" in highlights          # first highlight has an annotation
     assert highlights.count("[!note]") == 1    # second has none
 
-    note = (folder / "The Great Gatsby.md").read_text()
-    assert "![](Highlights.md)" in note
+    note = (vault / "Books" / "The Great Gatsby.md").read_text()
+    assert "![[Exports/F. Scott Fitzgerald/The Great Gatsby/Highlights.md]]" in note
 
 
 def test_export_obsidian_regenerates_highlights_wholesale(tmp_path):
@@ -74,7 +74,7 @@ def test_export_obsidian_regenerates_highlights_wholesale(tmp_path):
     _make_db(db)
     vault = tmp_path / "Obsidian"
     ke.export_obsidian(db, vault)
-    note_path = vault / "F. Scott Fitzgerald" / "The Great Gatsby" / "The Great Gatsby.md"
+    note_path = vault / "Books" / "The Great Gatsby.md"
     # Simulate a hand edit to the book note body; it must survive re-export.
     note_path.write_text(note_path.read_text() + "\nMy own paragraph.\n", encoding="utf-8")
     ke.export_obsidian(db, vault)

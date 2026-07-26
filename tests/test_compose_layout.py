@@ -1,0 +1,106 @@
+"""Integration test: multiple importers compose into one flat note + Exports.
+
+The same book (matched by ISBN) is imported from Calibre (cover + description),
+Goodreads (review), and Highlighted (highlights). The result must be a single
+flat note under Books/ that embeds all three artifacts from a shared
+Exports/<Author>/<Title>/ folder, in any import order.
+"""
+
+from pathlib import Path
+
+from booktools import calibre_obsidian as c2o
+from booktools import goodreads_obsidian as gr
+from booktools import highlighted_obsidian as hi
+
+ISBN13 = "9780141032016"
+
+OPF = f"""<?xml version='1.0' encoding='utf-8'?>
+<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
+    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
+        <dc:title>Napoleon: A Life</dc:title>
+        <dc:creator opf:role="aut">Andrew Roberts</dc:creator>
+        <dc:identifier opf:scheme="ISBN">{ISBN13}</dc:identifier>
+        <dc:description>&lt;p&gt;A great book.&lt;/p&gt;</dc:description>
+        <dc:subject>History</dc:subject>
+    </metadata>
+</package>
+"""
+
+GR_HEADER = (
+    "Book Id,Title,Author,Author l-f,Additional Authors,ISBN,ISBN13,My Rating,"
+    "Publisher,Binding,Number of Pages,Year Published,Original Publication Year,"
+    "Date Read,Date Added,Bookshelves,Bookshelves with positions,Exclusive Shelf,"
+    "My Review,Spoiler,Private Notes,Read Count,Owned Copies\n"
+)
+GR_ROW = (
+    '1,"Napoleon: A Life",Andrew Roberts,"Roberts, Andrew",,'
+    f'"=""0141032014""","=""{ISBN13}""",5.0,Penguin,Paperback,976,2015,2014,'
+    '2026/07/17,2026/05/04,history,history (#1),read,'
+    '"A stirring review.",,,1,0\n'
+)
+
+HI_HEADER = ("Highlight,Title,Author,ISBN,Collections,Reading Status,"
+             "Book Added Date,Location,Tags,Note,Date,Favorite\n")
+HI_ROW = (
+    f'"A memorable passage.",Napoleon: A Life,Andrew Roberts,{ISBN13},,Read,'
+    '2026-07-24,45,History,,2026-07-24 11:15:47,N\n'
+)
+
+
+def _calibre_library(tmp_path: Path) -> Path:
+    lib = tmp_path / "Calibre Library"
+    book = lib / "Andrew Roberts" / "Napoleon_ A Life (9)"
+    book.mkdir(parents=True)
+    (book / "metadata.opf").write_text(OPF, encoding="utf-8")
+    (book / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0fakejpeg")
+    return lib
+
+
+def _goodreads_csv(tmp_path: Path) -> Path:
+    p = tmp_path / "goodreads.csv"
+    p.write_text(GR_HEADER + GR_ROW, encoding="utf-8")
+    return p
+
+
+def _highlighted_csv(tmp_path: Path) -> Path:
+    p = tmp_path / "highlighted.csv"
+    p.write_text(HI_HEADER + HI_ROW, encoding="utf-8")
+    return p
+
+
+def _assert_composed(out: Path) -> None:
+    # Exactly one flat book note.
+    notes = list((out / "Books").glob("*.md"))
+    assert notes == [out / "Books" / "Napoleon_ A Life.md"]
+    note = notes[0].read_text()
+
+    export = "Exports/Andrew Roberts/Napoleon_ A Life"
+    # All three artifacts embedded from the shared Exports folder.
+    assert f'cover: "[[{export}/cover.jpg]]"' in note
+    assert f"![[{export}/cover.jpg]]" in note
+    assert "## Review" in note and f"![[{export}/Review.md]]" in note
+    assert "## Highlights" in note and f"![[{export}/Highlights.md]]" in note
+    # Calibre description survives inline.
+    assert "A great book." in note
+
+    # Artifacts exist on disk under Exports/.
+    base = out / "Exports" / "Andrew Roberts" / "Napoleon_ A Life"
+    assert (base / "cover.jpg").is_file()
+    assert "A stirring review." in (base / "Review.md").read_text()
+    assert "A memorable passage." in (base / "Highlights.md").read_text()
+
+
+def test_compose_calibre_then_goodreads_then_highlighted(tmp_path):
+    out = tmp_path / "Obsidian"
+    c2o.convert(_calibre_library(tmp_path), out)
+    gr.convert(_goodreads_csv(tmp_path), out)
+    hi.convert(_highlighted_csv(tmp_path), out)
+    _assert_composed(out)
+
+
+def test_compose_is_order_independent(tmp_path):
+    out = tmp_path / "Obsidian"
+    hi.convert(_highlighted_csv(tmp_path), out)
+    gr.convert(_goodreads_csv(tmp_path), out)
+    c2o.convert(_calibre_library(tmp_path), out)
+    _assert_composed(out)

@@ -3,9 +3,10 @@
 
 Highlighted captures highlights from *physical* books (OCR). This importer maps
 each CSV row into the shared source-agnostic Highlight model and writes a per-book
-"Highlights.md" embedded into the canonical note via "![](Highlights.md)". Books
-are matched to existing notes by ISBN, then by a strict Author/Title comparison,
-so highlights accumulate alongside any Calibre/Goodreads data without clobbering.
+"Highlights.md" under "Exports/<Author>/<Title>/", embedded into the flat note
+under a "## Highlights" heading. Books are matched to existing notes by ISBN, then
+by a strict Author/Title comparison, so highlights accumulate alongside any
+Calibre/Goodreads data without clobbering.
 
 CSV columns: Highlight, Title, Author, ISBN, Collections, Reading Status,
 Book Added Date, Location, Tags, Note, Date, Favorite. Location is a page number
@@ -81,10 +82,10 @@ def convert(csv_path: Path, output: Path) -> dict:
     for group in groups.values():
         authors = [group["author"]] if group["author"] else []
         ref = BookRef(title=group["title"], authors=authors, isbn=group["isbn"])
-        note_path, _ = index.find_or_create(ref)
+        dest = index.find_or_create(ref)
 
-        base = note_path.read_text(encoding="utf-8")
-        note_path.write_text(update_frontmatter(base, {
+        base = dest.note_path.read_text(encoding="utf-8")
+        dest.note_path.write_text(update_frontmatter(base, {
             "title": yaml_quote(group["title"]),
             "authors": link_list(authors) if authors else "",
             "isbn": yaml_quote(group["isbn"]) if group["isbn"] else "",
@@ -92,7 +93,7 @@ def convert(csv_path: Path, output: Path) -> dict:
 
         highlights = [row_to_highlight(r) for r in group["rows"]]
         write_leaf_with_embed(
-            note_path, "Highlights.md",
+            dest.note_path, dest.export_dir, "Highlights.md",
             with_source("highlighted", render_highlights(highlights)), "Highlights")
 
         for author in authors:
@@ -119,9 +120,10 @@ def highlighted_to_obsidian(
     """Convert a Highlighted CSV export into Obsidian book notes.
 
     Every highlight is imported (regardless of reading status). For each book a
-    'Highlights.md' is written into the book's folder and embedded into the note
-    via '![](Highlights.md)'; books are matched to existing notes by ISBN, then by
-    a strict Author/Title comparison. Existing notes are never overwritten.
+    'Highlights.md' is written into 'Exports/<Author>/<Title>/' and embedded into
+    the flat note under a '## Highlights' heading; books are matched to existing
+    notes by ISBN, then by a strict Author/Title comparison. Existing notes are
+    never overwritten.
     """
     csv = resolve_path(csv, Path.cwd())
     output = resolve_path(output, Path.cwd())

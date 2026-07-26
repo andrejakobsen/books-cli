@@ -19,11 +19,13 @@ import typer
 
 from booktools import resolve_path
 from booktools.obsidian import (
+    BookRef,
+    VaultIndex,
+    cover_refs,
+    ensure_top_embed,
     html_to_markdown,
     link_list,
-    sanitize_folder_name,
     update_frontmatter,
-    write_if_absent,  # noqa: F401  (kept for API compatibility)
     write_stub,
     yaml_quote,
 )
@@ -158,11 +160,13 @@ def parse_opf(opf_path: Path) -> BookMetadata:
 
 # --- Frontmatter / note construction ---------------------------------------
 
-def _calibre_updates(meta: BookMetadata, has_cover: bool) -> dict[str, str]:
+def _calibre_updates(meta: BookMetadata, cover_fm: str) -> dict[str, str]:
     """Map a BookMetadata to canonical property -> formatted YAML value.
 
-    Goodreads-only fields (pages/status/shelves/date_read) are emitted empty so
-    the Goodreads importer or manual editing can fill them later.
+    *cover_fm* is the pre-formatted ``cover:`` value (a vault-relative wikilink,
+    or "" when there is no cover). Goodreads-only fields (pages/status/shelves/
+    date_read) are emitted empty so the Goodreads importer or manual editing can
+    fill them later.
     """
     u: dict[str, str] = {}
     u["title"] = yaml_quote(meta.title) if meta.title else ""
@@ -190,30 +194,28 @@ def _calibre_updates(meta: BookMetadata, has_cover: bool) -> dict[str, str]:
     u["date_added"] = meta.date_added or ""
     u["date_read"] = ""
     u["source"] = "calibre"
-    u["cover"] = yaml_quote("[[cover.jpg]]") if has_cover else ""
+    u["cover"] = cover_fm
     return u
 
 
-def build_note(meta: BookMetadata, has_cover: bool, existing_text: str | None = None) -> str:
-    """Build (or merge into) a book note.
+def write_note(note_path: Path, meta: BookMetadata,
+               cover_fm: str, cover_embed: str) -> None:
+    """Merge Calibre metadata into the flat note.
 
-    When *existing_text* is given, only empty/absent frontmatter keys are filled
-    and the body is preserved. When it is None, a fresh note is created with the
-    cover embed and description body.
+    Frontmatter is always merged (never overwriting existing values). The cover
+    embed and description are placed at the top of the body (cover first), each
+    inserted only when absent so the result is idempotent and independent of
+    import order. Any other existing body content is left untouched.
     """
-    base = existing_text if existing_text is not None else "---\ntype: book\n---\n"
-    note = update_frontmatter(base, _calibre_updates(meta, has_cover))
-    if existing_text is not None:
-        return note  # merge: never touch the existing body
-
-    body: list[str] = []
-    if has_cover:
-        body += ["![[cover.jpg]]", ""]
+    note = update_frontmatter(note_path.read_text(encoding="utf-8"),
+                              _calibre_updates(meta, cover_fm))
+    # Insert description first, then the cover above it, so the final top-of-body
+    # order is: cover embed, then description.
     if meta.description:
-        body += [meta.description, ""]
-    if body:
-        note = note.rstrip("\n") + "\n\n" + "\n".join(body) + "\n"
-    return note
+        note = ensure_top_embed(note, meta.description)
+    if cover_embed:
+        note = ensure_top_embed(note, cover_embed)
+    note_path.write_text(note, encoding="utf-8")
 
 
 # --- Main conversion -------------------------------------------------------
@@ -221,6 +223,8 @@ def build_note(meta: BookMetadata, has_cover: bool, existing_text: str | None = 
 def convert(library: Path, output: Path) -> dict:
     stats = {"books": 0, "covers": 0, "skipped": 0, "authors": set(), "genres": set()}
 
+    output.mkdir(parents=True, exist_ok=True)
+    index = VaultIndex(output)
     authors_dir = output / "Authors"
     genres_dir = output / "Genres"
 
@@ -237,23 +241,22 @@ def convert(library: Path, output: Path) -> dict:
             print(f"WARN: could not parse {opf_path}: {exc}")
             stats["skipped"] += 1
             continue
+        if not meta.title:
+            stats["skipped"] += 1
+            continue
 
-        # Rebuild the relative folder path, stripping the (NN) suffix per segment.
-        rel_dir = book_src.relative_to(library)
-        clean_parts = [sanitize_folder_name(p) for p in rel_dir.parts]
-        book_out = output.joinpath(*clean_parts)
-        book_out.mkdir(parents=True, exist_ok=True)
+        book = index.find_or_create(
+            BookRef(title=meta.title, authors=meta.authors, isbn=meta.isbn))
 
         cover_src = book_src / "cover.jpg"
-        has_cover = cover_src.is_file()
-        if has_cover:
-            shutil.copy2(cover_src, book_out / "cover.jpg")
+        cover_fm = cover_embed = ""
+        if cover_src.is_file():
+            book.export_dir.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(cover_src, book.export_dir / "cover.jpg")
+            cover_fm, cover_embed = cover_refs(book.note_path, book.export_dir)
             stats["covers"] += 1
 
-        note_name = sanitize_folder_name(book_src.name)
-        note_path = book_out / f"{note_name}.md"
-        existing = note_path.read_text(encoding="utf-8") if note_path.exists() else None
-        note_path.write_text(build_note(meta, has_cover, existing), encoding="utf-8")
+        write_note(book.note_path, meta, cover_fm, cover_embed)
         stats["books"] += 1
 
         for author in meta.authors:
@@ -286,11 +289,11 @@ def calibre_to_obsidian(
     Relative paths resolve against your home directory; default: ~/Calibre Library.
 
     OUTPUT (--output): an Obsidian vault folder. Relative paths resolve against
-    the current directory; default: ./Obsidian. For each book it writes a
-    markdown note (YAML properties from the opf + cover embed + description) and
-    copies cover.jpg alongside it, and creates linked stub notes under Authors/
-    and Genres/. Re-running is safe: it never overwrites notes it did not create
-    (e.g. your "* - Highlights.md" files or edited stubs).
+    the current directory; default: ./Obsidian. For each book it writes a flat
+    markdown note under Books/ (YAML properties from the opf + cover embed +
+    description), copies cover.jpg into Exports/<Author>/<Title>/, and creates
+    linked stub notes under Authors/ and Genres/. Re-running is safe: it never
+    overwrites notes it did not create or existing note bodies.
     """
     library = resolve_path(library, Path.home())
     output = resolve_path(output, Path.cwd())

@@ -115,7 +115,7 @@ def test_calibre_end_to_end(tmp_path):
     out = tmp_path / "Obsidian"
     result = runner.invoke(app, ["calibre", "--library", str(lib), "--output", str(out)])
     assert result.exit_code == 0, result.output
-    note = out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md"
+    note = out / "Books" / "Napoleon_ A Life.md"
     assert note.exists()
     assert "format: ebook" in note.read_text()
 
@@ -125,7 +125,7 @@ def test_goodreads_end_to_end(tmp_path):
     out = tmp_path / "Obsidian"
     result = runner.invoke(app, ["goodreads", "--csv", str(csv_path), "--output", str(out)])
     assert result.exit_code == 0, result.output
-    note = out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md"
+    note = out / "Books" / "Napoleon_ A Life.md"
     assert note.exists()
     assert "format: physical" in note.read_text()  # Paperback binding
 
@@ -160,10 +160,11 @@ def test_kobo_obsidian_end_to_end(tmp_path):
     out = tmp_path / "Obsidian"
     result = runner.invoke(app, ["kobo", str(db), "--obsidian", "--output", str(out)])
     assert result.exit_code == 0, result.output
-    note = out / "Frank Herbert" / "Dune" / "Dune.md"
+    note = out / "Books" / "Dune.md"
     assert note.exists()
-    assert "![](Highlights.md)" in note.read_text()
-    assert "Fear is the mind-killer" in (note.parent / "Highlights.md").read_text()
+    assert "![[Exports/Frank Herbert/Dune/Highlights.md]]" in note.read_text()
+    hl = out / "Exports" / "Frank Herbert" / "Dune" / "Highlights.md"
+    assert "Fear is the mind-killer" in hl.read_text()
 
 
 def _highlighted_csv(tmp_path: Path) -> Path:
@@ -181,9 +182,9 @@ def test_highlighted_end_to_end(tmp_path):
     out = tmp_path / "Obsidian"
     result = runner.invoke(app, ["highlighted", "--csv", str(csv_path), "--output", str(out)])
     assert result.exit_code == 0, result.output
-    note = out / "Stephen Kotkin" / "Stalin" / "Stalin.md"
+    note = out / "Books" / "Stalin.md"
     assert note.exists()
-    assert "![](Highlights.md)" in note.read_text()
-    hl = (note.parent / "Highlights.md").read_text()
+    assert "![[Exports/Stephen Kotkin/Stalin/Highlights.md]]" in note.read_text()
+    hl = (out / "Exports" / "Stephen Kotkin" / "Stalin" / "Highlights.md").read_text()
     assert "> [!quote]+ p. 45–49" in hl
     assert "^p45-49" in hl

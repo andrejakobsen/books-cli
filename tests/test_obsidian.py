@@ -58,66 +58,105 @@ def test_html_to_markdown_list():
 
 def test_ensure_embed_section_adds_when_absent():
     note = '---\ntype: book\n---\n\nBody.\n'
-    out = ob.ensure_embed_section(note, "Highlights", "Highlights.md")
+    out = ob.ensure_embed_section(note, "Highlights", "Exports/A/B/Highlights.md")
     assert "## Highlights" in out
-    assert "![](Highlights.md)" in out
+    assert "![[Exports/A/B/Highlights.md]]" in out
     assert "Body." in out
 
 
 def test_ensure_embed_section_noop_when_present():
-    note = '---\ntype: book\n---\n\n## Highlights\n![](Highlights.md)\n'
-    assert ob.ensure_embed_section(note, "Highlights", "Highlights.md") == note
+    note = '---\ntype: book\n---\n\n## Highlights\n![[Exports/A/B/Highlights.md]]\n'
+    assert ob.ensure_embed_section(note, "Highlights", "Exports/A/B/Highlights.md") == note
+
+
+def test_ensure_top_embed_inserts_after_frontmatter():
+    note = '---\ntype: book\ntitle: "T"\n---\n\nDescription here.\n'
+    out = ob.ensure_top_embed(note, "![[Exports/A/B/cover.jpg]]")
+    lines = out.splitlines()
+    # Embed appears immediately after the closing frontmatter fence.
+    fence = lines.index("---", 1)
+    assert lines[fence + 1] == "" and lines[fence + 2] == "![[Exports/A/B/cover.jpg]]"
+    assert "Description here." in out
+
+
+def test_ensure_top_embed_noop_when_present():
+    note = '---\ntype: book\n---\n\n![[Exports/A/B/cover.jpg]]\n\nBody.\n'
+    assert ob.ensure_top_embed(note, "![[Exports/A/B/cover.jpg]]") == note
+
+
+def test_cover_refs_builds_vault_relative_wikilinks(tmp_path):
+    note_path = tmp_path / "Books" / "Napoleon_ A Life.md"
+    export_dir = tmp_path / "Exports" / "Andrew Roberts" / "Napoleon_ A Life"
+    fm, embed = ob.cover_refs(note_path, export_dir)
+    assert fm == '"[[Exports/Andrew Roberts/Napoleon_ A Life/cover.jpg]]"'
+    assert embed == "![[Exports/Andrew Roberts/Napoleon_ A Life/cover.jpg]]"
 
 
 def test_vaultindex_creates_new_note_with_stub(tmp_path):
     idx = ob.VaultIndex(tmp_path)
     ref = ob.BookRef(title="Napoleon: A Life", authors=["Andrew Roberts"], isbn=None)
-    note, created = idx.find_or_create(ref)
-    assert created is True
-    assert note == tmp_path / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md"
-    text = note.read_text()
+    bn = idx.find_or_create(ref)
+    assert bn.created is True
+    assert bn.note_path == tmp_path / "Books" / "Napoleon_ A Life.md"
+    assert bn.export_dir == tmp_path / "Exports" / "Andrew Roberts" / "Napoleon_ A Life"
+    text = bn.note_path.read_text()
     assert "type: book" in text
     assert 'title: "Napoleon: A Life"' in text
     assert "[[Andrew Roberts]]" in text
 
 
 def test_vaultindex_matches_existing_by_title_author(tmp_path):
-    book_dir = tmp_path / "Andrew Roberts" / "Napoleon A Life"
-    book_dir.mkdir(parents=True)
-    note = book_dir / "Napoleon A Life.md"
+    books = tmp_path / "Books"
+    books.mkdir(parents=True)
+    note = books / "Napoleon A Life.md"
     note.write_text(
         '---\ntype: book\ntitle: "Napoleon - A Life"\n'
         'authors: ["[[Andrew Roberts]]"]\n---\nBody.\n', encoding="utf-8")
     idx = ob.VaultIndex(tmp_path)
-    found, created = idx.find_or_create(
+    bn = idx.find_or_create(
         ob.BookRef(title="Napoleon: A Life", authors=["Andrew Roberts"], isbn=None))
-    assert created is False
-    assert found == note
+    assert bn.created is False
+    assert bn.note_path == note
+
+
+def test_vaultindex_disambiguates_same_title_different_book(tmp_path):
+    idx = ob.VaultIndex(tmp_path)
+    a = idx.find_or_create(ob.BookRef(title="Selected Poems", authors=["W. H. Auden"]))
+    b = idx.find_or_create(ob.BookRef(title="Selected Poems", authors=["Emily Dickinson"]))
+    assert a.created and b.created
+    assert a.note_path == tmp_path / "Books" / "Selected Poems.md"
+    assert b.note_path == tmp_path / "Books" / "Selected Poems (Emily Dickinson).md"
+    # Distinct export dirs too.
+    assert a.export_dir != b.export_dir
 
 
 def test_write_leaf_with_embed_overwrites_and_embeds(tmp_path):
-    note = tmp_path / "Book" / "Book.md"
+    note = tmp_path / "Books" / "Book.md"
     note.parent.mkdir(parents=True)
     note.write_text('---\ntype: book\n---\n\nBody.\n', encoding="utf-8")
-    wrote = ob.write_leaf_with_embed(note, "Highlights.md", "content v1\n", "Highlights")
+    export_dir = tmp_path / "Exports" / "Auth" / "Book"
+    target = "Exports/Auth/Book/Highlights.md"
+    wrote = ob.write_leaf_with_embed(note, export_dir, "Highlights.md", "content v1\n", "Highlights")
     assert wrote is True
-    assert (note.parent / "Highlights.md").read_text() == "content v1\n"
-    assert "![](Highlights.md)" in note.read_text()
+    assert (export_dir / "Highlights.md").read_text() == "content v1\n"
+    assert f"![[{target}]]" in note.read_text()
     # Second call overwrites the leaf but does not duplicate the embed.
-    ob.write_leaf_with_embed(note, "Highlights.md", "content v2\n", "Highlights")
-    assert (note.parent / "Highlights.md").read_text() == "content v2\n"
+    ob.write_leaf_with_embed(note, export_dir, "Highlights.md", "content v2\n", "Highlights")
+    assert (export_dir / "Highlights.md").read_text() == "content v2\n"
     assert note.read_text().count("## Highlights") == 1
 
 
 def test_write_leaf_with_embed_no_overwrite_keeps_existing(tmp_path):
-    note = tmp_path / "Book" / "Book.md"
+    note = tmp_path / "Books" / "Book.md"
     note.parent.mkdir(parents=True)
     note.write_text('---\ntype: book\n---\n', encoding="utf-8")
-    (note.parent / "Review.md").write_text("original\n", encoding="utf-8")
-    wrote = ob.write_leaf_with_embed(note, "Review.md", "new\n", "Review", overwrite=False)
+    export_dir = tmp_path / "Exports" / "Auth" / "Book"
+    export_dir.mkdir(parents=True)
+    (export_dir / "Review.md").write_text("original\n", encoding="utf-8")
+    wrote = ob.write_leaf_with_embed(note, export_dir, "Review.md", "new\n", "Review", overwrite=False)
     assert wrote is False
-    assert (note.parent / "Review.md").read_text() == "original\n"  # not clobbered
-    assert "![](Review.md)" in note.read_text()  # embed still ensured
+    assert (export_dir / "Review.md").read_text() == "original\n"  # not clobbered
+    assert "![[Exports/Auth/Book/Review.md]]" in note.read_text()  # embed still ensured
 
 
 def test_with_source_prepends_frontmatter():

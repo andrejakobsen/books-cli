@@ -4,9 +4,9 @@
 Reads the CSV Goodreads produces from "My Books -> Import and export", and for
 each *read* book (by default) creates or merges an Obsidian note in the same
 shape as the Calibre importer. Existing information is never overwritten: only
-absent/empty properties are filled. A review is written to a generic
-"Review.md" in the book's folder and embedded into the book note via
-"![](Review.md)".
+absent/empty properties are filled. A review is written to
+"Exports/<Author>/<Title>/Review.md" and embedded into the flat book note under
+a "## Review" heading.
 
 Standard library only.
 """
@@ -196,11 +196,11 @@ def convert(csv_path: Path, output: Path, shelf: str = "read") -> dict:
 
         ref = BookRef(title=book.title, authors=book.authors,
                       isbn=book.isbn13 or book.isbn)
-        note_path, created = index.find_or_create(ref)
-        stats["created" if created else "merged"] += 1
+        dest = index.find_or_create(ref)
+        stats["created" if dest.created else "merged"] += 1
 
-        base = note_path.read_text(encoding="utf-8")
-        note_path.write_text(
+        base = dest.note_path.read_text(encoding="utf-8")
+        dest.note_path.write_text(
             update_frontmatter(base, _goodreads_updates(book)), encoding="utf-8")
 
         for author in book.authors:
@@ -209,8 +209,8 @@ def convert(csv_path: Path, output: Path, shelf: str = "read") -> dict:
 
         review = _review_markdown(book)
         if review and write_leaf_with_embed(
-                note_path, "Review.md", with_source("goodreads", review),
-                "Review", overwrite=False):
+                dest.note_path, dest.export_dir, "Review.md",
+                with_source("goodreads", review), "Review", overwrite=False):
             stats["reviews"] += 1
 
     return stats
@@ -237,9 +237,9 @@ def goodreads_to_obsidian(
 
     By default only books on the 'read' shelf are imported. Existing notes are
     never overwritten: only empty/absent properties are filled, and a review is
-    written to a generic 'Review.md' in the book's folder and embedded into the
-    book note via '![](Review.md)'. Books are matched to existing notes by ISBN,
-    then by a strict Author/Title comparison.
+    written to 'Exports/<Author>/<Title>/Review.md' and embedded into the flat
+    book note under a '## Review' heading. Books are matched to existing notes by
+    ISBN, then by a strict Author/Title comparison.
     """
     csv = resolve_path(csv, Path.cwd())
     output = resolve_path(output, Path.cwd())

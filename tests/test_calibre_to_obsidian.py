@@ -65,7 +65,8 @@ def test_full_conversion(tmp_path):
     assert stats["books"] == 2
     assert stats["covers"] == 1
 
-    note = (out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md").read_text()
+    note = (out / "Books" / "Napoleon_ A Life.md").read_text()
+    cover_rel = "Exports/Andrew Roberts/Napoleon_ A Life/cover.jpg"
     # Frontmatter values
     assert "type: book" in note
     assert 'title: "Napoleon: A Life"' in note
@@ -81,13 +82,13 @@ def test_full_conversion(tmp_path):
     assert 'google: "rjVBAwAAQBAJ"' in note
     assert "date_added: 2026-06-04" in note
     assert "source: calibre" in note
-    assert 'cover: "[[cover.jpg]]"' in note
+    assert f'cover: "[[{cover_rel}]]"' in note
     # Body
-    assert "![[cover.jpg]]" in note
+    assert f"![[{cover_rel}]]" in note
     assert "**great**" in note
 
-    # Cover copied
-    assert (out / "Andrew Roberts" / "Napoleon_ A Life" / "cover.jpg").is_file()
+    # Cover copied into Exports
+    assert (out / "Exports" / "Andrew Roberts" / "Napoleon_ A Life" / "cover.jpg").is_file()
 
 
 def test_missing_cover(tmp_path):
@@ -95,18 +96,18 @@ def test_missing_cover(tmp_path):
     out = tmp_path / "Obsidian"
     c2o.convert(lib, out)
 
-    note = (out / "Jane Doe" / "No Cover Book" / "No Cover Book.md").read_text()
+    note = (out / "Books" / "No Cover Book.md").read_text()
     assert "cover:\n" in note or note.rstrip().endswith("cover:")  # empty placeholder
-    assert "![[cover.jpg]]" not in note                            # no body embed
+    assert "cover.jpg" not in note                                 # no body embed / ref
     assert "rating:" in note  # empty rating still present
-    assert not (out / "Jane Doe" / "No Cover Book" / "cover.jpg").exists()
+    assert not (out / "Exports" / "Jane Doe" / "No Cover Book" / "cover.jpg").exists()
 
 
 def test_book_note_has_goodreads_placeholders(tmp_path):
     lib = make_library(tmp_path)
     out = tmp_path / "Obsidian"
     c2o.convert(lib, out)
-    note = (out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md").read_text()
+    note = (out / "Books" / "Napoleon_ A Life.md").read_text()
     for key in ("pages:", "status:", "shelves:", "date_read:"):
         assert key in note
 
@@ -115,7 +116,7 @@ def test_rerun_preserves_book_note_edits(tmp_path):
     lib = make_library(tmp_path)
     out = tmp_path / "Obsidian"
     c2o.convert(lib, out)
-    note = out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md"
+    note = out / "Books" / "Napoleon_ A Life.md"
     note.write_text(note.read_text().replace("status:", "status: reading"), encoding="utf-8")
 
     c2o.convert(lib, out)  # re-run must not clobber the manual edit
@@ -152,7 +153,8 @@ def test_rerun_preserves_user_files(tmp_path):
     c2o.convert(lib, out)
 
     # User adds a highlights note and edits an author stub.
-    hl = out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life - Highlights.md"
+    hl = out / "Exports" / "Andrew Roberts" / "Napoleon_ A Life" / "Highlights.md"
+    hl.parent.mkdir(parents=True, exist_ok=True)
     hl.write_text("# My highlights\n- quote", encoding="utf-8")
     author_stub = out / "Authors" / "Andrew Roberts.md"
     author_stub.write_text("---\ntype: author\n---\nMy notes on Roberts.", encoding="utf-8")
