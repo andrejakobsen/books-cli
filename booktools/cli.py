@@ -13,12 +13,18 @@ from __future__ import annotations
 
 import typer
 
-from booktools import calibre_obsidian, goodreads_obsidian, kobo_export
+from booktools import (
+    calibre_obsidian,
+    goodreads_obsidian,
+    highlighted_obsidian,
+    kobo_export,
+)
 
 # Modules that expose a register(app) function. Add new capabilities here.
 CAPABILITIES = (
     calibre_obsidian,
     goodreads_obsidian,
+    highlighted_obsidian,
     kobo_export,
 )
 
