@@ -196,26 +196,27 @@ def _quote_lines(text: str, prefix: str) -> list[str]:
 def render_highlights(highlights: list[Highlight]) -> str:
     """Render an ordered list of highlights as an Obsidian ``Highlights.md`` body.
 
-    Each highlight is a single expanded ``[!quote]`` callout (one block anchor)
-    laid out as: the quoted text, then the author's note as a nested blockquote
-    (``>> ...``), then links (comma-separated ``[[wikilinks]]``) and tags
-    (``#tag``) each on their own trailing line, links above tags.
+    Each highlight is a single expanded ``[!quote]`` callout (one block anchor).
+    The title line carries the locator plus the ``@links`` as comma-separated
+    ``[[wikilinks]]`` (middot-joined after the location, so people/events are
+    scannable from the header). The body holds the quoted text, then the author's
+    note as a nested blockquote (``>> ...``), then the ``#tags`` on a trailing line.
     """
     anchors = build_anchors(highlights)
     blocks: list[str] = []
     for h, anchor in zip(highlights, anchors):
-        label = _label(h)
-        lines = ["> [!quote]+" + (f" {label}" if label else "")]
+        title_parts = [p for p in (_label(h),) if p]
+        if h.links:
+            title_parts.append(", ".join(wikilink(name) for name in h.links))
+        title = " · ".join(title_parts)
+        lines = ["> [!quote]+" + (f" {title}" if title else "")]
         lines += _quote_lines(h.text, ">")
         if h.note and h.note.strip():
             lines.append(">")
             lines += _quote_lines(h.note, ">>")
-        if h.links or h.tags:
+        if h.tags:
             lines.append(">")
-            if h.links:
-                lines.append("> " + ", ".join(wikilink(name) for name in h.links))
-            if h.tags:
-                lines.append("> " + " ".join(f"#{t}" for t in h.tags))
+            lines.append("> " + " ".join(f"#{t}" for t in h.tags))
         lines.append(f"^{anchor}")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks) + "\n"

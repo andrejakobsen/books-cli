@@ -36,7 +36,9 @@ carry two marker kinds — `#tag` renders as an Obsidian inline tag, `@link` ren
 until the next `@`/`#`/newline. In CSV tag columns (Highlighted, Readwise), `split_tag_column`
 comma-splits and routes `@`-prefixed entries to links. Links are title-cased with dashes
 turned into spaces (`@battle-of-warsaw` → `[[Battle of Warsaw]]`); tags are lowercased slugs.
-Both render on a trailing line under the quote callout, links first.
+Links render on the `[!quote]` callout **title line** (middot-joined after the locator, e.g.
+`ch. 2 · 42% · [[Trotsky]]`) so people/events scan from the header; tags render on a trailing
+line inside the callout body. The author's note sits between them as a nested blockquote (`>>`).
 
 ### The shared Obsidian layer
 

@@ -291,18 +291,26 @@ def test_split_tag_column_dashed_link_title_cased():
 
 # --- render links ------------------------------------------------------------
 
-def test_render_links_comma_separated_on_own_line_above_tags():
-    hs = [hl.Highlight(text="A line", chapter_index=2, block="17", segment="5",
-                       links=["War Commisar", "Red Army"], tags=["history", "ussr"])]
+def test_render_links_in_title_after_location_comma_separated():
+    hs = [hl.Highlight(text="A line", page="12",
+                       links=["Trotsky", "Battle of Warsaw"], tags=["history"])]
     out = hl.render_highlights(hs)
-    assert "> [[War Commisar]], [[Red Army]]" in out   # links comma-separated, own line
-    assert "> #history #ussr" in out                   # tags on their own line
-    assert out.index("[[Red Army]]") < out.index("#history")  # links above tags
+    # links live on the callout title line, after the location, middot-joined
+    assert "> [!quote]+ p. 12 · [[Trotsky]], [[Battle of Warsaw]]" in out
+    # tags remain at the bottom on their own line
+    assert "> #history" in out
+    assert out.index("[[Battle of Warsaw]]") < out.index("> #history")
 
 
-def test_render_links_only_no_tags():
-    hs = [hl.Highlight(text="A line", chapter_index=2, block="17", segment="5",
-                       links=["Trotsky"])]
+def test_render_links_appended_after_progress():
+    hs = [hl.Highlight(text="A line", chapter_index=2, progress=0.42,
+                       block="17", segment="5", links=["Trotsky"])]
     out = hl.render_highlights(hs)
-    assert "> [[Trotsky]]" in out
-    assert "#" not in out.split("^ch2-b17-5")[0]  # no tag markers in quote block
+    assert "> [!quote]+ ch. 2 · 42% · [[Trotsky]]" in out
+
+
+def test_render_links_only_no_location_title_is_links():
+    hs = [hl.Highlight(text="A line", block="17", segment="5", links=["Trotsky"])]
+    out = hl.render_highlights(hs)
+    assert "> [!quote]+ [[Trotsky]]" in out
+    assert "#" not in out  # no tags anywhere
