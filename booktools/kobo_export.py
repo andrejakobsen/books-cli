@@ -4,14 +4,18 @@
 Reads a KoboReader.sqlite database and, for every book that has highlights or
 notes, writes a CSV containing:
 
-    Book Title, Author, Chapter, Location, Highlight, Note, Date Created
+    Book Title, Author, Chapter Number, Chapter, Highlight, Note,
+    Location in Chapter (%), KoboSpan Block (N), KoboSpan Segment (M),
+    Date Created
 
-All CSVs are bundled into a single compressed .zip archive.
+All CSVs are bundled into a single compressed .zip archive. With --obsidian the
+highlights are written into an Obsidian vault (folder-per-book) instead.
 
 Usage:
     python kobo_export.py                       # uses ~/KoboReader.sqlite
     python kobo_export.py /path/to/KoboReader.sqlite
     python kobo_export.py -i in.sqlite -o kobo_highlights.zip
+    python kobo_export.py --obsidian -o ./Obsidian
 """
 
 from __future__ import annotations
@@ -22,13 +26,18 @@ import re
 import sqlite3
 import zipfile
 from pathlib import Path
-from typing import Optional
 
 import typer
 
 from booktools import resolve_path
 from booktools.highlights import Highlight, render_highlights
-from booktools.obsidian import BookRef, VaultIndex, write_leaf_with_embed, write_stub
+from booktools.obsidian import (
+    BookRef,
+    VaultIndex,
+    safe_filename,
+    write_leaf_with_embed,
+    write_stub,
+)
 
 # One row per highlight/note. Kobo stores chapters as content rows
 # (ContentType=899) whose ContentID is the bookmark's ContentID plus a "-N"
@@ -80,22 +89,14 @@ CSV_HEADER = [
 ]
 
 
-def safe_filename(name: str) -> str:
-    """Turn a book title into a filesystem-safe filename stem."""
-    name = name.strip() or "Untitled"
-    name = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", name)  # illegal chars
-    name = re.sub(r"\s+", " ", name).strip(". ")
-    return name[:120] or "Untitled"
-
-
-def pct(value) -> str:
+def pct(value: float | None) -> str:
     """Format a 0.0-1.0 fraction as a whole-number percentage string ("42")."""
     if value is None:
         return ""
     return str(round(float(value) * 100))
 
 
-def parse_container(path):
+def parse_container(path: str | None) -> tuple[str, str]:
     """Split a Kobo StartContainerPath into (block_index, segment_in_block).
 
     Paths look like "span#kobo\\.3\\.5" (dots escaped) and reference an injected
@@ -112,7 +113,7 @@ def parse_container(path):
     return block, segment
 
 
-def row_to_highlight(row) -> Highlight:
+def row_to_highlight(row: sqlite3.Row) -> Highlight:
     """Map a Kobo query row to a source-agnostic Highlight."""
     block, segment = parse_container(row["container_path"])
     idx = row["chapter_index"]
@@ -204,7 +205,7 @@ def export(db_path: Path, out_path: Path) -> dict:
 
     with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         for title, book_rows in books.items():
-            stem = safe_filename(title)
+            stem = safe_filename(title)[:120]
             fname = f"{stem}.csv"
             n = 2
             while fname.lower() in used_names:
@@ -239,15 +240,15 @@ def export(db_path: Path, out_path: Path) -> dict:
 
 
 def kobo_export(
-    db: Optional[Path] = typer.Argument(
+    db: Path | None = typer.Argument(
         None,
         help="Path to KoboReader.sqlite. Relative paths resolve against the current "
              "directory. [default: KoboReader.sqlite]",
     ),
-    input_path: Optional[Path] = typer.Option(
+    input_path: Path | None = typer.Option(
         None, "--input", "-i", help="Alternative way to specify the sqlite path."
     ),
-    output: Optional[Path] = typer.Option(
+    output: Path | None = typer.Option(
         None, "--output", "-o",
         help="Output path. CSV mode: a .zip [default: ./kobo_highlights.zip]. "
              "Obsidian mode: a vault directory [default: ./Obsidian]. "
@@ -256,7 +257,8 @@ def kobo_export(
     csv_out: bool = typer.Option(
         True, "--csv",
         help="Export highlights as per-book CSV files bundled in a zip. This is "
-             "currently the only output mode (an Obsidian mode will be added later).",
+             "the default output mode; pass --obsidian to write an Obsidian vault "
+             "instead.",
     ),
     obsidian: bool = typer.Option(
         False, "--obsidian",
@@ -276,8 +278,11 @@ def kobo_export(
     Relative paths resolve against the current directory; default:
     ./kobo_highlights.zip. It contains one CSV per book that has highlights or
     notes, with columns: Book Title, Author, Chapter Number, Chapter, Highlight,
-    Note, Location in Chapter (%), KoboSpan Block/Segment, Date Created. Rows are
-    ordered by book reading order.
+    Note, Location in Chapter (%), KoboSpan Block (N), KoboSpan Segment (M),
+    Date Created. Rows are ordered by book reading order.
+
+    With --obsidian, writes highlights into an Obsidian vault (folder-per-book)
+    instead; --output is then the vault directory (default: ./Obsidian).
     """
     db_path = resolve_path(input_path or db or Path("KoboReader.sqlite"), Path.cwd())
 
