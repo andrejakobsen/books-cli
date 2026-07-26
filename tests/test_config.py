@@ -115,6 +115,32 @@ def test_default_file_includes_imports(tmp_path):
     assert 'imports = ".imports"' in cfg_file.read_text()
 
 
+def test_resolve_imports_joins_onto_vault(tmp_path, monkeypatch):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        'obsidian_path = "/data/Obs"\nvault = "History"\nimports = ".imports"\n')
+    monkeypatch.setattr(config, "config_path", lambda: cfg_file)
+    assert config.resolve_imports("goodreads", None) == Path(
+        "/data/Obs/History/.imports/goodreads")
+
+
+def test_resolve_imports_respects_output_override(tmp_path, monkeypatch):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('imports = ".imports"\n')
+    monkeypatch.setattr(config, "config_path", lambda: cfg_file)
+    monkeypatch.setattr(Path, "cwd", classmethod(lambda cls: Path("/work")))
+    assert config.resolve_imports("kobo", Path("MyVault")) == Path(
+        "/work/MyVault/.imports/kobo")
+
+
+def test_resolve_imports_honors_absolute_imports(tmp_path, monkeypatch):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        'obsidian_path = "/data/Obs"\nvault = "History"\nimports = "/srv/raw"\n')
+    monkeypatch.setattr(config, "config_path", lambda: cfg_file)
+    assert config.resolve_imports("calibre", None) == Path("/srv/raw/calibre")
+
+
 def test_importer_writes_to_configured_vault_without_output(monkeypatch, tmp_path):
     """An importer invoked without --output writes into the configured vault.
 

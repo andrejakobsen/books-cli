@@ -98,3 +98,16 @@ def resolve_vault(output: Path | None) -> Path:
     if output is not None:
         return resolve_path(output, Path.cwd())
     return default_vault()
+
+
+def resolve_imports(name: str, output: Path | None = None) -> Path:
+    """Canonical import subfolder for a command: ``<vault>/<imports>/<name>``.
+
+    The imports root resolves inside the vault selected by ``resolve_vault`` (so
+    it travels with whichever vault ``--output``/config picks). An absolute
+    ``imports`` config value is honored as-is; a relative one joins onto the vault.
+    """
+    vault = resolve_vault(output)
+    cfg = load_config()
+    root = resolve_path(Path(cfg.imports), vault)
+    return root / name
