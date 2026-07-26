@@ -86,3 +86,30 @@ def test_page_none_is_unchanged():
     hs = [hl.Highlight(text="a", chapter_index=2, block="17", segment="5")]
     assert hl.build_anchors(hs) == ["ch2-b17-5"]
     assert "p. " not in hl.render_highlights(hs)
+
+
+def test_sanitize_tag_whitespace_to_hyphen():
+    assert hl.sanitize_tag("Cold War") == "Cold-War"
+
+
+def test_sanitize_tag_strips_leading_hash():
+    assert hl.sanitize_tag("#Stalin") == "Stalin"
+
+
+def test_sanitize_tag_trims_surrounding_whitespace():
+    assert hl.sanitize_tag("  spaced  ") == "spaced"
+
+
+def test_sanitize_tag_empty_returns_none():
+    assert hl.sanitize_tag("") is None
+    assert hl.sanitize_tag("   ") is None
+    assert hl.sanitize_tag("#") is None
+
+
+def test_sanitize_tag_none_returns_none():
+    assert hl.sanitize_tag(None) is None
+
+
+def test_highlight_tags_defaults_to_empty_list():
+    h = hl.Highlight(text="x")
+    assert h.tags == []
