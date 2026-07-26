@@ -74,6 +74,29 @@ books kobo ~/KoboReader.sqlite --csv -o kobo_highlights.zip
 - **`kobo`** — Export Kobo highlights & notes to per-book CSVs in a zip (`--csv`,
   the default output mode; an Obsidian mode will be added later).
 
+### Kobo → Obsidian highlights
+
+Export highlights into an Obsidian vault (folder-per-book) instead of CSV:
+
+```bash
+books kobo /path/to/KoboReader.sqlite --obsidian --output ~/Obsidian
+```
+
+For each book with highlights this writes `<Author>/<Title>/Highlights.md`
+(Obsidian `[!quote]`/`[!note]` callouts with stable block anchors) and embeds it
+into the book note via `![](Highlights.md)`.
+
+**Optional: seamless embeds.** By default Obsidian wraps embeds in a bordered
+box. To make `Highlights.md`/`Review.md` render as if written inline, add a CSS
+snippet at `<vault>/.obsidian/snippets/seamless-embeds.css` and enable it under
+**Settings → Appearance → CSS snippets**:
+
+```css
+.markdown-embed-title { display: none; }
+.markdown-embed { border: none; padding: 0; margin: 0; }
+.markdown-embed-link { display: none; }
+```
+
 The standalone scripts in `scripts/` still work too:
 
 ```bash
