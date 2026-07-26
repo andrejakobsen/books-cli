@@ -54,3 +54,16 @@ def test_frontmatter_values_and_extractors():
 def test_html_to_markdown_list():
     md = ob.html_to_markdown("<p>Intro</p><ul><li>one</li><li>two</li></ul>")
     assert "Intro" in md and "- one" in md and "- two" in md
+
+
+def test_ensure_embed_section_adds_when_absent():
+    note = '---\ntype: book\n---\n\nBody.\n'
+    out = ob.ensure_embed_section(note, "Highlights", "Highlights.md")
+    assert "## Highlights" in out
+    assert "![](Highlights.md)" in out
+    assert "Body." in out
+
+
+def test_ensure_embed_section_noop_when_present():
+    note = '---\ntype: book\n---\n\n## Highlights\n![](Highlights.md)\n'
+    assert ob.ensure_embed_section(note, "Highlights", "Highlights.md") == note

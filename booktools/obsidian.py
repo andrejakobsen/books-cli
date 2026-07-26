@@ -104,6 +104,19 @@ def write_stub(hub_dir: Path, name: str, note_type: str) -> None:
     write_if_absent(hub_dir / f"{safe}.md", f"---\ntype: {note_type}\n---\n")
 
 
+def ensure_embed_section(note_text: str, heading: str, target: str) -> str:
+    """Append a '## <heading>' section embedding *target* iff not already present.
+
+    Uses a relative Markdown embed (``![](target)``) so generic leaf filenames
+    (Highlights.md/Review.md) resolve against the note's own folder. The existing
+    body is otherwise untouched.
+    """
+    if re.search(rf"(?m)^##\s+{re.escape(heading)}\s*$", note_text):
+        return note_text
+    sep = "" if note_text.endswith("\n") else "\n"
+    return f"{note_text}{sep}\n## {heading}\n![]({target})\n"
+
+
 # --- Frontmatter reading ----------------------------------------------------
 
 def _split_frontmatter(text: str) -> tuple[list[str], str]:
