@@ -62,8 +62,8 @@ def test_export_obsidian_writes_highlights_and_embed(tmp_path):
     assert "source: kobo" in highlights          # provenance frontmatter
     assert "> [!quote]+ ch. 2 · 42%" in highlights
     assert "^ch2-b17-5" in highlights
-    assert "> [!note]-" in highlights          # first highlight has an annotation
-    assert highlights.count("[!note]") == 1    # second has none
+    assert ">> my note" in highlights          # first highlight's note as nested quote
+    assert "[!note]" not in highlights         # no separate note callout
 
     note = (vault / "Books" / "The Great Gatsby.md").read_text()
     assert "![[Exports/F. Scott Fitzgerald/The Great Gatsby/Highlights.md]]" in note

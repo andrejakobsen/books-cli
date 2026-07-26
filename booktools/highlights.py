@@ -187,29 +187,35 @@ def _label(h: Highlight) -> str:
     return " · ".join(parts)
 
 
-def _callout(kind: str, title: str, body: str, expanded: bool) -> str:
-    marker = "+" if expanded else "-"
-    head = f"> [!{kind}]{marker}"
-    if title:
-        head += f" {title}"
-    body_lines = "\n".join(f"> {ln}" if ln.strip() else ">"
-                           for ln in body.split("\n"))
-    return f"{head}\n{body_lines}"
+def _quote_lines(text: str, prefix: str) -> list[str]:
+    """Prefix each line of *text* for a callout body; blank lines keep the bare marker."""
+    return [f"{prefix} {ln}" if ln.strip() else prefix.rstrip()
+            for ln in text.split("\n")]
 
 
 def render_highlights(highlights: list[Highlight]) -> str:
-    """Render an ordered list of highlights as an Obsidian ``Highlights.md`` body."""
+    """Render an ordered list of highlights as an Obsidian ``Highlights.md`` body.
+
+    Each highlight is a single expanded ``[!quote]`` callout (one block anchor)
+    laid out as: the quoted text, then the author's note as a nested blockquote
+    (``>> ...``), then links (comma-separated ``[[wikilinks]]``) and tags
+    (``#tag``) each on their own trailing line, links above tags.
+    """
     anchors = build_anchors(highlights)
     blocks: list[str] = []
     for h, anchor in zip(highlights, anchors):
-        body = h.text
-        if h.links or h.tags:
-            parts = [wikilink(name) for name in h.links]
-            parts += [f"#{t}" for t in h.tags]
-            body = f"{body}\n\n{' '.join(parts)}"
-        block = f"{_callout('quote', _label(h), body, expanded=True)}\n^{anchor}"
+        label = _label(h)
+        lines = ["> [!quote]+" + (f" {label}" if label else "")]
+        lines += _quote_lines(h.text, ">")
         if h.note and h.note.strip():
-            note = _callout("note", "", h.note, expanded=False)
-            block += f"\n\n{note}\n^{anchor}-note"
-        blocks.append(block)
+            lines.append(">")
+            lines += _quote_lines(h.note, ">>")
+        if h.links or h.tags:
+            lines.append(">")
+            if h.links:
+                lines.append("> " + ", ".join(wikilink(name) for name in h.links))
+            if h.tags:
+                lines.append("> " + " ".join(f"#{t}" for t in h.tags))
+        lines.append(f"^{anchor}")
+        blocks.append("\n".join(lines))
     return "\n\n".join(blocks) + "\n"

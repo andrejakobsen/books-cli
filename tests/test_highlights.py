@@ -39,13 +39,16 @@ def test_render_single_highlight_no_note():
     assert "[!note]" not in out  # no annotation -> no note callout
 
 
-def test_render_highlight_with_note():
+def test_render_note_is_nested_quote_in_same_block():
     hs = [hl.Highlight(text="A line", note="my thought", chapter_index=2,
                        progress=0.5, block="1", segment="0")]
     out = hl.render_highlights(hs)
-    assert "> [!note]-" in out
-    assert "> my thought" in out
-    assert "^ch2-b1-0-note" in out
+    assert ">> my thought" in out          # note is a nested blockquote
+    assert "[!note]" not in out            # no separate note callout
+    assert "^ch2-b1-0-note" not in out     # single block, single anchor
+    assert "^ch2-b1-0" in out
+    # note sits under the highlight text, inside the quote block
+    assert out.index("> A line") < out.index(">> my thought") < out.index("^ch2-b1-0")
 
 
 def test_render_multiline_text_prefixes_each_line():
@@ -141,9 +144,10 @@ def test_render_tags_and_note_both_present():
     hs = [hl.Highlight(text="A line", note="my thought", chapter_index=2,
                        block="1", segment="0", tags=["Stalin"])]
     out = hl.render_highlights(hs)
-    assert "> #Stalin" in out          # tag inside quote callout
-    assert "> [!note]-" in out         # note callout still rendered
-    assert out.index("> #Stalin") < out.index("> [!note]-")
+    assert ">> my thought" in out      # note as nested quote
+    assert "> #Stalin" in out          # tag line inside quote callout
+    assert "[!note]" not in out        # no separate note callout
+    assert out.index(">> my thought") < out.index("> #Stalin")  # note above tags
 
 
 def test_location_label_defaults_to_page_prefix():
@@ -287,11 +291,13 @@ def test_split_tag_column_dashed_link_title_cased():
 
 # --- render links ------------------------------------------------------------
 
-def test_render_links_as_wikilinks_before_tags():
+def test_render_links_comma_separated_on_own_line_above_tags():
     hs = [hl.Highlight(text="A line", chapter_index=2, block="17", segment="5",
-                       links=["War Commisar"], tags=["history"])]
+                       links=["War Commisar", "Red Army"], tags=["history", "ussr"])]
     out = hl.render_highlights(hs)
-    assert "> [[War Commisar]] #history" in out
+    assert "> [[War Commisar]], [[Red Army]]" in out   # links comma-separated, own line
+    assert "> #history #ussr" in out                   # tags on their own line
+    assert out.index("[[Red Army]]") < out.index("#history")  # links above tags
 
 
 def test_render_links_only_no_tags():
