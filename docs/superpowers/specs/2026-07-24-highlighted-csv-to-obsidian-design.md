@@ -103,6 +103,28 @@ fill-blanks-only + single embed section + wholesale leaf regeneration).
   help; end-to-end run writing a book's `Highlights.md`.
 - README: a "Highlighted → Obsidian" section.
 
+## Addendum: `source` provenance (all importers)
+
+Every export records which tool produced it, with **provenance traveling with the
+content** (not accumulated on the shared note):
+
+- **Content leaves carry a `source:` frontmatter property.** Each `Highlights.md`
+  gets `source: kobo` / `source: highlighted`; each `Review.md` gets
+  `source: goodreads`. A shared helper `with_source(source, body)` prepends a
+  minimal `---\nsource: <tag>\n---` block. Embedded views hide leaf frontmatter,
+  so this is invisible in the book note but present when opening the leaf and
+  queryable via Dataview. Highlights.md is regenerated wholesale so its source is
+  always current; Review.md is written once.
+- **Metadata importers also stamp the book-note frontmatter.** `source` is added
+  to `BOOK_PROPERTY_ORDER`; Calibre sets `source: calibre`, Goodreads sets
+  `source: goodreads`. Filled under the never-overwrite rule (first metadata
+  importer wins for a shared note — accepted trade-off; the accumulating-list
+  option was declined). Kobo/Highlighted do **not** stamp the book-note source
+  (they are highlight sources; their provenance lives on the leaf).
+
+Leaf `source:` frontmatter has no `type: book`, so `VaultIndex`/`build_index`
+continue to skip these files (no false matches).
+
 ## Out of scope
 
 - Collections/Tags/Favorite/Reading Status frontmatter (YAGNI; revisit on demand).
