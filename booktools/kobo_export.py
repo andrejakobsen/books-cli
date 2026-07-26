@@ -170,7 +170,8 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
         highlights = [row_to_highlight(r) for r in book_rows]
         write_leaf_with_embed(
             dest.note_path, dest.export_dir, "Highlights.md",
-            with_source("kobo", render_highlights(highlights)), "Highlights")
+            with_source("kobo", render_highlights(highlights, chapter_label="Kobo ch.")),
+            "Highlights")
         for a in authors:
             write_stub(authors_dir, a, "author")
         entries += len(highlights)

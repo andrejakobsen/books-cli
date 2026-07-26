@@ -60,7 +60,9 @@ def test_export_obsidian_writes_highlights_and_embed(tmp_path):
     export_dir = vault / "Exports" / "F. Scott Fitzgerald" / "The Great Gatsby"
     highlights = (export_dir / "Highlights.md").read_text()
     assert "source: kobo" in highlights          # provenance frontmatter
-    assert "> [!quote]+ ch. 2 · 42%" in highlights
+    assert "## Chapter 2" in highlights          # chapter title header
+    assert "%% Kobo ch. 2 %%" in highlights      # hidden reading-order comment
+    assert "> [!quote]+ 42%" in highlights       # locator drops the chapter
     assert "^ch2-b17-5" in highlights
     assert ">> my note" in highlights          # first highlight's note as nested quote
     assert "[!note]" not in highlights         # no separate note callout
