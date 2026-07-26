@@ -56,6 +56,31 @@ def _cover_is_blank(fm: dict[str, str]) -> bool:
     return unquote(fm.get("cover", "")).strip() == ""
 
 
+def note_to_missing(note_path: Path) -> MissingBook | None:
+    """Build a MissingBook for a single note, or None if it is not eligible.
+
+    Eligible means a readable `type: book` note whose `cover:` is blank/absent.
+    Returns None for unreadable files, non-book notes, or notes that already have
+    a cover.
+    """
+    try:
+        text = note_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    fm = frontmatter_values(text)
+    if unquote(fm.get("type", "")) != "book":
+        return None
+    if not _cover_is_blank(fm):
+        return None
+    return MissingBook(
+        note_path=note_path,
+        title=unquote(fm.get("title", "")),
+        authors=extract_wikilinks(fm.get("authors", "")),
+        isbn=(unquote(fm.get("isbn", "")).strip() or None),
+        amazon=(unquote(fm.get("amazon", "")).strip() or None),
+    )
+
+
 def find_missing(vault: Path) -> list[MissingBook]:
     """Return `type: book` notes under vault/Books whose cover is blank/absent."""
     out: list[MissingBook] = []
@@ -63,22 +88,9 @@ def find_missing(vault: Path) -> list[MissingBook]:
     if not books_dir.is_dir():
         return out
     for md in sorted(books_dir.glob("*.md")):
-        try:
-            text = md.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        fm = frontmatter_values(text)
-        if unquote(fm.get("type", "")) != "book":
-            continue
-        if not _cover_is_blank(fm):
-            continue
-        out.append(MissingBook(
-            note_path=md,
-            title=unquote(fm.get("title", "")),
-            authors=extract_wikilinks(fm.get("authors", "")),
-            isbn=(unquote(fm.get("isbn", "")).strip() or None),
-            amazon=(unquote(fm.get("amazon", "")).strip() or None),
-        ))
+        book = note_to_missing(md)
+        if book is not None:
+            out.append(book)
     return out
 
 
@@ -303,3 +315,55 @@ def _terminal_prompt(cand: Candidate) -> str:
     print(f"  {cand.source}: {cand.label}{fmt}\n    {cand.image_url}")
     ans = input("  accept [y] / next [n] / skip book [s] / quit [q]? ").strip().lower()
     return {"y": "accept", "n": "next", "s": "skip", "q": "quit"}.get(ans, "next")
+
+
+def run(vault, *, interactive, dry_run, limit,
+        fetch_json, fetch_bytes, prompt, book_path=None):
+    """Fetch a cover for books missing one.
+
+    When *book_path* is given, only that single note is processed (the rest of the
+    vault is left alone); otherwise the whole vault is scanned. Returns a stats
+    dict: scanned/missing/processed/fetched/not_found/by_source.
+    """
+    if book_path is not None:
+        one = note_to_missing(book_path)
+        missing = [one] if one is not None else []
+        scanned = 1
+    else:
+        missing = find_missing(vault)
+        scanned = (len(list((vault / BOOKS_DIRNAME).glob("*.md")))
+                   if (vault / BOOKS_DIRNAME).is_dir() else 0)
+    index = VaultIndex(vault)
+    stats = {
+        "scanned": scanned,
+        "missing": len(missing),
+        "processed": 0,
+        "fetched": 0,
+        "not_found": 0,
+        "by_source": {"google": 0, "openlibrary": 0, "amazon": 0},
+    }
+    todo = missing if limit is None else missing[:limit]
+    for book in todo:
+        stats["processed"] += 1
+        if interactive:
+            print(f"\n{book.title} — {', '.join(book.authors) or 'Unknown'}")
+        candidates = gather_candidates(book, fetch_json)
+        try:
+            picked = pick_cover(
+                candidates, fetch_bytes, interactive=interactive, prompt=prompt)
+        except QuitRequested:
+            print("Quit.")
+            break
+        if picked is None:
+            stats["not_found"] += 1
+            print(f"  no cover: {book.title}")
+            continue
+        cand, data = picked
+        stats["fetched"] += 1
+        stats["by_source"][cand.source] = stats["by_source"].get(cand.source, 0) + 1
+        if dry_run:
+            print(f"  [dry-run] {cand.source}: {cand.image_url}")
+        else:
+            apply_cover(index, book, data)
+            print(f"  ✓ {cand.source}: {book.title}")
+    return stats

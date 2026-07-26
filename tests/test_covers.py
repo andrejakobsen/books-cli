@@ -334,3 +334,115 @@ def test_terminal_prompt_maps_keys(monkeypatch):
     assert covers._terminal_prompt(cand) == "quit"
     # unrecognized input defaults to "next" (safe, non-destructive)
     assert covers._terminal_prompt(cand) == "next"
+
+
+def test_run_fetches_and_applies(tmp_path):
+    _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\n'
+        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+    # a note that already has a cover -> untouched, not counted
+    _write_note(tmp_path, "Done.md",
+        '---\ntype: book\ntitle: "Done"\ncover: "[[x/cover.jpg]]"\n---\n')
+
+    def fetch_json(url):
+        return GOOGLE_VOLUME if "googleapis" in url else {"docs": []}
+
+    def fetch_bytes(url):
+        return (b"x" * 3000, "image/jpeg")
+
+    stats = covers.run(
+        tmp_path, interactive=False, dry_run=False, limit=None,
+        fetch_json=fetch_json, fetch_bytes=fetch_bytes, prompt=None)
+
+    assert stats["missing"] == 1
+    assert stats["fetched"] == 1
+    assert stats["by_source"]["google"] == 1
+    cover_file = tmp_path / "Exports" / "Andrew Roberts" / "Napoleon" / "cover.jpg"
+    assert cover_file.is_file()
+
+
+def test_run_dry_run_writes_nothing(tmp_path):
+    _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\n'
+        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+
+    stats = covers.run(
+        tmp_path, interactive=False, dry_run=True, limit=None,
+        fetch_json=lambda url: GOOGLE_VOLUME,
+        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"), prompt=None)
+
+    assert stats["fetched"] == 1   # would-fetch is still counted
+    assert not (tmp_path / "Exports").exists()
+
+
+def test_run_limit_caps_processing(tmp_path):
+    for i in range(3):
+        _write_note(tmp_path, f"B{i} - A.md",
+            f'---\ntype: book\ntitle: "B{i}"\nauthors: ["[[A]]"]\ncover:\n---\n')
+
+    stats = covers.run(
+        tmp_path, interactive=False, dry_run=True, limit=2,
+        fetch_json=lambda url: GOOGLE_VOLUME,
+        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"), prompt=None)
+    assert stats["processed"] == 2
+
+
+def test_run_quit_stops_early(tmp_path):
+    for i in range(3):
+        _write_note(tmp_path, f"B{i} - A.md",
+            f'---\ntype: book\ntitle: "B{i}"\nauthors: ["[[A]]"]\ncover:\n---\n')
+
+    stats = covers.run(
+        tmp_path, interactive=True, dry_run=False, limit=None,
+        fetch_json=lambda url: GOOGLE_VOLUME,
+        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
+        prompt=lambda c: "quit")
+    assert stats["fetched"] == 0
+
+
+def test_note_to_missing_eligible_and_ineligible(tmp_path):
+    note = _write_note(tmp_path, "A - Ann.md",
+        '---\ntype: book\ntitle: "A"\nauthors: ["[[Ann]]"]\ncover:\n---\n')
+    mb = covers.note_to_missing(note)
+    assert mb is not None
+    assert mb.title == "A" and mb.authors == ["Ann"]
+
+    has_cover = _write_note(tmp_path, "B - Bee.md",
+        '---\ntype: book\ntitle: "B"\ncover: "[[x/cover.jpg]]"\n---\n')
+    assert covers.note_to_missing(has_cover) is None   # cover already set
+
+    not_book = _write_note(tmp_path, "C.md", '---\ntype: author\ncover:\n---\n')
+    assert covers.note_to_missing(not_book) is None    # wrong type
+
+
+def test_run_single_book_only_processes_that_note(tmp_path):
+    target = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\n'
+        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+    # another missing-cover book that must NOT be touched
+    _write_note(tmp_path, "Other - X.md",
+        '---\ntype: book\ntitle: "Other"\nauthors: ["[[X]]"]\ncover:\n---\n')
+
+    stats = covers.run(
+        tmp_path, interactive=False, dry_run=False, limit=None,
+        fetch_json=lambda url: GOOGLE_VOLUME,
+        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
+        prompt=None, book_path=target)
+
+    assert stats["scanned"] == 1
+    assert stats["missing"] == 1
+    assert stats["fetched"] == 1
+    assert (tmp_path / "Exports" / "Andrew Roberts" / "Napoleon" / "cover.jpg").is_file()
+    assert not (tmp_path / "Exports" / "X").exists()
+
+
+def test_run_single_book_ineligible_is_no_op(tmp_path):
+    target = _write_note(tmp_path, "Done - Y.md",
+        '---\ntype: book\ntitle: "Done"\ncover: "[[x/cover.jpg]]"\n---\n')
+    stats = covers.run(
+        tmp_path, interactive=False, dry_run=False, limit=None,
+        fetch_json=lambda url: GOOGLE_VOLUME,
+        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
+        prompt=None, book_path=target)
+    assert stats["missing"] == 0
+    assert stats["fetched"] == 0
