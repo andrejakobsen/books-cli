@@ -4,8 +4,9 @@
 Reads the CSV Goodreads produces from "My Books -> Import and export", and for
 each *read* book (by default) creates or merges an Obsidian note in the same
 shape as the Calibre importer. Existing information is never overwritten: only
-absent/empty properties are filled. Reviews are written to a separate
-"<Title> - Review.md" note alongside any highlights.
+absent/empty properties are filled. A review is written to a generic
+"Review.md" in the book's folder and embedded into the book note via
+"![](Review.md)".
 
 Standard library only.
 """
@@ -23,11 +24,8 @@ from booktools.obsidian import (
     BOOK_PROPERTY_ORDER,
     BookRef,
     VaultIndex,
-    author_key,
     html_to_markdown,
     link_list,
-    norm_isbn,
-    norm_title,
     plain_list,
     update_frontmatter,
     write_leaf_with_embed,
@@ -235,9 +233,10 @@ def goodreads_to_obsidian(
     """Convert a Goodreads CSV export into Obsidian book notes.
 
     By default only books on the 'read' shelf are imported. Existing notes are
-    never overwritten: only empty/absent properties are filled, and reviews are
-    written to a separate '<Title> - Review.md' note. Books are matched to
-    existing notes by ISBN, then by a strict Author/Title comparison.
+    never overwritten: only empty/absent properties are filled, and a review is
+    written to a generic 'Review.md' in the book's folder and embedded into the
+    book note via '![](Review.md)'. Books are matched to existing notes by ISBN,
+    then by a strict Author/Title comparison.
     """
     csv = resolve_path(csv, Path.cwd())
     output = resolve_path(output, Path.cwd())
