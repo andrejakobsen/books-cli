@@ -280,3 +280,45 @@ def test_pick_cover_interactive_quit_raises():
         covers.pick_cover(
             cands, lambda url: (b"x" * 5000, "image/jpeg"),
             interactive=True, prompt=lambda c: "quit")
+
+
+def test_apply_cover_writes_file_and_frontmatter(tmp_path):
+    from booktools.obsidian import VaultIndex
+
+    note = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\n'
+        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n\nbody\n')
+    book = covers.MissingBook(
+        note_path=note, title="Napoleon", authors=["Andrew Roberts"],
+        isbn=None, amazon=None)
+    index = VaultIndex(tmp_path)
+
+    covers.apply_cover(index, book, b"\xff\xd8\xffJPEGDATA" + b"x" * 2000)
+
+    # cover.jpg written under Exports/<Author>/<Title>/
+    cover_file = tmp_path / "Exports" / "Andrew Roberts" / "Napoleon" / "cover.jpg"
+    assert cover_file.is_file()
+
+    text = note.read_text(encoding="utf-8")
+    # frontmatter cover filled with a wikilink to the exported cover
+    assert 'cover: "[[Exports/Andrew Roberts/Napoleon/cover.jpg]]"' in text
+    # body embed added; original body preserved
+    assert "![[Exports/Andrew Roberts/Napoleon/cover.jpg]]" in text
+    assert "body" in text
+
+
+def test_apply_cover_idempotent(tmp_path):
+    from booktools.obsidian import VaultIndex
+
+    note = _write_note(tmp_path, "N - A.md",
+        '---\ntype: book\ntitle: "N"\nauthors: ["[[A]]"]\ncover:\n---\n')
+    book = covers.MissingBook(
+        note_path=note, title="N", authors=["A"], isbn=None, amazon=None)
+    index = VaultIndex(tmp_path)
+
+    covers.apply_cover(index, book, b"x" * 2000)
+    first = note.read_text(encoding="utf-8")
+    covers.apply_cover(index, book, b"x" * 2000)
+    second = note.read_text(encoding="utf-8")
+    assert first == second   # cover already set -> no duplicate embed/frontmatter
+    assert second.count("![[Exports/A/N/cover.jpg]]") == 1

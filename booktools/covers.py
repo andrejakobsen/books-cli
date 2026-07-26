@@ -19,9 +19,14 @@ from urllib.parse import quote
 
 from booktools.obsidian import (
     BOOKS_DIRNAME,
+    BookRef,
+    VaultIndex,
+    cover_refs,
+    ensure_top_embed,
     extract_wikilinks,
     frontmatter_values,
     unquote,
+    update_frontmatter,
 )
 
 
@@ -254,3 +259,19 @@ def pick_cover(candidates, fetch_bytes, *, interactive, prompt):
         if is_valid_image(data, ctype):
             return (cand, data)
     return None
+
+
+def apply_cover(index: VaultIndex, book: MissingBook, image: bytes) -> None:
+    """Write the cover image and fill the note's cover frontmatter + embed."""
+    ref = BookRef(
+        title=book.title, authors=book.authors,
+        isbn=book.isbn, amazon=book.amazon)
+    export_dir = index.export_dir(ref)
+    export_dir.mkdir(parents=True, exist_ok=True)
+    (export_dir / "cover.jpg").write_bytes(image)
+
+    cover_fm, cover_embed = cover_refs(book.note_path, export_dir)
+    text = book.note_path.read_text(encoding="utf-8")
+    text = update_frontmatter(text, {"cover": cover_fm})
+    text = ensure_top_embed(text, cover_embed)
+    book.note_path.write_text(text, encoding="utf-8")
