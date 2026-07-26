@@ -82,6 +82,12 @@ def test_row_to_highlight_splits_and_dedupes_tags():
     assert h.tags == ["stalin", "ussr"]
 
 
+def test_row_to_highlight_splits_links_from_tags():
+    h = rw.row_to_highlight({"Highlight": "x", "Tags": "history, @War Commisar"})
+    assert h.tags == ["history"]
+    assert h.links == ["War Commisar"]
+
+
 def test_parse_csv_reads_rows(tmp_path):
     rows = rw.parse_csv(write_csv(tmp_path))
     assert len(rows) == 2

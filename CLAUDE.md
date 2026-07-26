@@ -26,9 +26,17 @@ create `booktools/<feature>.py` with a `register(app)` function that attaches it
 Five capabilities exist today:
 - `booktools/calibre_obsidian.py` → `calibre` — reads a Calibre library's `metadata.opf` (XML) + `cover.jpg` per book and writes Obsidian notes.
 - `booktools/goodreads_obsidian.py` → `goodreads` — reads a Goodreads CSV export and writes/merges Obsidian notes, plus a separate `<Title> - Review.md`.
-- `booktools/kobo_export.py` → `kobo` — reads `KoboReader.sqlite` (opened **read-only** via `file:...?mode=ro`) and exports per-book highlight CSVs into a zip. Has a `--csv` flag (the default output mode) and an `--obsidian` flag that writes per-book `Highlights.md` notes (rendered via the shared `booktools/highlights.py`) embedded into the canonical book note.
-- `booktools/highlighted_obsidian.py` → `highlighted` — reads a Highlighted app CSV export (highlights from physical books, page-located) and writes per-book `Highlights.md` notes (via the shared `booktools/highlights.py`) embedded into the canonical book note.
-- `booktools/readwise_obsidian.py` → `readwise` — reads a Readwise CSV export and writes per-book `Highlights.md` notes (via `booktools/highlights.py`) embedded into the canonical book note. Fills `amazon`/`shelves`/`series`/`series_index` frontmatter, renders type-aware location labels (`p.`/`loc.`), and matches existing notes by Amazon id then standardized title/author.
+- `booktools/kobo_export.py` → `kobo` — reads `KoboReader.sqlite` (opened **read-only** via `file:...?mode=ro`) and exports per-book highlight CSVs into a zip. Has a `--csv` flag (the default output mode) and an `--obsidian` flag that writes per-book `Highlights.md` notes (rendered via the shared `booktools/highlights.py`) embedded into the canonical book note. Note markers follow the `#tag` / `@link` convention (parsed via `highlights.parse_markers`).
+- `booktools/highlighted_obsidian.py` → `highlighted` — reads a Highlighted app CSV export (highlights from physical books, page-located) and writes per-book `Highlights.md` notes (via the shared `booktools/highlights.py`) embedded into the canonical book note. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
+- `booktools/readwise_obsidian.py` → `readwise` — reads a Readwise CSV export and writes per-book `Highlights.md` notes (via `booktools/highlights.py`) embedded into the canonical book note. Fills `amazon`/`shelves`/`series`/`series_index` frontmatter, renders type-aware location labels (`p.`/`loc.`), and matches existing notes by Amazon id then standardized title/author. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
+
+**The `#tag` / `@link` convention** (in `booktools/highlights.py`): highlight annotations
+carry two marker kinds — `#tag` renders as an Obsidian inline tag, `@link` renders as a
+`[[wikilink]]`. Inline in free-form note text (Kobo), `parse_markers` captures each marker
+until the next `@`/`#`/newline. In CSV tag columns (Highlighted, Readwise), `split_tag_column`
+comma-splits and routes `@`-prefixed entries to links. Links are title-cased with dashes
+turned into spaces (`@battle-of-warsaw` → `[[Battle of Warsaw]]`); tags are lowercased slugs.
+Both render on a trailing line under the quote callout, links first.
 
 ### The shared Obsidian layer
 

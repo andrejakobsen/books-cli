@@ -57,6 +57,12 @@ def test_row_to_highlight_dedupes_tags_preserving_order():
     assert h.tags == ["stalin", "ussr"]
 
 
+def test_row_to_highlight_splits_links_from_tags():
+    h = hi.row_to_highlight({"Highlight": "x", "Tags": "history, @War Commisar"})
+    assert h.tags == ["history"]
+    assert h.links == ["War Commisar"]
+
+
 def test_convert_writes_highlights_and_embed(tmp_path):
     out = tmp_path / "Obsidian"
     stats = hi.convert(write_csv(tmp_path), out)

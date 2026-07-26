@@ -30,7 +30,7 @@ from pathlib import Path
 import typer
 
 from booktools import resolve_path
-from booktools.highlights import Highlight, render_highlights, sanitize_tag
+from booktools.highlights import Highlight, parse_markers, render_highlights
 from booktools.obsidian import (
     BookRef,
     VaultIndex,
@@ -39,27 +39,6 @@ from booktools.obsidian import (
     write_leaf_with_embed,
     write_stub,
 )
-
-_HASHTAG_RE = re.compile(r"#(\w[\w/-]*)")
-
-
-def extract_tags(note: str | None) -> tuple[str | None, list[str]]:
-    """Split inline #hashtags out of a note.
-
-    Returns (clean_note, tags): tags are the hashtag names in first-seen order,
-    de-duplicated and sanitized; clean_note is the note with all hashtag spans
-    removed and whitespace collapsed (None if nothing readable remains).
-    """
-    if not note:
-        return None, []
-    tags: list[str] = []
-    for name in _HASHTAG_RE.findall(note):
-        tag = sanitize_tag(name)
-        if tag and tag not in tags:
-            tags.append(tag)
-    clean = _HASHTAG_RE.sub("", note)
-    clean = re.sub(r"\s+", " ", clean).strip()
-    return (clean or None), tags
 
 
 # One row per highlight/note. Kobo stores chapters as content rows
@@ -140,7 +119,7 @@ def row_to_highlight(row: sqlite3.Row) -> Highlight:
     """Map a Kobo query row to a source-agnostic Highlight."""
     block, segment = parse_container(row["container_path"])
     idx = row["chapter_index"]
-    note, tags = extract_tags((row["note"] or "").strip() or None)
+    note, links, tags = parse_markers((row["note"] or "").strip() or None)
     return Highlight(
         text=(row["highlight"] or "").strip(),
         note=note,
@@ -151,6 +130,7 @@ def row_to_highlight(row: sqlite3.Row) -> Highlight:
         segment=segment or None,
         date=(row["date_created"] or "").strip() or None,
         tags=tags,
+        links=links,
     )
 
 

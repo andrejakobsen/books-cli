@@ -23,7 +23,7 @@ from pathlib import Path
 import typer
 
 from booktools import resolve_path
-from booktools.highlights import Highlight, render_highlights, sanitize_tag
+from booktools.highlights import Highlight, render_highlights, split_tag_column
 from booktools.obsidian import (
     BookRef,
     VaultIndex,
@@ -53,16 +53,6 @@ def split_series(title: str) -> tuple[str, str | None, str | None]:
     return clean, m.group(1).strip(), m.group(2).strip()
 
 
-def _split_tags(raw: str | None) -> list[str]:
-    """Comma-split a tag string into sanitized, de-duplicated inline tags."""
-    tags: list[str] = []
-    for part in (raw or "").split(","):
-        tag = sanitize_tag(part)
-        if tag and tag not in tags:
-            tags.append(tag)
-    return tags
-
-
 def row_to_highlight(row: dict) -> Highlight:
     """Map a Readwise CSV row to a source-agnostic Highlight.
 
@@ -77,13 +67,15 @@ def row_to_highlight(row: dict) -> Highlight:
         page = location
     elif location and loc_type == "location":
         page, label = location, "loc."
+    links, tags = split_tag_column(row.get("Tags"))
     return Highlight(
         text=(row.get("Highlight") or "").strip(),
         note=(row.get("Note") or "").strip() or None,
         page=page,
         location_label=label,
         date=(row.get("Highlighted at") or "").strip() or None,
-        tags=_split_tags(row.get("Tags")),
+        tags=tags,
+        links=links,
     )
 
 

@@ -119,11 +119,25 @@ def test_kobo_no_tags_note_verbatim():
 
 
 def test_kobo_dedupes_tags_preserving_order():
-    h = _hl("#tag1 middle #tag1")
-    assert h.note == "middle"
-    assert h.tags == ["tag1"]
+    h = _hl("Note. #tag1 #tag2 #tag1")
+    assert h.note == "Note."
+    assert h.tags == ["tag1", "tag2"]
 
 
 def test_kobo_preserves_nested_and_hyphen_tags():
     h = _hl("#history/ussr #cold-war")
     assert h.tags == ["history/ussr", "cold-war"]
+
+
+def test_kobo_extracts_links_and_tags():
+    h = _hl("Great point. @War Commisar #history")
+    assert h.note == "Great point."
+    assert h.links == ["War Commisar"]
+    assert h.tags == ["history"]
+
+
+def test_kobo_note_only_markers_becomes_none():
+    h = _hl("@Trotsky #history")
+    assert h.note is None
+    assert h.links == ["Trotsky"]
+    assert h.tags == ["history"]
