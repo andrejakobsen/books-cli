@@ -70,9 +70,9 @@ books kobo ~/KoboReader.sqlite --csv -o kobo_highlights.zip
 - **`goodreads`** — Convert a Goodreads CSV export into Obsidian book
   notes (read books by default; `--shelf all` for everything). Merges with
   existing Calibre notes without overwriting, and extracts each review into a
-  separate `<Title> - Review.md`.
+  generic `Review.md` embedded in the book note via `![](Review.md)`.
 - **`kobo`** — Export Kobo highlights & notes to per-book CSVs in a zip (`--csv`,
-  the default output mode; an Obsidian mode will be added later).
+  the default output mode); pass `--obsidian` for the Obsidian vault mode.
 
 ### Kobo → Obsidian highlights
 
