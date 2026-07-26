@@ -29,7 +29,7 @@ from pathlib import Path
 
 import typer
 
-from booktools import resolve_path
+from booktools import config, resolve_path
 from booktools.highlights import Highlight, parse_markers, render_highlights
 from booktools.obsidian import (
     BookRef,
@@ -258,7 +258,8 @@ def kobo_export(
     output: Path | None = typer.Option(
         None, "--output", "-o",
         help="Output path. CSV mode: a .zip [default: ./kobo_highlights.zip]. "
-             "Obsidian mode: a vault directory [default: ./Obsidian]. "
+             "Obsidian mode: a vault directory "
+             "[default: the vault from ~/.config/booktools/config.toml]. "
              "Relative paths resolve against the current directory.",
     ),
     csv_out: bool = typer.Option(
@@ -271,7 +272,7 @@ def kobo_export(
         False, "--obsidian",
         help="Write highlights into an Obsidian vault (flat note + Exports/) instead "
              "of CSV/zip. In this mode --output is the vault directory "
-             "[default: ./Obsidian].",
+             "[default: the vault from ~/.config/booktools/config.toml].",
     ),
 ) -> None:
     """Export Kobo highlights & notes to per-book CSV files inside a zip archive.
@@ -289,12 +290,13 @@ def kobo_export(
     Date Created. Rows are ordered by book reading order.
 
     With --obsidian, writes highlights into an Obsidian vault (flat note + Exports/)
-    instead; --output is then the vault directory (default: ./Obsidian).
+    instead; --output is then the vault directory (default: the vault from
+    ~/.config/booktools/config.toml).
     """
     db_path = resolve_path(input_path or db or Path("KoboReader.sqlite"), Path.cwd())
 
     if obsidian:
-        vault = resolve_path(output or Path("Obsidian"), Path.cwd())
+        vault = config.resolve_vault(output)
         try:
             stats = export_obsidian(db_path, vault)
         except FileNotFoundError:
