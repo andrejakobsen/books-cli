@@ -273,7 +273,7 @@ def calibre_to_obsidian(
     library: Path | None = typer.Option(
         None,
         "--library", "-l",
-        help="Path to the Calibre library. Defaults to <vault>/.imports/calibre. "
+        help="Path to the Calibre library. Defaults to ~/Calibre Library. "
              "Relative paths resolve against your home directory.",
     ),
     output: Path | None = typer.Option(
@@ -289,7 +289,7 @@ def calibre_to_obsidian(
     with a metadata.opf (XML) and, usually, a cover.jpg. Ebook files (.epub,
     .mobi, ...) and Calibre internals (metadata.db, .caltrash, ...) are ignored.
     Explicit relative paths resolve against your home directory; default:
-    <vault>/.imports/calibre.
+    ~/Calibre Library.
 
     OUTPUT (--output): an Obsidian vault folder. Relative paths resolve against
     the current directory; default: ./Obsidian. For each book it writes a flat
@@ -299,7 +299,7 @@ def calibre_to_obsidian(
     overwrites notes it did not create or existing note bodies.
     """
     if library is None:
-        library = config.resolve_imports("calibre", output)
+        library = Path.home() / "Calibre Library"
     else:
         library = resolve_path(library, Path.home())
     output = config.resolve_vault(output)

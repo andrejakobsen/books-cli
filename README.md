@@ -71,17 +71,18 @@ The vault used by every command is `obsidian_path/vault`; pass `--output` to
 override it for a single run. `imports` names a **hidden** (dot-prefixed) folder
 *inside* the vault that holds raw import sources — because it starts with a dot,
 Obsidian keeps it out of its file explorer, search, and graph. Each importer reads
-its own subfolder: `.imports/calibre`, `.imports/goodreads`, `.imports/readwise`,
+its own subfolder: `.imports/goodreads`, `.imports/readwise`,
 `.imports/highlighted`, `.imports/kobo`. This is why the zero-config
 `books <command>` invocations below just work — drop a source in the right
-subfolder and the importer finds it.
+subfolder and the importer finds it. (`calibre` is the exception: it defaults to
+`~/Calibre Library`, where Calibre keeps its library.)
 
 ## Commands
 
 ```bash
 # With sources dropped into <vault>/.imports/<name>/ and a configured vault,
 # every importer runs with no arguments (output defaults to the configured vault):
-books calibre        # imports <vault>/.imports/calibre
+books calibre        # imports ~/Calibre Library
 books goodreads      # newest CSV in <vault>/.imports/goodreads
 books readwise       # newest CSV in <vault>/.imports/readwise
 books highlighted    # every CSV in <vault>/.imports/highlighted
@@ -99,7 +100,7 @@ path that defaults to `./kobo_highlights.zip`.
 - **`calibre`** — Convert a Calibre library into an Obsidian markdown
   vault: copies covers, extracts `.opf` metadata into YAML properties, and links
   authors/genres for a graph-friendly vault. `--library` defaults to
-  `<vault>/.imports/calibre`.
+  `~/Calibre Library`.
 - **`goodreads`** — Convert a Goodreads CSV export into Obsidian book
   notes (read books by default; `--shelf all` for everything). Merges with
   existing Calibre notes without overwriting, and extracts each review into a

@@ -30,7 +30,7 @@ create `booktools/<feature>.py` with a `register(app)` function that attaches it
 `@app.command(...)`, then add the module to `CAPABILITIES`.
 
 Six capabilities exist today:
-- `booktools/calibre_obsidian.py` → `calibre` — reads a Calibre library's `metadata.opf` (XML) + `cover.jpg` per book and writes Obsidian notes. `--library` defaults to `<vault>/.imports/calibre`.
+- `booktools/calibre_obsidian.py` → `calibre` — reads a Calibre library's `metadata.opf` (XML) + `cover.jpg` per book and writes Obsidian notes. `--library` defaults to `~/Calibre Library`.
 - `booktools/goodreads_obsidian.py` → `goodreads` — reads a Goodreads CSV export and writes/merges Obsidian notes, plus a separate `<Title> - Review.md`. `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/goodreads`.
 - `booktools/kobo_export.py` → `kobo` — reads `KoboReader.sqlite` (opened **read-only** via `file:...?mode=ro`) and exports per-book highlight CSVs into a zip. Has a `--csv` flag (the default output mode) and an `--obsidian` flag that writes per-book `Highlights.md` notes (rendered via the shared `booktools/highlights.py`) embedded into the canonical book note. Note markers follow the `#tag` / `@link` convention (parsed via `highlights.parse_markers`). When no DB path is given, a mounted Kobo (`/Volumes/KOBOeReader/.kobo/KoboReader.sqlite`) is safely snapshotted into `<vault>/.imports/kobo/` via SQLite's read-only backup API (the device file is never modified) and read from there; otherwise the existing copy (or newest `*.sqlite`) in that folder is used.
 - `booktools/highlighted_obsidian.py` → `highlighted` — reads a Highlighted app CSV export (highlights from physical books, page-located) and writes per-book `Highlights.md` notes (via the shared `booktools/highlights.py`) embedded into the canonical book note. `--csv` accepts a single CSV file or a folder of CSV exports (every top-level `*.csv` is imported in sorted order; a file that fails to parse is skipped and reported), defaulting to `<vault>/.imports/highlighted`. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
@@ -51,9 +51,10 @@ stdlib `tomllib` (Python 3.11+); malformed/partial config falls back per key.
 The new `imports` key (default `.imports`) names a hidden folder **inside** the vault
 that holds raw import sources; `resolve_imports(name, output)` returns
 `<vault>/<imports>/<name>` (an absolute `imports` value is honored as-is, a relative one
-joins onto the resolved vault). Every importer defaults its input to its canonical
-subfolder — `.imports/calibre`, `.imports/goodreads`, `.imports/highlighted`,
-`.imports/readwise`, `.imports/kobo` — so most commands need no input flag. For the
+joins onto the resolved vault). Most importers default their input to a canonical
+subfolder — `.imports/goodreads`, `.imports/highlighted`,
+`.imports/readwise`, `.imports/kobo` — so most commands need no input flag.
+(`calibre` is the exception: `--library` defaults to `~/Calibre Library`.) For the
 single-file CSV importers (goodreads/readwise), `newest_csv(folder)` picks the
 most-recently-modified top-level `*.csv` and `resolve_csv_arg(csv, name, output)` resolves
 an unset/folder/file `--csv` to one CSV (unset → newest in the canonical subfolder).

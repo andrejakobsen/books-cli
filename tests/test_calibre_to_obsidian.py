@@ -165,25 +165,29 @@ def test_rerun_preserves_user_files(tmp_path):
     assert "My notes on Roberts." in author_stub.read_text()
 
 
-def test_calibre_defaults_library_to_output_vault_imports(monkeypatch, tmp_path):
+def test_calibre_defaults_library_to_home_calibre_library(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
+    from pathlib import Path as _Path
     from booktools import calibre_obsidian as cal, config
 
-    # Real config with the default imports folder; only the config path is faked.
+    # Real config; only the config path is faked so resolve_vault has a vault.
     cfg = tmp_path / "config.toml"
     cfg.write_text('imports = ".imports"\n', encoding="utf-8")
     monkeypatch.setattr(config, "config_path", lambda: cfg)
 
-    vault = tmp_path / "Vault"
-    lib = vault / ".imports" / "calibre"
+    # Fake home so the default library resolves to <home>/Calibre Library.
+    home = tmp_path / "home"
+    monkeypatch.setattr(_Path, "home", classmethod(lambda cls: home))
+    lib = home / "Calibre Library"
     lib.mkdir(parents=True)  # empty library -> convert() finds no books
 
+    vault = tmp_path / "Vault"
     app = typer.Typer()
     cal.register(app)
     result = CliRunner().invoke(app, ["--output", str(vault)])
 
-    # The default library must track the explicit --output vault.
+    # The default library must be ~/Calibre Library, independent of the vault.
     assert result.exit_code == 0, result.output
     assert "0 books" in result.output
 
