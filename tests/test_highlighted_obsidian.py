@@ -2,6 +2,9 @@
 
 from pathlib import Path
 
+import pytest
+import typer
+
 from booktools import highlighted_obsidian as hi
 
 HEADER = ("Highlight,Title,Author,ISBN,Collections,Reading Status,"
@@ -18,6 +21,24 @@ def write_csv(tmp_path: Path) -> Path:
     p = tmp_path / "Highlights for Stalin.csv"
     p.write_text(HEADER + ROWS, encoding="utf-8")
     return p
+
+
+def test_resolve_csv_paths_single_file(tmp_path):
+    p = write_csv(tmp_path)
+    assert hi.resolve_csv_paths(p) == [p]
+
+
+def test_resolve_csv_paths_folder_sorted(tmp_path):
+    (tmp_path / "b.csv").write_text(HEADER + ROWS, encoding="utf-8")
+    (tmp_path / "a.csv").write_text(HEADER + ROWS, encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("ignore me", encoding="utf-8")
+    result = hi.resolve_csv_paths(tmp_path)
+    assert [p.name for p in result] == ["a.csv", "b.csv"]
+
+
+def test_resolve_csv_paths_empty_folder_raises(tmp_path):
+    with pytest.raises(typer.BadParameter):
+        hi.resolve_csv_paths(tmp_path)
 
 
 def test_parse_and_map(tmp_path):

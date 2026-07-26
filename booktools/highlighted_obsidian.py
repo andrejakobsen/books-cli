@@ -44,6 +44,21 @@ def parse_csv(path: Path) -> list[dict]:
         return list(_csv.DictReader(fh))
 
 
+def resolve_csv_paths(csv_path: Path) -> list[Path]:
+    """Resolve --csv into a list of CSV files.
+
+    A file yields ``[csv_path]``; a directory yields its sorted top-level
+    ``*.csv`` files (non-recursive). An empty directory raises BadParameter.
+    """
+    if csv_path.is_dir():
+        paths = sorted(csv_path.glob("*.csv"))
+        if not paths:
+            raise typer.BadParameter(
+                f"no CSV files found in {csv_path}", param_hint="--csv")
+        return paths
+    return [csv_path]
+
+
 def row_to_highlight(row: dict) -> Highlight:
     """Map a Highlighted CSV row to a source-agnostic Highlight."""
     links, tags = split_tag_column(row.get("Tags"))
