@@ -85,3 +85,67 @@ def row_to_highlight(row: dict) -> Highlight:
         date=(row.get("Highlighted at") or "").strip() or None,
         tags=_split_tags(row.get("Tags")),
     )
+
+
+def parse_csv(path: Path) -> list[dict]:
+    """Read the Readwise CSV export into a list of row dicts."""
+    with open(path, newline="", encoding="utf-8-sig") as fh:
+        return list(_csv.DictReader(fh))
+
+
+def convert(csv_path: Path, output: Path) -> dict:
+    """Import every highlight, grouped by book, into the Obsidian vault."""
+    stats = {"books": 0, "entries": 0, "authors": set()}
+    index = VaultIndex(output)
+    authors_dir = output / "Authors"
+
+    # Group rows by book (Amazon id when present, else standardized title),
+    # preserving CSV order.
+    groups: dict[str, dict] = {}
+    for row in parse_csv(csv_path):
+        raw_title = (row.get("Book Title") or "").strip()
+        if not raw_title:
+            continue
+        title, series, series_index = split_series(raw_title)
+        amazon = (row.get("Amazon Book ID") or "").strip() or None
+        author = (row.get("Book Author") or "").strip()
+        doc_tags = [t.strip() for t in (row.get("Document tags") or "").split(",")
+                    if t.strip()]
+        key = amazon or title
+        group = groups.setdefault(key, {
+            "title": title, "author": author, "amazon": amazon,
+            "series": series, "series_index": series_index,
+            "shelves": doc_tags, "rows": []})
+        group["rows"].append(row)
+
+    for group in groups.values():
+        authors = [group["author"]] if group["author"] else []
+        ref = BookRef(title=group["title"], authors=authors, amazon=group["amazon"])
+        dest = index.find_or_create(ref)
+
+        updates = {
+            "title": yaml_quote(group["title"]),
+            "authors": link_list(authors) if authors else "",
+            "amazon": yaml_quote(group["amazon"]) if group["amazon"] else "",
+            "shelves": plain_list(group["shelves"]) if group["shelves"] else "",
+            "source": "readwise",
+        }
+        if group["series"]:
+            updates["series"] = yaml_quote(group["series"])
+        if group["series_index"]:
+            updates["series_index"] = group["series_index"]
+        base = dest.note_path.read_text(encoding="utf-8")
+        dest.note_path.write_text(update_frontmatter(base, updates), encoding="utf-8")
+
+        highlights = [row_to_highlight(r) for r in group["rows"]]
+        write_leaf_with_embed(
+            dest.note_path, dest.export_dir, "Highlights.md",
+            with_source("readwise", render_highlights(highlights)), "Highlights")
+
+        for author in authors:
+            write_stub(authors_dir, author, "author")
+            stats["authors"].add(author)
+        stats["books"] += 1
+        stats["entries"] += len(highlights)
+
+    return stats

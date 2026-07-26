@@ -4,6 +4,21 @@ from pathlib import Path
 
 from booktools import readwise_obsidian as rw
 
+HEADER = ("Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
+          "Location Type,Location,Highlighted at,Document tags\n")
+ROWS = (
+    '"First passage.","Stalin: Volume I (Stalin #1)",Stephen Kotkin,B00INIXPYE,'
+    'my note,,history,page,3,2026-07-17 14:00:25+00:00,favorites\n'
+    '"Second passage.","Stalin: Volume I (Stalin #1)",Stephen Kotkin,B00INIXPYE,'
+    ',,,,page,10,2026-07-19 17:36:30+00:00,favorites\n'
+)
+
+
+def write_csv(tmp_path: Path) -> Path:
+    p = tmp_path / "readwise-data.csv"
+    p.write_text(HEADER + ROWS, encoding="utf-8")
+    return p
+
 
 def test_split_series_extracts_name_and_index():
     title, series, index = rw.split_series(
@@ -62,3 +77,54 @@ def test_row_to_highlight_blank_note_is_none():
 def test_row_to_highlight_splits_and_dedupes_tags():
     h = rw.row_to_highlight({"Highlight": "x", "Tags": "Stalin, USSR, stalin"})
     assert h.tags == ["stalin", "ussr"]
+
+
+def test_parse_csv_reads_rows(tmp_path):
+    rows = rw.parse_csv(write_csv(tmp_path))
+    assert len(rows) == 2
+    assert rows[0]["Book Title"] == "Stalin: Volume I (Stalin #1)"
+
+
+def test_convert_writes_highlights_and_frontmatter(tmp_path):
+    out = tmp_path / "Obsidian"
+    stats = rw.convert(write_csv(tmp_path), out)
+    assert stats["books"] == 1 and stats["entries"] == 2
+    note = out / "Books" / "Stalin_ Volume I.md"
+    assert note.exists()
+    note_text = note.read_text()
+    assert "![[Exports/Stephen Kotkin/Stalin_ Volume I/Highlights.md]]" in note_text
+    assert 'amazon: "B00INIXPYE"' in note_text
+    assert 'series: "Stalin"' in note_text
+    assert "series_index: 1" in note_text
+    assert 'shelves: ["favorites"]' in note_text
+    highlights_md = (out / "Exports" / "Stephen Kotkin" / "Stalin_ Volume I"
+                     / "Highlights.md").read_text()
+    assert "source: readwise" in highlights_md
+    assert "> [!quote]+ p. 3" in highlights_md
+    assert "First passage." in highlights_md
+    assert "#history" in highlights_md
+
+
+def test_convert_merges_into_existing_note_by_amazon(tmp_path):
+    out = tmp_path / "Obsidian"
+    books = out / "Books"
+    books.mkdir(parents=True)
+    note = books / "Existing.md"
+    note.write_text(
+        '---\ntype: book\ntitle: "Stalin"\namazon: "B00INIXPYE"\n'
+        'status: read\n---\n\nMy body.\n', encoding="utf-8")
+    stats = rw.convert(write_csv(tmp_path), out)
+    assert stats["books"] == 1
+    updated = note.read_text()
+    assert "status: read" in updated       # existing value untouched
+    assert "My body." in updated           # body preserved
+    assert "![[Exports/Stephen Kotkin/Stalin_ Volume I/Highlights.md]]" in updated
+
+
+def test_convert_idempotent(tmp_path):
+    out = tmp_path / "Obsidian"
+    rw.convert(write_csv(tmp_path), out)
+    before = {p: p.read_text() for p in out.rglob("*.md")}
+    rw.convert(write_csv(tmp_path), out)
+    after = {p: p.read_text() for p in out.rglob("*.md")}
+    assert before == after
