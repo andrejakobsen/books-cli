@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Fill missing book-note covers from Google Books, Open Library, and Amazon.
+"""Fill missing book-note covers from Apple Books, Google, Open Library, and Amazon.
 
 Scans an Obsidian vault for `type: book` notes whose `cover:` frontmatter is
-blank/absent and fetches a cover image. Sources are tried in order — Google
-Books, then Open Library (paperback editions preferred where the format is
-known), then Amazon (only when the note already carries an `amazon` ASIN, by
-constructing the known cover-image URL — no scraping). When a note has an ISBN
-it drives the lookup directly (Google `isbn:` query / Open Library `/b/isbn/`
-cover), which is the most reliable path. All network I/O is injected so the
-logic is unit-testable; vault writing reuses booktools.obsidian.
+blank/absent and fetches a cover image. Sources are tried in order — Apple Books
+(iTunes Search API, title+author, GB store), then Google Books, then Open Library
+(paperback editions preferred where the format is known), then Amazon (only when
+the note already carries an `amazon` ASIN, by constructing the known cover-image
+URL — no scraping). When a note has an ISBN it drives the Google/Open Library
+lookup directly (Google `isbn:` query / Open Library `/b/isbn/` cover); Apple is
+always queried by title+author because its ISBN-term search is unreliable. All
+network I/O is injected so the logic is unit-testable; vault writing reuses
+booktools.obsidian.
 
 Robustness: HTTP fetches retry transient failures (429/5xx) with exponential
 backoff, and a source that errors outright is reported separately from one that
@@ -634,11 +636,11 @@ def covers_command(
     """Find book notes missing a cover and fetch one.
 
     Scans OUTPUT (an Obsidian vault) for 'type: book' notes whose 'cover:'
-    frontmatter is blank and fetches a cover from Google Books, then Open Library
-    (paperback editions preferred where known), then Amazon (only when the note
-    already carries an 'amazon' ASIN). By default the best match is written
-    automatically; use --interactive to approve each candidate, or --dry-run to
-    preview. Pass --book PATH to fetch a cover for a single note under Books/
+    frontmatter is blank and fetches a cover from Apple Books, then Google Books,
+    then Open Library (paperback editions preferred where known), then Amazon
+    (only when the note already carries an 'amazon' ASIN). By default the best
+    match is written automatically; use --interactive to approve each candidate,
+    or --dry-run to preview. Pass --book PATH to fetch a cover for a single note under Books/
     (interactive by default). Existing covers, note bodies, and filenames are
     never changed.
     """
