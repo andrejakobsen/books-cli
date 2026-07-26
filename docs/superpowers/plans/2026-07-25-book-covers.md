@@ -1044,29 +1044,129 @@ def test_run_quit_stops_early(tmp_path):
         fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
         prompt=lambda c: "quit")
     assert stats["fetched"] == 0
+
+
+def test_note_to_missing_eligible_and_ineligible(tmp_path):
+    note = _write_note(tmp_path, "A - Ann.md",
+        '---\ntype: book\ntitle: "A"\nauthors: ["[[Ann]]"]\ncover:\n---\n')
+    mb = covers.note_to_missing(note)
+    assert mb is not None
+    assert mb.title == "A" and mb.authors == ["Ann"]
+
+    has_cover = _write_note(tmp_path, "B - Bee.md",
+        '---\ntype: book\ntitle: "B"\ncover: "[[x/cover.jpg]]"\n---\n')
+    assert covers.note_to_missing(has_cover) is None   # cover already set
+
+    not_book = _write_note(tmp_path, "C.md", '---\ntype: author\ncover:\n---\n')
+    assert covers.note_to_missing(not_book) is None    # wrong type
+
+
+def test_run_single_book_only_processes_that_note(tmp_path):
+    target = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\n'
+        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+    # another missing-cover book that must NOT be touched
+    _write_note(tmp_path, "Other - X.md",
+        '---\ntype: book\ntitle: "Other"\nauthors: ["[[X]]"]\ncover:\n---\n')
+
+    stats = covers.run(
+        tmp_path, interactive=False, dry_run=False, limit=None,
+        fetch_json=lambda url: GOOGLE_VOLUME,
+        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
+        prompt=None, book_path=target)
+
+    assert stats["scanned"] == 1
+    assert stats["missing"] == 1
+    assert stats["fetched"] == 1
+    assert (tmp_path / "Exports" / "Andrew Roberts" / "Napoleon" / "cover.jpg").is_file()
+    assert not (tmp_path / "Exports" / "X").exists()
+
+
+def test_run_single_book_ineligible_is_no_op(tmp_path):
+    target = _write_note(tmp_path, "Done - Y.md",
+        '---\ntype: book\ntitle: "Done"\ncover: "[[x/cover.jpg]]"\n---\n')
+    stats = covers.run(
+        tmp_path, interactive=False, dry_run=False, limit=None,
+        fetch_json=lambda url: GOOGLE_VOLUME,
+        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
+        prompt=None, book_path=target)
+    assert stats["missing"] == 0
+    assert stats["fetched"] == 0
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `uv run pytest tests/test_covers.py -k "run_" -v`
-Expected: FAIL with `AttributeError: ... has no attribute 'run'`
+Run: `uv run pytest tests/test_covers.py -k "run_ or note_to_missing" -v`
+Expected: FAIL with `AttributeError: ... has no attribute 'run'` (and `note_to_missing`)
 
 - [ ] **Step 3: Write minimal implementation**
 
-Add to `booktools/covers.py`:
+First add `note_to_missing` and **refactor the existing `find_missing`** (from Task 2)
+to reuse it — replace the body of `find_missing` with the version below so the
+single-note and full-scan paths share one eligibility check:
+
+```python
+def note_to_missing(note_path: Path) -> MissingBook | None:
+    """Build a MissingBook for a single note, or None if it is not eligible.
+
+    Eligible means a readable `type: book` note whose `cover:` is blank/absent.
+    Returns None for unreadable files, non-book notes, or notes that already have
+    a cover.
+    """
+    try:
+        text = note_path.read_text(encoding="utf-8")
+    except OSError:
+        return None
+    fm = frontmatter_values(text)
+    if unquote(fm.get("type", "")) != "book":
+        return None
+    if not _cover_is_blank(fm):
+        return None
+    return MissingBook(
+        note_path=note_path,
+        title=unquote(fm.get("title", "")),
+        authors=extract_wikilinks(fm.get("authors", "")),
+        isbn=(unquote(fm.get("isbn", "")).strip() or None),
+        amazon=(unquote(fm.get("amazon", "")).strip() or None),
+    )
+
+
+def find_missing(vault: Path) -> list[MissingBook]:
+    """Return `type: book` notes under vault/Books whose cover is blank/absent."""
+    out: list[MissingBook] = []
+    books_dir = vault / BOOKS_DIRNAME
+    if not books_dir.is_dir():
+        return out
+    for md in sorted(books_dir.glob("*.md")):
+        book = note_to_missing(md)
+        if book is not None:
+            out.append(book)
+    return out
+```
+
+Then add `run`, which processes a single note when `book_path` is given, else
+scans the whole vault:
 
 ```python
 def run(vault, *, interactive, dry_run, limit,
-        fetch_json, fetch_bytes, prompt):
-    """Scan the vault and fetch a cover for each book missing one.
+        fetch_json, fetch_bytes, prompt, book_path=None):
+    """Fetch a cover for books missing one.
 
-    Returns a stats dict: scanned/missing/processed/fetched/not_found/by_source.
+    When *book_path* is given, only that single note is processed (the rest of the
+    vault is left alone); otherwise the whole vault is scanned. Returns a stats
+    dict: scanned/missing/processed/fetched/not_found/by_source.
     """
-    missing = find_missing(vault)
+    if book_path is not None:
+        one = note_to_missing(book_path)
+        missing = [one] if one is not None else []
+        scanned = 1
+    else:
+        missing = find_missing(vault)
+        scanned = (len(list((vault / BOOKS_DIRNAME).glob("*.md")))
+                   if (vault / BOOKS_DIRNAME).is_dir() else 0)
     index = VaultIndex(vault)
     stats = {
-        "scanned": len(list((vault / BOOKS_DIRNAME).glob("*.md")))
-        if (vault / BOOKS_DIRNAME).is_dir() else 0,
+        "scanned": scanned,
         "missing": len(missing),
         "processed": 0,
         "fetched": 0,
@@ -1102,14 +1202,15 @@ def run(vault, *, interactive, dry_run, limit,
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `uv run pytest tests/test_covers.py -k "run_" -v`
-Expected: PASS (4 tests)
+Run: `uv run pytest tests/test_covers.py -k "run_ or note_to_missing" -v`
+Expected: PASS (6 tests). Also run the whole file to confirm the `find_missing`
+refactor didn't regress Task 2: `uv run pytest tests/test_covers.py -v`.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add booktools/covers.py tests/test_covers.py
-git commit -m "feat(covers): run orchestrator with dry-run, limit, quit
+git commit -m "feat(covers): run orchestrator with single-book, dry-run, limit, quit
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
@@ -1151,6 +1252,39 @@ def test_cli_covers_registered():
     from booktools.cli import app
     names = {c.name for c in app.registered_commands}
     assert "covers" in names
+
+
+def test_cli_covers_single_book_interactive_by_default(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+    from booktools.cli import app
+
+    note = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\n'
+        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+    # another missing-cover book that must NOT be touched
+    _write_note(tmp_path, "Other - X.md",
+        '---\ntype: book\ntitle: "Other"\nauthors: ["[[X]]"]\ncover:\n---\n')
+
+    monkeypatch.setattr(covers, "default_fetch_json", lambda url: GOOGLE_VOLUME)
+    monkeypatch.setattr(
+        covers, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
+    # single-book mode is interactive by default -> the prompt is used; accept it.
+    monkeypatch.setattr(covers, "_terminal_prompt", lambda c: "accept")
+
+    result = CliRunner().invoke(app, ["covers", "-b", str(note)])
+    assert result.exit_code == 0, result.output
+    assert (tmp_path / "Exports" / "Andrew Roberts" / "Napoleon" / "cover.jpg").is_file()
+    assert not (tmp_path / "Exports" / "X").exists()
+
+
+def test_cli_covers_single_book_rejects_note_outside_books(tmp_path):
+    from typer.testing import CliRunner
+    from booktools.cli import app
+
+    stray = tmp_path / "stray.md"
+    stray.write_text('---\ntype: book\ntitle: "S"\ncover:\n---\n', encoding="utf-8")
+    result = CliRunner().invoke(app, ["covers", "-b", str(stray)])
+    assert result.exit_code != 0
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1174,9 +1308,15 @@ def covers_command(
         "--output", "-o",
         help="Obsidian vault to scan. Relative paths resolve against the current directory.",
     ),
-    interactive: bool = typer.Option(
-        False, "--interactive",
-        help="Confirm each candidate: accept / next / skip book / quit.",
+    book: Path | None = typer.Option(
+        None, "--book", "-b",
+        help="Fetch a cover for a single book note (path to a file under Books/). "
+             "Interactive by default; the vault is inferred from the path, so --output is ignored.",
+    ),
+    interactive: bool | None = typer.Option(
+        None, "--interactive/--no-interactive",
+        help="Confirm each candidate: accept / next / skip book / quit. "
+             "Defaults on for a single --book, off for a full-vault scan.",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run",
@@ -1184,7 +1324,7 @@ def covers_command(
     ),
     limit: int | None = typer.Option(
         None, "--limit",
-        help="Process at most this many books missing a cover.",
+        help="Process at most this many books missing a cover (ignored with --book).",
     ),
 ) -> None:
     """Find book notes missing a cover and fetch one.
@@ -1194,17 +1334,35 @@ def covers_command(
     (paperback editions preferred where known), then Amazon (only when the note
     already carries an 'amazon' ASIN). By default the best match is written
     automatically; use --interactive to approve each candidate, or --dry-run to
-    preview. Existing covers, note bodies, and filenames are never changed.
+    preview. Pass --book PATH to fetch a cover for a single note under Books/
+    (interactive by default). Existing covers, note bodies, and filenames are
+    never changed.
     """
-    vault = resolve_path(output, Path.cwd())
-    if not (vault / BOOKS_DIRNAME).is_dir():
-        raise typer.BadParameter(
-            f"no Books/ folder in vault: {vault}", param_hint="--output")
+    if book is not None:
+        note = resolve_path(book, Path.cwd())
+        if not note.is_file():
+            raise typer.BadParameter(f"book note not found: {note}", param_hint="--book")
+        if note.parent.name != BOOKS_DIRNAME:
+            raise typer.BadParameter(
+                f"book note must live under a '{BOOKS_DIRNAME}/' folder: {note}",
+                param_hint="--book")
+        vault = note.parents[1]
+    else:
+        note = None
+        vault = resolve_path(output, Path.cwd())
+        if not (vault / BOOKS_DIRNAME).is_dir():
+            raise typer.BadParameter(
+                f"no Books/ folder in vault: {vault}", param_hint="--output")
+
+    # Interactive is on by default for a single book, off for a full scan,
+    # unless the user set it explicitly with --interactive/--no-interactive.
+    if interactive is None:
+        interactive = book is not None
 
     stats = run(
         vault, interactive=interactive, dry_run=dry_run, limit=limit,
         fetch_json=default_fetch_json, fetch_bytes=default_fetch_bytes,
-        prompt=_terminal_prompt,
+        prompt=_terminal_prompt, book_path=note,
     )
     bs = stats["by_source"]
     typer.echo(
@@ -1232,7 +1390,7 @@ if __name__ == "__main__":
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `uv run pytest tests/test_covers.py -k "cli_covers" -v`
-Expected: PASS (2 tests)
+Expected: PASS (4 tests)
 
 - [ ] **Step 5: Commit**
 
@@ -1353,7 +1511,7 @@ In the Architecture section, update the capability count from "Five" to "Six" an
 add a bullet describing `covers` after the `readwise` bullet:
 
 ```markdown
-- `booktools/covers.py` → `covers` — scans an existing vault for `type: book` notes with a blank `cover:` field and fetches a cover image. Sources are tried in order — Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping). Stdlib-only (`urllib`); all network I/O is injected for testing. Writes `cover.jpg` into `Exports/<Author>/<Title>/` and fills the note's `cover:` frontmatter + top embed via the shared `obsidian.py` helpers (never overwriting an existing cover). Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run.
+- `booktools/covers.py` → `covers` — scans an existing vault for `type: book` notes with a blank `cover:` field and fetches a cover image. Sources are tried in order — Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping). Stdlib-only (`urllib`); all network I/O is injected for testing. Writes `cover.jpg` into `Exports/<Author>/<Title>/` and fills the note's `cover:` frontmatter + top embed via the shared `obsidian.py` helpers (never overwriting an existing cover). Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run. `--book PATH` targets a single note under `Books/` (vault inferred from the path) and is interactive by default.
 ```
 
 - [ ] **Step 2: Run the full suite**

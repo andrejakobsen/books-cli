@@ -23,6 +23,8 @@ cover, and fetches one — preferring paperback editions where that is knowable.
   never skip a book merely because paperback can't be confirmed.
 - Automatic best-pick by default; an `--interactive` mode to reject candidates and
   step to the next; a `--dry-run` mode that writes nothing.
+- A single-book mode (`--book PATH`) that targets one note under `Books/` (the vault
+  is inferred from the path) and is **interactive by default**.
 - Reuse the shared `obsidian.py` layer for all vault writing (never overwrite
   existing values or bodies; never rename notes).
 - Stdlib-only (Typer remains the sole runtime dependency): `urllib.request` + `json`.
@@ -64,10 +66,15 @@ class Candidate:
 
 ### Units
 
+- `note_to_missing(note_path: Path) -> MissingBook | None`
+  Eligibility check for a single note: returns a `MissingBook` when the note is a
+  readable `type: book` with a blank `cover:`, else `None` (unreadable, wrong type,
+  or cover already set). Extracts title (`unquote`), authors (`extract_wikilinks`),
+  isbn, amazon.
+
 - `find_missing(vault: Path) -> list[MissingBook]`
-  Iterate `vault/Books/*.md`, parse frontmatter via `obsidian.frontmatter_values`,
-  keep `type == "book"` notes whose `cover:` is blank/absent. Extract title
-  (`unquote`), authors (`extract_wikilinks`), isbn, amazon.
+  Iterate `vault/Books/*.md` and collect every note for which `note_to_missing`
+  returns non-`None` (shared eligibility logic with the single-book path).
 
 - `google_books_candidates(book, fetch_json) -> list[Candidate]`
   Query `https://www.googleapis.com/books/v1/volumes?q=...`:
@@ -125,15 +132,20 @@ class Candidate:
 ## CLI
 
 ```
-books covers [--output/-o PATH] [--interactive] [--dry-run] [--limit N]
+books covers [--output/-o PATH] [--book/-b PATH] [--interactive/--no-interactive] [--dry-run] [--limit N]
 ```
 
 - `--output/-o` (default `Obsidian`, resolved against cwd via `resolve_path`) — the
   vault to scan. Same option name/semantics as the other importers.
-- `--interactive` — prompt per candidate: `[y]` accept / `[n]` next / `[s]` skip
-  book / `[q]` quit.
+- `--book/-b PATH` — target a single note under `Books/`. The vault is inferred
+  from the path (`--output` is ignored), and this mode is interactive by default.
+  The path must exist and live directly under a `Books/` folder.
+- `--interactive/--no-interactive` — prompt per candidate: `[y]` accept / `[n]`
+  next / `[s]` skip book / `[q]` quit. Tri-state: unset defaults **on** for a
+  single `--book`, **off** for a full-vault scan.
 - `--dry-run` — report the chosen candidate per book; write nothing.
-- `--limit N` — process at most N missing-cover books (testing/throttling).
+- `--limit N` — process at most N missing-cover books (testing/throttling; ignored
+  with `--book`).
 
 Errors per book (no candidates, download failure) are reported and skipped; the run
 continues.
