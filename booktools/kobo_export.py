@@ -35,6 +35,7 @@ from booktools.obsidian import (
     BookRef,
     VaultIndex,
     safe_filename,
+    with_source,
     write_leaf_with_embed,
     write_stub,
 )
@@ -164,7 +165,8 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
         note_path, _ = index.find_or_create(ref)
         highlights = [row_to_highlight(r) for r in book_rows]
         write_leaf_with_embed(
-            note_path, "Highlights.md", render_highlights(highlights), "Highlights")
+            note_path, "Highlights.md",
+            with_source("kobo", render_highlights(highlights)), "Highlights")
         for a in authors:
             write_stub(authors_dir, a, "author")
         entries += len(highlights)

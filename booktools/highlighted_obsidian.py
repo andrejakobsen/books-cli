@@ -28,6 +28,7 @@ from booktools.obsidian import (
     VaultIndex,
     link_list,
     update_frontmatter,
+    with_source,
     write_leaf_with_embed,
     write_stub,
     yaml_quote,
@@ -83,7 +84,8 @@ def convert(csv_path: Path, output: Path) -> dict:
 
         highlights = [row_to_highlight(r) for r in group["rows"]]
         write_leaf_with_embed(
-            note_path, "Highlights.md", render_highlights(highlights), "Highlights")
+            note_path, "Highlights.md",
+            with_source("highlighted", render_highlights(highlights)), "Highlights")
 
         for author in authors:
             write_stub(authors_dir, author, "author")

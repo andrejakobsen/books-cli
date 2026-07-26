@@ -42,6 +42,7 @@ def test_convert_writes_highlights_and_embed(tmp_path):
     assert "![](Highlights.md)" in note_text
     assert 'isbn: "9781594203794"' in note_text     # ISBN persisted for matching
     body = (note.parent / "Highlights.md").read_text()
+    assert "source: highlighted" in body          # provenance frontmatter
     assert "> [!quote]+ p. 4" in body
     assert "^p45-49" in body
     assert "Fear is the mind-killer" in body

@@ -77,6 +77,10 @@ books kobo ~/KoboReader.sqlite --csv -o kobo_highlights.zip
   [Highlighted](https://highlighted.app) app (CSV export) into Obsidian book
   notes, labelled and anchored by page.
 
+Every export records provenance: content leaves (`Highlights.md`/`Review.md`)
+carry a `source:` property (`kobo`/`highlighted`/`goodreads`), and the `calibre`
+and `goodreads` importers stamp `source` on the book note itself.
+
 ### Kobo → Obsidian highlights
 
 Export highlights into an Obsidian vault (folder-per-book) instead of CSV:

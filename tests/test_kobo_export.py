@@ -57,6 +57,7 @@ def test_export_obsidian_writes_highlights_and_embed(tmp_path):
 
     folder = vault / "F. Scott Fitzgerald" / "The Great Gatsby"
     highlights = (folder / "Highlights.md").read_text()
+    assert "source: kobo" in highlights          # provenance frontmatter
     assert "> [!quote]+ ch. 2 · 42%" in highlights
     assert "^ch2-b17-5" in highlights
     assert "> [!note]-" in highlights          # first highlight has an annotation
