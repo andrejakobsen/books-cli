@@ -15,6 +15,12 @@ uv tool install . --reinstall        # rebuild & reinstall the global `books` co
 
 There is no separate lint/format step configured.
 
+## Git workflow
+
+Commit work directly to `main` in this repo — do **not** create feature branches or
+open PRs for changes. This overrides the default "branch first when on the default
+branch" behavior. Run `uv run pytest -q` before committing.
+
 ## Architecture
 
 Single Typer CLI (`books`) that fans out to independent capability modules. The
