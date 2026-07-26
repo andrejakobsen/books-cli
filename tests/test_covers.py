@@ -113,6 +113,16 @@ def test_google_books_uses_isbn_query_when_present():
     assert "isbn:9780141032016" in captured["url"]
 
 
+def test_google_books_strips_edge_curl_when_only_thumbnail():
+    book = covers.MissingBook(
+        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+    data = {"items": [{"volumeInfo": {"title": "X", "imageLinks": {
+        "thumbnail": "http://books.google.com/x?zoom=1&edge=curl"}}}]}
+    cands = covers.google_books_candidates(book, lambda url: data)
+    assert cands and "edge=curl" not in cands[0].image_url
+    assert cands[0].image_url.startswith("https://")
+
+
 def test_google_books_no_images_returns_empty():
     book = covers.MissingBook(
         note_path=None, title="X", authors=[], isbn=None, amazon=None)

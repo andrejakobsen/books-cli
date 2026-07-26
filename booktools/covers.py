@@ -88,7 +88,7 @@ def _label(title: str, authors: list[str]) -> str:
 
 
 def _upgrade_google_url(url: str) -> str:
-    """Prefer https and a larger zoom; drop the page-curl overlay."""
+    """Prefer https and drop the page-curl overlay."""
     url = url.replace("http://", "https://")
     url = url.replace("&edge=curl", "").replace("edge=curl&", "").replace("edge=curl", "")
     return url
@@ -105,7 +105,7 @@ def google_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
         q = " ".join(parts)
     url = f"{GOOGLE_API}?q={quote(q, safe=':')}&maxResults=5"
     try:
-        data = fetch_json(url)
+        data = fetch_json(url) or {}
     except Exception:
         return []
     out: list[Candidate] = []
@@ -126,8 +126,8 @@ def google_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
 
 OL_SEARCH_API = "https://openlibrary.org/search.json"
 OL_ISBN_API = "https://openlibrary.org/isbn/{isbn}.json"
-OL_COVER_ID = "https://covers.openlibrary.org/b/id/{cid}-L.jpg"
-OL_COVER_ISBN = "https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg"
+OL_COVER_ID = "https://covers.openlibrary.org/b/id/{cid}-L.jpg?default=false"
+OL_COVER_ISBN = "https://covers.openlibrary.org/b/isbn/{isbn}-L.jpg?default=false"
 
 
 def _norm_fmt(raw: str | None) -> str | None:
@@ -154,7 +154,7 @@ def openlibrary_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
     if book.isbn:
         url = OL_ISBN_API.format(isbn=quote(book.isbn))
         try:
-            data = fetch_json(url)
+            data = fetch_json(url) or {}
         except Exception:
             return []
         fmt = _norm_fmt(data.get("physical_format"))
@@ -168,7 +168,7 @@ def openlibrary_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
         params += f"&author={quote(book.authors[0])}"
     url = f"{OL_SEARCH_API}?{params}&fields=title,author_name,cover_i,editions&limit=5"
     try:
-        data = fetch_json(url)
+        data = fetch_json(url) or {}
     except Exception:
         return []
     for doc in data.get("docs", []):
