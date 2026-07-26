@@ -13,10 +13,11 @@ network I/O is injected so the logic is unit-testable; vault writing reuses
 booktools.obsidian.
 
 Robustness: HTTP fetches retry transient failures (403/429/5xx — 403 covers
-iTunes throttling) with exponential backoff, and a source that errors outright is
-reported separately from one that simply found nothing. Sources are also consulted
-lazily, so once one yields a usable cover the rest are never contacted (nor their
-errors counted). Author/title queries are normalized (whitespace collapsed,
+iTunes throttling) with exponential backoff, giving up on a persistently throttled
+source after a ~1-minute per-source time budget so the run moves on rather than
+blocking. A source that errors outright is reported separately from one that simply
+found nothing. Sources are also consulted lazily, so once one yields a usable cover
+the rest are never contacted (nor their errors counted). Author/title queries are normalized (whitespace collapsed,
 translator/co-author tails dropped); fetched images are validated by parsing
 their pixel dimensions (rejecting placeholders); and an ISBN learned from a
 source is backfilled into the note's frontmatter.
@@ -517,8 +518,9 @@ def apply_cover(index: VaultIndex, book: MissingBook, image: bytes,
 
 USER_AGENT = "booktools-covers/1.0 (+https://github.com/)"
 HTTP_TIMEOUT = 15
-HTTP_RETRIES = 3
-HTTP_BACKOFF = 1.0   # base seconds; doubles each attempt (1s, 2s, 4s, …)
+HTTP_RETRIES = 10          # attempt cap; the time budget below usually binds first
+HTTP_BACKOFF = 1.0         # base seconds; doubles each attempt (1s, 2s, 4s, …)
+HTTP_MAX_SECONDS = 60.0    # per-source time budget: stop retrying and move on after ~1 min
 
 # Transient HTTP statuses worth retrying: rate limiting + server errors.
 # 403 is included because the iTunes Search API (Apple Books) returns Forbidden
@@ -527,25 +529,38 @@ RETRYABLE_STATUS = frozenset({403, 429, 500, 502, 503, 504})
 
 
 def fetch_with_retry(do_fetch, *, retries=HTTP_RETRIES, backoff=HTTP_BACKOFF,
-                     sleep=time.sleep):
+                     max_seconds=HTTP_MAX_SECONDS, sleep=time.sleep,
+                     clock=time.monotonic):
     """Call *do_fetch* (a zero-arg fetcher), retrying transient failures.
 
     Retries on retryable HTTP statuses (403/429/5xx — 403 covers iTunes
-    throttling) and connection errors with exponential backoff; re-raises
-    non-retryable errors (e.g. 404) immediately and re-raises the last error once
-    *retries* attempts are exhausted.
+    throttling) and connection errors with exponential backoff, then re-raises the
+    last error. Retrying stops — and the caller moves on to the next source — once
+    either *retries* attempts are made or *max_seconds* of wall-clock time has
+    elapsed (a persistently throttled source is abandoned after ~1 minute rather
+    than blocking the whole run). Non-retryable errors (e.g. 404) are re-raised
+    immediately.
     """
+    start = clock()
+    last_exc: Exception | None = None
     for attempt in range(retries):
         try:
             return do_fetch()
         except HTTPError as exc:
-            if exc.code not in RETRYABLE_STATUS or attempt == retries - 1:
+            if exc.code not in RETRYABLE_STATUS:
                 raise
-        except URLError:
-            if attempt == retries - 1:
-                raise
-        sleep(backoff * (2 ** attempt))
-    raise RuntimeError("unreachable")   # pragma: no cover
+            last_exc = exc
+        except URLError as exc:
+            last_exc = exc
+        if attempt == retries - 1:
+            break
+        delay = backoff * (2 ** attempt)
+        # Stop if the next backoff would push us past the per-source time budget.
+        if (clock() - start) + delay >= max_seconds:
+            break
+        sleep(delay)
+    assert last_exc is not None   # loop only exits here after a caught error
+    raise last_exc
 
 
 def default_fetch_json(url: str) -> dict:

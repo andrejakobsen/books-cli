@@ -428,6 +428,34 @@ def test_fetch_with_retry_retries_on_403_itunes_throttle():
     assert len(slept) == 2
 
 
+def test_fetch_with_retry_gives_up_after_time_budget():
+    # A source that keeps throttling is abandoned once the next backoff would push
+    # past the per-source time budget, so the run moves on to the next source.
+    calls = {"n": 0}
+    now = {"t": 0.0}
+
+    def clock():
+        return now["t"]
+
+    def sleep(seconds):
+        now["t"] += seconds   # simulate wall-clock passing during backoff
+
+    def do():
+        calls["n"] += 1
+        raise _http_error(429)
+
+    import pytest
+    with pytest.raises(Exception):
+        covers.fetch_with_retry(
+            do, retries=100, backoff=1.0, max_seconds=60,
+            sleep=sleep, clock=clock)
+
+    # Backoffs 1,2,4,8,16,32 accumulate to 31s of sleeps over 6 attempts; the next
+    # (32s) delay would reach 63s >= 60, so it stops at 6 attempts.
+    assert calls["n"] == 6
+    assert now["t"] == 31.0
+
+
 def test_fetch_with_retry_does_not_retry_on_404():
     calls = {"n": 0}
 
