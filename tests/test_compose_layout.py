@@ -71,7 +71,7 @@ def _highlighted_csv(tmp_path: Path) -> Path:
 def _assert_composed(out: Path) -> None:
     # Exactly one flat book note.
     notes = list((out / "Books").glob("*.md"))
-    assert notes == [out / "Books" / "Napoleon_ A Life.md"]
+    assert notes == [out / "Books" / "Napoleon - Andrew Roberts.md"]
     note = notes[0].read_text()
 
     export = "Exports/Andrew Roberts/Napoleon_ A Life"

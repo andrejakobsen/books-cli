@@ -67,7 +67,7 @@ def test_convert_writes_highlights_and_embed(tmp_path):
     out = tmp_path / "Obsidian"
     stats = hi.convert(write_csv(tmp_path), out)
     assert stats["books"] == 1 and stats["entries"] == 2
-    note = out / "Books" / "Stalin.md"
+    note = out / "Books" / "Stalin - Stephen Kotkin.md"
     assert note.exists()
     note_text = note.read_text()
     assert "![[Exports/Stephen Kotkin/Stalin/Highlights.md]]" in note_text

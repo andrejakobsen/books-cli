@@ -65,7 +65,7 @@ def test_full_conversion(tmp_path):
     assert stats["books"] == 2
     assert stats["covers"] == 1
 
-    note = (out / "Books" / "Napoleon_ A Life.md").read_text()
+    note = (out / "Books" / "Napoleon - Andrew Roberts.md").read_text()
     cover_rel = "Exports/Andrew Roberts/Napoleon_ A Life/cover.jpg"
     # Frontmatter values
     assert "type: book" in note
@@ -96,7 +96,7 @@ def test_missing_cover(tmp_path):
     out = tmp_path / "Obsidian"
     c2o.convert(lib, out)
 
-    note = (out / "Books" / "No Cover Book.md").read_text()
+    note = (out / "Books" / "No Cover Book - Jane Doe.md").read_text()
     assert "cover:\n" in note or note.rstrip().endswith("cover:")  # empty placeholder
     assert "cover.jpg" not in note                                 # no body embed / ref
     assert "rating:" in note  # empty rating still present
@@ -107,7 +107,7 @@ def test_book_note_has_goodreads_placeholders(tmp_path):
     lib = make_library(tmp_path)
     out = tmp_path / "Obsidian"
     c2o.convert(lib, out)
-    note = (out / "Books" / "Napoleon_ A Life.md").read_text()
+    note = (out / "Books" / "Napoleon - Andrew Roberts.md").read_text()
     for key in ("pages:", "status:", "shelves:", "date_read:"):
         assert key in note
 
@@ -116,7 +116,7 @@ def test_rerun_preserves_book_note_edits(tmp_path):
     lib = make_library(tmp_path)
     out = tmp_path / "Obsidian"
     c2o.convert(lib, out)
-    note = out / "Books" / "Napoleon_ A Life.md"
+    note = out / "Books" / "Napoleon - Andrew Roberts.md"
     note.write_text(note.read_text().replace("status:", "status: reading"), encoding="utf-8")
 
     c2o.convert(lib, out)  # re-run must not clobber the manual edit

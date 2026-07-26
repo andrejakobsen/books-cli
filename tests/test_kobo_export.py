@@ -67,7 +67,7 @@ def test_export_obsidian_writes_highlights_and_embed(tmp_path):
     assert ">> my note" in highlights          # first highlight's note as nested quote
     assert "[!note]" not in highlights         # no separate note callout
 
-    note = (vault / "Books" / "The Great Gatsby.md").read_text()
+    note = (vault / "Books" / "The Great Gatsby - F. Scott Fitzgerald.md").read_text()
     assert "![[Exports/F. Scott Fitzgerald/The Great Gatsby/Highlights.md]]" in note
 
 
@@ -76,7 +76,7 @@ def test_export_obsidian_regenerates_highlights_wholesale(tmp_path):
     _make_db(db)
     vault = tmp_path / "Obsidian"
     ke.export_obsidian(db, vault)
-    note_path = vault / "Books" / "The Great Gatsby.md"
+    note_path = vault / "Books" / "The Great Gatsby - F. Scott Fitzgerald.md"
     # Simulate a hand edit to the book note body; it must survive re-export.
     note_path.write_text(note_path.read_text() + "\nMy own paragraph.\n", encoding="utf-8")
     ke.export_obsidian(db, vault)

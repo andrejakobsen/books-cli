@@ -101,6 +101,16 @@ def safe_filename(name: str) -> str:
     return cleaned or "Untitled"
 
 
+def strip_subtitle(title: str) -> str:
+    """Drop everything after the first ':' (the subtitle), for tidy filenames.
+
+    ``"The Deluge: The Great War..."`` -> ``"The Deluge"``. Falls back to the
+    full (stripped) title when nothing precedes the colon.
+    """
+    head = (title or "").split(":", 1)[0].strip()
+    return head or (title or "").strip()
+
+
 def write_if_absent(path: Path, content: str) -> bool:
     """Write only if the file does not exist yet. Returns True if written."""
     if path.exists():
@@ -368,15 +378,28 @@ class VaultIndex:
                 / safe_filename(author) / safe_filename(ref.title))
 
     def _new_note_path(self, ref: BookRef) -> Path:
-        """Pick a flat, collision-free note filename for a brand-new book."""
-        base = safe_filename(ref.title)
-        stem = base
-        if stem.lower() in self.used_stems:
-            author = ref.authors[0] if ref.authors else "Unknown Author"
-            stem = safe_filename(f"{ref.title} ({author})")
+        """Pick a flat, collision-free note filename for a brand-new book.
+
+        Filenames read ``<Title> - <Author>`` with the subtitle (anything after
+        the first ':') dropped, e.g. ``The Deluge - Adam Tooze``. When that clean
+        stem is already taken (e.g. two Kotkin "Stalin" volumes), the subtitle is
+        restored to disambiguate, with the illegal ':' rendered as ','; a numeric
+        ``(n)`` suffix is the last resort if even that collides.
+        """
+        author = ref.authors[0] if ref.authors else ""
+
+        def stem_for(title: str) -> str:
+            return safe_filename(f"{title} - {author}" if author else title)
+
+        short = stem_for(strip_subtitle(ref.title))
+        if short.lower() not in self.used_stems:
+            stem = short
+        else:
+            full = stem_for(ref.title.replace(":", ","))
+            stem = full
             n = 2
             while stem.lower() in self.used_stems:
-                stem = safe_filename(f"{ref.title} ({author}) ({n})")
+                stem = safe_filename(f"{full} ({n})")
                 n += 1
         self.used_stems.add(stem.lower())
         return self.vault / BOOKS_DIRNAME / f"{stem}.md"

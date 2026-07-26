@@ -98,7 +98,7 @@ def test_convert_writes_highlights_and_frontmatter(tmp_path):
     out = tmp_path / "Obsidian"
     stats = rw.convert(write_csv(tmp_path), out)
     assert stats["books"] == 1 and stats["entries"] == 2
-    note = out / "Books" / "Stalin_ Volume I.md"
+    note = out / "Books" / "Stalin - Stephen Kotkin.md"
     assert note.exists()
     note_text = note.read_text()
     assert "![[Exports/Stephen Kotkin/Stalin_ Volume I/Highlights.md]]" in note_text
@@ -146,7 +146,7 @@ def test_readwise_command_end_to_end(tmp_path):
     result = CliRunner().invoke(
         app, ["--csv", str(write_csv(tmp_path)), "--output", str(out)])
     assert result.exit_code == 0, result.output
-    assert (out / "Books" / "Stalin_ Volume I.md").exists()
+    assert (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
     assert "2 highlights" in result.output
 
 

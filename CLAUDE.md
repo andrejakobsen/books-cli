@@ -82,6 +82,15 @@ Goodreads importers compose. Read it before changing either importer. It owns:
 - **Matching normalization** used to detect that a Goodreads row and an existing Calibre
   note are the same book: `norm_title`, `norm_isbn`, `author_key` (reduces names to
   (first, last), handling "Last, First"), and `fold` (accent/case folding).
+- **Flat note filenames** (`VaultIndex._new_note_path` + `strip_subtitle`): new book notes
+  are named `<Title> - <Author>.md` with the subtitle (anything after the first `:`) dropped
+  — e.g. `The Deluge - Adam Tooze.md`. Only the filename is decluttered; the frontmatter
+  `title` and the `Exports/<Author>/<Title>/` folder keep the full title (matching uses the
+  full title, so this is safe). When the clean stem is already taken (e.g. two Kotkin
+  "Stalin" volumes), the colliding note restores its subtitle to disambiguate, rendering the
+  illegal `:` as `,` (`Stalin, Waiting for Hitler, 1929-1941 - Stephen Kotkin.md`); a numeric
+  `(n)` suffix is the last resort. Existing notes are matched by frontmatter and never renamed,
+  so only newly-created notes use this scheme.
 - **Formatting + parsing helpers**: `yaml_quote`, `wikilink`/`link_list` (authors and
   genres become `[[wikilinks]]` for Obsidian's graph), `html_to_markdown` (book
   descriptions/reviews), and frontmatter readers (`frontmatter_values`, `unquote`,
