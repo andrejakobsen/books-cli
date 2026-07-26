@@ -26,7 +26,7 @@ def _make_db(path: Path) -> None:
     conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
                  ("book1", 6, "The Great Gatsby", None, "F. Scott Fitzgerald", None, "9780743273565"))
     conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
-                 ("book1-ch2", 899, "Chapter 2", None, None, 2, None))
+                 ("book1-ch2", 899, "The Valley of Ashes", None, None, 2, None))
     conn.execute("INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
                  ("book1", "book1-ch2", 0.42, "First highlight", "my note",
                   "2026-07-01", r"span#kobo\.17\.5", "false"))
@@ -60,7 +60,7 @@ def test_export_obsidian_writes_highlights_and_embed(tmp_path):
     export_dir = vault / "Exports" / "F. Scott Fitzgerald" / "The Great Gatsby"
     highlights = (export_dir / "Highlights.md").read_text()
     assert "source: kobo" in highlights          # provenance frontmatter
-    assert "## Chapter 2" in highlights          # chapter title header
+    assert "## The Valley of Ashes" in highlights          # chapter title header
     assert "%% Kobo ch. 2 %%" in highlights      # hidden reading-order comment
     assert "> [!quote]+ 42%" in highlights       # locator drops the chapter
     assert "^ch2-b17-5" in highlights
