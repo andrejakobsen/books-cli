@@ -144,3 +144,21 @@ def test_render_tags_and_note_both_present():
     assert "> #Stalin" in out          # tag inside quote callout
     assert "> [!note]-" in out         # note callout still rendered
     assert out.index("> #Stalin") < out.index("> [!note]-")
+
+
+def test_location_label_defaults_to_page_prefix():
+    hs = [hl.Highlight(text="x", page="123")]
+    assert "> [!quote]+ p. 123" in hl.render_highlights(hs)
+
+
+def test_location_label_overrides_prefix():
+    hs = [hl.Highlight(text="x", page="123", location_label="loc.")]
+    out = hl.render_highlights(hs)
+    assert "> [!quote]+ loc. 123" in out
+    assert "p. 123" not in out
+
+
+def test_location_label_ignored_without_page():
+    hs = [hl.Highlight(text="x", location_label="loc.")]
+    out = hl.render_highlights(hs)
+    assert "loc." not in out
