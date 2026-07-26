@@ -2,6 +2,9 @@
 
 from pathlib import Path
 
+import typer
+from typer.testing import CliRunner
+
 from booktools import readwise_obsidian as rw
 
 HEADER = ("Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
@@ -128,3 +131,22 @@ def test_convert_idempotent(tmp_path):
     rw.convert(write_csv(tmp_path), out)
     after = {p: p.read_text() for p in out.rglob("*.md")}
     assert before == after
+
+
+def test_readwise_command_end_to_end(tmp_path):
+    app = typer.Typer()
+    rw.register(app)
+    out = tmp_path / "Obsidian"
+    result = CliRunner().invoke(
+        app, ["--csv", str(write_csv(tmp_path)), "--output", str(out)])
+    assert result.exit_code == 0, result.output
+    assert (out / "Books" / "Stalin_ Volume I.md").exists()
+    assert "2 highlights" in result.output
+
+
+def test_readwise_missing_csv_errors(tmp_path):
+    app = typer.Typer()
+    rw.register(app)
+    result = CliRunner().invoke(
+        app, ["--csv", str(tmp_path / "nope.csv"), "--output", str(tmp_path / "o")])
+    assert result.exit_code != 0

@@ -149,3 +149,51 @@ def convert(csv_path: Path, output: Path) -> dict:
         stats["entries"] += len(highlights)
 
     return stats
+
+
+def readwise_to_obsidian(
+    csv: Path = typer.Option(
+        ...,
+        "--csv", "-c",
+        help="Path to the Readwise CSV export. Relative paths resolve against the current directory.",
+    ),
+    output: Path = typer.Option(
+        Path("Obsidian"),
+        "--output", "-o",
+        help="Output Obsidian vault. Relative paths resolve against the current directory.",
+    ),
+) -> None:
+    """Convert a Readwise CSV export into Obsidian book notes.
+
+    Every highlight is imported. For each book a 'Highlights.md' is written into
+    'Exports/<Author>/<Title>/' and embedded into the flat note under a
+    '## Highlights' heading; books are matched to existing notes by Amazon id,
+    then by a strict Author/Title comparison (using the title with any
+    '(Series #N)' suffix removed). Existing notes are never overwritten.
+    """
+    csv = resolve_path(csv, Path.cwd())
+    output = resolve_path(output, Path.cwd())
+
+    if not csv.is_file():
+        raise typer.BadParameter(f"CSV not found: {csv}", param_hint="--csv")
+
+    output.mkdir(parents=True, exist_ok=True)
+    stats = convert(csv, output)
+    typer.echo(
+        f"Done. {stats['books']} books, {stats['entries']} highlights, "
+        f"{len(stats['authors'])} authors.\nOutput: {output}"
+    )
+
+
+def register(app: typer.Typer) -> None:
+    """Register this capability's command(s) on the shared Typer app."""
+    app.command("readwise")(readwise_to_obsidian)
+
+
+def main() -> None:
+    """Standalone entry point so the shim script keeps working on its own."""
+    typer.run(readwise_to_obsidian)
+
+
+if __name__ == "__main__":
+    main()
