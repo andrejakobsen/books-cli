@@ -61,3 +61,28 @@ def test_render_label_falls_back_to_chapter_title_then_percent():
     assert "> [!quote]+ Intro · 10%" in out
     hs2 = [hl.Highlight(text="y", progress=0.9, block="2")]
     assert "> [!quote]+ 90%" in hl.render_highlights(hs2)
+
+
+def test_page_label_and_anchor_single():
+    hs = [hl.Highlight(text="x", page="4")]
+    out = hl.render_highlights(hs)
+    assert "> [!quote]+ p. 4" in out
+    assert "^p4" in out
+
+
+def test_page_label_range_uses_en_dash_anchor_keeps_hyphen():
+    hs = [hl.Highlight(text="x", page="45-49")]
+    out = hl.render_highlights(hs)
+    assert "> [!quote]+ p. 45–49" in out   # en dash in label
+    assert "^p45-49" in out                 # hyphen in anchor
+
+
+def test_page_same_page_collisions_dedupe():
+    hs = [hl.Highlight(text="a", page="45-49"), hl.Highlight(text="b", page="45-49")]
+    assert hl.build_anchors(hs) == ["p45-49", "p45-49-2"]
+
+
+def test_page_none_is_unchanged():
+    hs = [hl.Highlight(text="a", chapter_index=2, block="17", segment="5")]
+    assert hl.build_anchors(hs) == ["ch2-b17-5"]
+    assert "p. " not in hl.render_highlights(hs)

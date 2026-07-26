@@ -10,6 +10,7 @@ Standard library only.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 
@@ -22,6 +23,7 @@ class Highlight:
     progress: float | None = None      # 0.0-1.0 within the chapter
     block: str | None = None           # stable location component (e.g. KoboSpan block)
     segment: str | None = None         # secondary location component
+    page: str | None = None            # human page/location (physical books), e.g. "45-49"
     date: str | None = None
 
 
@@ -36,7 +38,10 @@ def build_anchors(highlights: list[Highlight]) -> list[str]:
     anchors: list[str] = []
     for i, h in enumerate(highlights, start=1):
         chapter = f"ch{h.chapter_index}" if h.chapter_index is not None else ""
-        if h.block:
+        page = re.sub(r"[^0-9-]", "", h.page) if h.page else ""
+        if page:
+            loc = f"p{page}"
+        elif h.block:
             loc = f"b{h.block}" + (f"-{h.segment}" if h.segment else "")
         else:
             loc = f"hl{i}"
@@ -57,6 +62,8 @@ def _label(h: Highlight) -> str:
         parts.append(f"ch. {h.chapter_index}")
     elif h.chapter_title:
         parts.append(h.chapter_title)
+    if h.page:
+        parts.append(f"p. {h.page.replace('-', '–')}")
     if h.progress is not None:
         parts.append(f"{round(h.progress * 100)}%")
     return " · ".join(parts)
