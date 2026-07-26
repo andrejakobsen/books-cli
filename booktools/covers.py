@@ -210,3 +210,47 @@ def gather_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
         + openlibrary_candidates(book, fetch_json)
         + amazon_candidates(book)
     )
+
+
+MIN_IMAGE_BYTES = 1000
+
+
+class QuitRequested(Exception):
+    """Raised from pick_cover when the user chooses to quit the whole run."""
+
+
+def is_valid_image(data: bytes, content_type: str | None) -> bool:
+    """Heuristic: content-type is an image and payload is non-trivially sized."""
+    if not content_type or not content_type.lower().startswith("image/"):
+        return False
+    return len(data) >= MIN_IMAGE_BYTES
+
+
+def pick_cover(candidates, fetch_bytes, *, interactive, prompt):
+    """Choose a cover.
+
+    Automatic (interactive=False): download each candidate in order; return the
+    first (candidate, bytes) that validates, else None.
+
+    Interactive: for each candidate call prompt(candidate) ->
+    "accept" | "next" | "skip" | "quit". On accept, download+validate; if that
+    fails, fall through to the next candidate. "skip" returns None (skip book);
+    "quit" raises QuitRequested.
+    """
+    for cand in candidates:
+        if interactive:
+            choice = prompt(cand)
+            if choice == "skip":
+                return None
+            if choice == "quit":
+                raise QuitRequested()
+            if choice == "next":
+                continue
+            # choice == "accept" -> fall through to download
+        try:
+            data, ctype = fetch_bytes(cand.image_url)
+        except Exception:
+            continue
+        if is_valid_image(data, ctype):
+            return (cand, data)
+    return None

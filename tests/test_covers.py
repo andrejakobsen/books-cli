@@ -226,3 +226,57 @@ def test_gather_candidates_source_order():
     assert sources[-1] == "amazon"
     # google before every openlibrary before amazon
     assert sources.index("google") < sources.index("openlibrary") < sources.index("amazon")
+
+
+def test_is_valid_image():
+    assert covers.is_valid_image(b"x" * 5000, "image/jpeg") is True
+    assert covers.is_valid_image(b"x" * 5000, "text/html") is False   # wrong type
+    assert covers.is_valid_image(b"x" * 10, "image/gif") is False      # too small
+    assert covers.is_valid_image(b"x" * 5000, None) is False           # unknown type
+
+
+def _cand(source):
+    return covers.Candidate(source=source, label="L", image_url=f"http://{source}", fmt=None)
+
+
+def test_pick_cover_auto_first_valid():
+    cands = [_cand("google"), _cand("openlibrary")]
+
+    def fetch_bytes(url):
+        if url.endswith("google"):
+            return (b"x" * 5, "image/jpeg")       # too small -> invalid
+        return (b"x" * 5000, "image/jpeg")        # valid
+
+    picked = covers.pick_cover(cands, fetch_bytes, interactive=False, prompt=None)
+    assert picked is not None
+    cand, data = picked
+    assert cand.source == "openlibrary"
+    assert data == b"x" * 5000
+
+
+def test_pick_cover_auto_none_when_all_invalid():
+    cands = [_cand("google")]
+    picked = covers.pick_cover(
+        cands, lambda url: (b"", "text/html"), interactive=False, prompt=None)
+    assert picked is None
+
+
+def test_pick_cover_interactive_next_then_accept():
+    cands = [_cand("google"), _cand("openlibrary")]
+    answers = iter(["next", "accept"])
+
+    def fetch_bytes(url):
+        return (b"x" * 5000, "image/jpeg")
+
+    picked = covers.pick_cover(
+        cands, fetch_bytes, interactive=True, prompt=lambda c: next(answers))
+    assert picked[0].source == "openlibrary"
+
+
+def test_pick_cover_interactive_quit_raises():
+    cands = [_cand("google")]
+    import pytest
+    with pytest.raises(covers.QuitRequested):
+        covers.pick_cover(
+            cands, lambda url: (b"x" * 5000, "image/jpeg"),
+            interactive=True, prompt=lambda c: "quit")
