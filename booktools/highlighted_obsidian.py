@@ -45,7 +45,11 @@ def parse_csv(path: Path) -> list[dict]:
 def row_to_highlight(row: dict) -> Highlight:
     """Map a Highlighted CSV row to a source-agnostic Highlight."""
     raw_tags = (row.get("Tags") or "").split(",")
-    tags = [t for t in (sanitize_tag(part) for part in raw_tags) if t]
+    tags: list[str] = []
+    for part in raw_tags:
+        tag = sanitize_tag(part)
+        if tag and tag not in tags:
+            tags.append(tag)
     return Highlight(
         text=(row.get("Highlight") or "").strip(),
         note=(row.get("Note") or "").strip() or None,
