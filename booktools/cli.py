@@ -15,6 +15,7 @@ import typer
 
 from booktools import (
     calibre_obsidian,
+    covers,
     goodreads_obsidian,
     highlighted_obsidian,
     kobo_export,
@@ -24,6 +25,7 @@ from booktools import (
 # Modules that expose a register(app) function. Add new capabilities here.
 CAPABILITIES = (
     calibre_obsidian,
+    covers,
     goodreads_obsidian,
     highlighted_obsidian,
     kobo_export,
