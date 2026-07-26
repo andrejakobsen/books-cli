@@ -2,7 +2,8 @@
 
 **Date:** 2026-07-24
 **Status:** Approved design, pending implementation plan
-**Command touched:** `books kobo` (adds an Obsidian output mode); minor tweak to `books goodreads`
+**Command touched:** `books kobo` (adds an Obsidian output mode); refactor of `books goodreads` onto shared helpers
+**New shared module:** `booktools/highlights.py` (source-agnostic highlight model + renderer, reusable by future apps: Kindle, Apple Books, …)
 
 ## Goal
 
@@ -50,6 +51,58 @@ wiring, (3) the Kobo Obsidian export does not exist.
 6. **CSS snippet is documented, not shipped:** the README explains the optional
    seamless-embed snippet; the tool never writes into `.obsidian/`.
 
+## Reusable architecture (source-agnostic)
+
+Highlights will later come from other apps (Kindle, Apple Books, …), so the
+Obsidian-facing logic is **source-agnostic** and lives in a shared module. Each
+app importer only maps its own storage into the shared model; it owns none of the
+rendering, anchoring, or note-wiring.
+
+**New module `booktools/highlights.py`** (stdlib-only) owns:
+
+- **`Highlight` dataclass** — a source-neutral highlight:
+  ```
+  text: str                 # highlighted passage
+  note: str | None          # user annotation, if any
+  chapter_index: int | None # reading-order index (for label + anchor)
+  chapter_title: str | None
+  progress: float | None    # 0.0–1.0 within the chapter (for the % label)
+  block: str | None         # location component for a stable anchor (e.g. KoboSpan block)
+  segment: str | None       # secondary location component
+  date: str | None
+  ```
+  Apps populate what they have; missing fields degrade gracefully (label/anchor
+  fallbacks below). `block`/`segment` are generic "stable location" slots — Kobo
+  fills them from KoboSpan; another app might use a CFI or character offset.
+- **`build_anchor(highlights) -> list[str]`** (or a stateful builder) — computes a
+  unique `^id` per highlight with the fallback + collision rules below.
+- **`render_highlights(highlights) -> str`** — renders the whole `Highlights.md`
+  body (callouts + anchors) from an ordered `list[Highlight]`. This is the single
+  place the callout format lives, shared by every future source.
+
+**`BookRef`** (source-neutral book identity for matching/creation): `title`,
+`authors: list[str]`, `isbn: str | None`. Apps build one per book.
+
+**Promote book-note orchestration to shared.** Goodreads already contains
+`build_index`/`match_note` and the find-or-create-note-folder logic; move the
+generic parts to the shared layer (`booktools/obsidian.py`, or `highlights.py`)
+so any exporter can:
+
+- `find_or_create_book_note(vault, book_ref) -> Path` — match an existing note by
+  ISBN then `(norm_title, author_key)`; otherwise create
+  `<vault>/<author>/<title>/<Title>.md` (canonical frontmatter + `Authors/` stub).
+- `write_leaf_with_embed(note_path, leaf_name, content, heading)` — write
+  `<folder>/<leaf_name>` (wholesale) and ensure a `## <heading>` +
+  `![](<leaf_name>)` section exists in the book note.
+
+Goodreads is refactored to consume these shared helpers (proving the abstraction
+with two callers: Goodreads reviews and Kobo highlights).
+
+**Kobo module becomes thin:** read `KoboReader.sqlite` → per book, build a
+`BookRef` and an ordered `list[Highlight]` → call
+`render_highlights` + `write_leaf_with_embed`. It owns only Kobo SQL and the
+KoboSpan → `block`/`segment` mapping (existing `parse_container`).
+
 ## `Highlights.md` format
 
 One book per file, highlights in reading order (chapter `VolumeIndex`, then
@@ -88,45 +141,40 @@ One book per file, highlights in reading order (chapter `VolumeIndex`, then
 
 ## Canonical note integration
 
-For each book that has highlights:
+For each book that has highlights (all via the shared orchestration helpers, not
+Kobo-specific code):
 
-1. **Locate the book's folder/note** by reusing Goodreads' matching layer
-   (`build_index` + `match_note`) against the vault: match by normalized ISBN,
-   then by `(norm_title, author_key)`. Kobo provides book title and author
-   (`Attribution`); ISBN is used if available from the Kobo `content` row.
-2. **If no note exists,** create the folder
-   `<vault>/<safe author>/<safe title>/` and a stub `<Title>.md` with the
-   canonical frontmatter (`type: book`, `title`, `authors` as wikilinks), plus an
-   `Authors/` stub — mirroring how Goodreads creates new notes.
-3. **Write `Highlights.md`** into that folder (wholesale overwrite).
-4. **Ensure the embed section exists** in `<Title>.md`:
+1. **Locate or create the book note** with `find_or_create_book_note(vault,
+   book_ref)`: match by normalized ISBN, then `(norm_title, author_key)`;
+   otherwise create `<vault>/<author>/<title>/<Title>.md` (canonical frontmatter
+   + `Authors/` stub). Kobo builds the `BookRef` from title, `Attribution`
+   (author), and ISBN if the `content` row has one.
+2. **Write the leaf + embed** with `write_leaf_with_embed(note_path,
+   "Highlights.md", body, "Highlights")`: overwrite `Highlights.md` wholesale and
+   ensure a `## Highlights` + `![](Highlights.md)` section exists in the book note
+   (added only if the `## Highlights` heading is absent; the existing body is
+   otherwise never touched — the "never overwrite" rule extended from frontmatter
+   to a named body section).
 
-   ```markdown
-   ## Highlights
-   ![](Highlights.md)
-   ```
+## Goodreads tweak (proves the abstraction with a second caller)
 
-   Add this section only if a `## Highlights` heading is not already present;
-   never otherwise touch the existing body (consistent with the "never overwrite"
-   rule, which this extends from frontmatter to a named body section).
-
-## Goodreads tweak (small, for consistency)
-
-- Write the review as `Review.md` (was `<Title> - Review.md`).
-- When a review exists, ensure a `## Review` + `![](Review.md)` embed section in
-  the book note (same "add only if absent" logic as Highlights).
+- Write the review as `Review.md` (was `<Title> - Review.md`) via
+  `write_leaf_with_embed(note_path, "Review.md", body, "Review")`, producing a
+  `## Review` + `![](Review.md)` embed.
+- Refactor Goodreads' find-or-create logic to call the shared
+  `find_or_create_book_note` (removing the duplicated matching/creation code).
 - Update `tests/test_goodreads_obsidian.py` accordingly.
 
-## Shared layer changes (`booktools/obsidian.py`)
+## Shared layer changes
 
-Add reusable, stdlib-only helpers so the embed logic is not duplicated:
-
-- `ensure_embed_section(note_text, heading, target) -> str` — append
-  `\n## <heading>\n![](<target>)\n` to the body iff no `## <heading>` heading is
-  already present; returns the (possibly unchanged) note text.
-- Highlights formatting helpers (callout rendering, anchor building, per-file
-  anchor-uniqueness) live in `booktools/kobo_export.py` (Kobo-specific), but any
-  genuinely generic piece (e.g. callout line-prefixing) may move to `obsidian.py`.
+- **`booktools/highlights.py`** (new): `Highlight`, `render_highlights`, anchor
+  building — the source-agnostic highlight model + renderer.
+- **`booktools/obsidian.py`**: `ensure_embed_section(note_text, heading, target)`
+  (append `\n## <heading>\n![](<target>)\n` iff the heading is absent);
+  `BookRef`, `find_or_create_book_note`, and `write_leaf_with_embed` — the shared
+  note orchestration promoted out of Goodreads.
+- **`booktools/kobo_export.py`**: only Kobo SQL + KoboSpan→`block`/`segment`
+  mapping; delegates all rendering and note-wiring to the shared helpers.
 
 ## Error handling
 
@@ -138,16 +186,26 @@ Add reusable, stdlib-only helpers so the embed logic is not duplicated:
 
 ## Testing (TDD)
 
-- Anchor building: chapter+KoboSpan, missing chapter, missing KoboSpan (counter),
+Shared layer (`highlights.py` / `obsidian.py`) — tested independently of Kobo,
+using `Highlight`/`BookRef` fixtures so future sources inherit the coverage:
+
+- Anchor building: chapter+location, missing chapter, missing location (counter),
   collision suffixing.
-- Callout rendering: single-line, multi-line, annotation present/absent, label
-  fallbacks.
-- Whole-file `Highlights.md` generation ordering.
+- `render_highlights`: single-line, multi-line, annotation present/absent, label
+  fallbacks, ordering.
 - `ensure_embed_section`: adds when absent, no-ops when present, preserves body.
-- Matching to an existing Calibre/Goodreads note vs. creating a new stub folder.
-- Wholesale regeneration: re-running overwrites `Highlights.md` but leaves the
-  book note body (and other files) untouched.
-- Goodreads: `Review.md` naming + review embed section.
+- `find_or_create_book_note`: match existing note by ISBN / title+author vs.
+  create a new stub folder.
+- `write_leaf_with_embed`: writes the leaf and the embed section together;
+  re-running overwrites the leaf but leaves the book note body untouched.
+
+Kobo (`kobo_export.py`):
+- SQLite row → `Highlight`/`BookRef` mapping (incl. KoboSpan → block/segment).
+- `--obsidian` end-to-end: highlights written, note embed present, wholesale
+  regeneration leaves other files untouched.
+
+Goodreads (`test_goodreads_obsidian.py`):
+- `Review.md` naming + review embed section via the shared helper.
 
 ## Out of scope
 
