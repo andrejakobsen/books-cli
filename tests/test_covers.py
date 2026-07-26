@@ -448,6 +448,18 @@ def test_run_single_book_ineligible_is_no_op(tmp_path):
     assert stats["fetched"] == 0
 
 
+def test_run_single_book_ignores_limit(tmp_path):
+    target = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\n'
+        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+    stats = covers.run(
+        tmp_path, interactive=False, dry_run=True, limit=0,
+        fetch_json=lambda url: GOOGLE_VOLUME,
+        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
+        prompt=None, book_path=target)
+    assert stats["processed"] == 1
+
+
 def test_cli_covers_dry_run(tmp_path, monkeypatch):
     from typer.testing import CliRunner
     from booktools.cli import app

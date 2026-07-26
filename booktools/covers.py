@@ -345,7 +345,7 @@ def run(vault, *, interactive, dry_run, limit,
         "not_found": 0,
         "by_source": {"google": 0, "openlibrary": 0, "amazon": 0},
     }
-    todo = missing if limit is None else missing[:limit]
+    todo = missing if (book_path is not None or limit is None) else missing[:limit]
     for book in todo:
         stats["processed"] += 1
         if interactive:
