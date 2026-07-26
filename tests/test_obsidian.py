@@ -187,3 +187,28 @@ def test_source_never_overwrites_existing():
     out = ob.update_frontmatter(note, {"source": "goodreads"})
     assert "source: calibre" in out
     assert "source: goodreads" not in out
+
+
+def test_norm_amazon_uppercases_and_strips():
+    assert ob.norm_amazon(" b00inixpye ") == "B00INIXPYE"
+    assert ob.norm_amazon("B00-INIX_PYE") == "B00INIXPYE"
+
+
+def test_norm_amazon_empty_is_none():
+    assert ob.norm_amazon("") is None
+    assert ob.norm_amazon(None) is None
+
+
+def test_vaultindex_matches_existing_note_by_amazon(tmp_path):
+    vault = tmp_path / "Obsidian"
+    books = vault / "Books"
+    books.mkdir(parents=True)
+    (books / "Stalin.md").write_text(
+        '---\ntype: book\ntitle: "Stalin"\namazon: "B00INIXPYE"\n---\n\nBody.\n',
+        encoding="utf-8")
+    index = ob.VaultIndex(vault)
+    dest = index.find_or_create(
+        ob.BookRef(title="Totally Different Title", authors=["Someone Else"],
+                   amazon="b00inixpye"))
+    assert dest.created is False
+    assert dest.note_path.name == "Stalin.md"
