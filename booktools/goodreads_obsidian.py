@@ -25,6 +25,7 @@ from booktools.obsidian import (
     BOOK_PROPERTY_ORDER,
     BookRef,
     VaultIndex,
+    format_rating,
     html_to_markdown,
     link_list,
     plain_list,
@@ -157,7 +158,7 @@ def _goodreads_updates(book: GoodreadsBook) -> dict[str, str]:
     if book.shelves:
         u["shelves"] = plain_list(book.shelves)
     if book.rating is not None:
-        u["rating"] = str(book.rating)
+        u["rating"] = format_rating(book.rating)
     isbn = book.isbn13 or book.isbn
     if isbn:
         u["isbn"] = yaml_quote(isbn)

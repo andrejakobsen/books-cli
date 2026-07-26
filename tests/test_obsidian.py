@@ -18,6 +18,15 @@ def test_yaml_quote_and_links():
     assert ob.plain_list(["read", "fiction"]) == '["read", "fiction"]'
 
 
+def test_format_rating():
+    assert ob.format_rating(3) == "⭐⭐⭐"
+    assert ob.format_rating(5) == "⭐⭐⭐⭐⭐"
+    assert ob.format_rating(3.5) == "⭐⭐⭐⭐"   # rounds to nearest whole star
+    assert ob.format_rating(0) == "⭐"           # present 0 -> one star
+    assert ob.format_rating(0.4) == "⭐"         # rounds down to 0 -> one star
+    assert ob.format_rating(None) == ""          # unrated -> blank
+
+
 def test_update_frontmatter_fills_blank_only():
     note = '---\ntype: book\ntitle: "Keep"\nrating:\n---\n\nbody text\n'
     out = ob.update_frontmatter(note, {

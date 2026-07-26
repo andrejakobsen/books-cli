@@ -23,6 +23,7 @@ from booktools.obsidian import (
     VaultIndex,
     cover_refs,
     ensure_top_embed,
+    format_rating,
     html_to_markdown,
     link_list,
     update_frontmatter,
@@ -181,11 +182,7 @@ def _calibre_updates(meta: BookMetadata, cover_fm: str) -> dict[str, str]:
     u["pages"] = ""
     u["status"] = ""
     u["shelves"] = ""
-    if meta.rating is not None:
-        rating = int(meta.rating) if meta.rating == int(meta.rating) else meta.rating
-        u["rating"] = str(rating)
-    else:
-        u["rating"] = ""
+    u["rating"] = format_rating(meta.rating)
     u["isbn"] = yaml_quote(meta.isbn) if meta.isbn else ""
     u["amazon"] = yaml_quote(meta.amazon) if meta.amazon else ""
     u["google"] = yaml_quote(meta.google) if meta.google else ""

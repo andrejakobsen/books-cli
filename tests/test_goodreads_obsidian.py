@@ -106,6 +106,13 @@ def test_convert_sets_format_from_binding(tmp_path):
     assert "format: physical" in note
 
 
+def test_convert_writes_rating_as_stars(tmp_path):
+    out = tmp_path / "Obsidian"
+    gr.convert(write_csv(tmp_path), out)  # Napoleon has My Rating 5
+    note = (out / "Books" / "Napoleon - Andrew Roberts.md").read_text()
+    assert "rating: ⭐⭐⭐⭐⭐" in note
+
+
 def test_merge_preserves_existing_ebook_format(tmp_path):
     out = tmp_path / "Obsidian"
     book_dir = out / "Books"
