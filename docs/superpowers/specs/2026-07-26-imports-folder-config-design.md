@@ -101,7 +101,7 @@ and resolves exactly as it does today.
 | `goodreads` | `--csv` / `-c` | `goodreads` | **newest `*.csv`** |
 | `readwise` | `--csv` / `-c` | `readwise` | **newest `*.csv`** |
 | `highlighted` | `--csv` / `-c` | `highlighted` | every `*.csv` (unchanged) |
-| `kobo` | `db` arg / `--input` | `kobo` | `KoboReader.sqlite`, else newest `*.sqlite` |
+| `kobo` | `db` arg / `--input` | `kobo` | mounted device → safe copy; else `KoboReader.sqlite`, else newest `*.sqlite` |
 
 ### calibre
 - `--library` default becomes `None`. When `None`: `library = config.resolve_imports("calibre")`.
@@ -127,12 +127,22 @@ overwritten file), whereas Highlighted exports are many independent per-book fil
 
 ### kobo
 - Default input becomes the `.imports/kobo` folder instead of `./KoboReader.sqlite`.
-- Resolution when neither `db` nor `--input` given:
-  - `folder = config.resolve_imports("kobo")`.
-  - if `folder/KoboReader.sqlite` exists → use it.
+- **Safe device auto-copy.** To eliminate any risk of corrupting the live device DB,
+  the export never opens the device file directly. When no path is given and a Kobo
+  is mounted (its DB is always at `/Volumes/KOBOeReader/.kobo/KoboReader.sqlite`),
+  the command snapshots it into `<vault>/.imports/kobo/KoboReader.sqlite` using
+  SQLite's backup API (`sqlite3.Connection.backup`) with the source opened read-only
+  (`file:...?mode=ro`) — a consistent copy even with an active WAL, with the device
+  file never modified — then reads the copy.
+- Resolution when neither `db` nor `--input` given (`_default_kobo_db`):
+  - if `KOBO_DEVICE_DB` (the fixed device path) exists → `_safe_copy_db` it into
+    `folder/KoboReader.sqlite` and use the copy.
+  - else if `folder/KoboReader.sqlite` exists → use it.
   - else newest `*.sqlite` in the folder.
   - else `BadParameter` naming the expected folder.
-- Explicit `db`/`--input` → `resolve_path(..., Path.cwd())` (unchanged).
+- `KOBO_DEVICE_DB` is a module-level constant so tests can monkeypatch it.
+- Explicit `db`/`--input` → `resolve_path(..., Path.cwd())`, read directly
+  (read-only, unchanged).
 
 ## Errors
 
@@ -148,7 +158,10 @@ naming the exact expected path, so the fix (drop a file into
 - `newest_csv`: picks newest by mtime; missing folder → error; empty folder → error;
   single file → that file.
 - Per command: default resolves to `.imports/<name>`; explicit override precedence;
-  goodreads/readwise folder → newest CSV; kobo prefers `KoboReader.sqlite`.
+  goodreads/readwise folder → newest CSV.
+- kobo: mounted device (`KOBO_DEVICE_DB` monkeypatched in tests) → safe copy into
+  `.imports/kobo` and export from the copy, device file untouched; no device → uses
+  existing `.imports/kobo/KoboReader.sqlite`; nothing available → error.
 
 ## Docs
 

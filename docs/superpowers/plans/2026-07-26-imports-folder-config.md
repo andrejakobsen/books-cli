@@ -679,20 +679,60 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ---
 
-## Task 8: kobo default → `.imports/kobo`
+## Task 8: kobo default → `.imports/kobo` with safe device auto-copy
 
 **Files:**
-- Modify: `booktools/kobo_export.py:249-296`
+- Modify: `booktools/kobo_export.py` (imports + `kobo_export` function, ~lines 249-296)
 - Test: `tests/test_kobo_export.py`
+
+**Behavior:** When no explicit DB path is given, `kobo` resolves its input to
+`<vault>/.imports/kobo/`. If a Kobo e-reader is mounted (its DB lives at the fixed
+path `/Volumes/KOBOeReader/.kobo/KoboReader.sqlite`), the command **safely copies**
+that DB into `<vault>/.imports/kobo/KoboReader.sqlite` first — using SQLite's backup
+API, which opens the source **read-only** and produces a consistent snapshot even
+with an active WAL, never modifying the device file — then reads the copy. This is
+the whole point: we never open the live device DB for the export, eliminating any
+corruption risk and leaving a durable snapshot in the vault. If the device is not
+mounted, it falls back to an existing `KoboReader.sqlite` (or the newest `*.sqlite`)
+already in `.imports/kobo/`. Explicit `db`/`--input` still overrides everything and
+is read directly (read-only, as today).
 
 - [ ] **Step 1: Write the failing tests**
 
-Add to `tests/test_kobo_export.py`. The module already has a helper
-`_make_db(path)` (see `tests/test_kobo_export.py:11`) that builds a minimal
-KoboReader.sqlite at *path* — reuse it:
+Add to `tests/test_kobo_export.py`. The module already has a helper `_make_db(path)`
+(see `tests/test_kobo_export.py:11`) that builds a minimal KoboReader.sqlite at
+*path* — reuse it. The tests monkeypatch the module-level `KOBO_DEVICE_DB` constant
+so no real device is needed:
 
 ```python
-def test_kobo_defaults_db_to_imports(monkeypatch, tmp_path):
+def test_kobo_copies_from_mounted_device(monkeypatch, tmp_path):
+    import typer
+    from typer.testing import CliRunner
+    from booktools import kobo_export as ke, config
+
+    vault = tmp_path / "Vault"
+    # Simulate a mounted Kobo device DB.
+    device = tmp_path / "device" / "KoboReader.sqlite"
+    device.parent.mkdir(parents=True)
+    _make_db(device)
+    monkeypatch.setattr(ke, "KOBO_DEVICE_DB", device)
+    monkeypatch.setattr(config, "resolve_imports",
+                        lambda name, output=None: vault / ".imports" / name)
+
+    out_zip = tmp_path / "out.zip"
+    app = typer.Typer()
+    ke.register(app)
+    result = CliRunner().invoke(app, ["--output", str(out_zip)])
+
+    assert result.exit_code == 0, result.output
+    assert out_zip.exists()
+    # A snapshot copy now lives in the vault's .imports/kobo.
+    assert (vault / ".imports" / "kobo" / "KoboReader.sqlite").is_file()
+    # The device file is untouched (still a valid sqlite of the same size).
+    assert device.is_file()
+
+
+def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
     from booktools import kobo_export as ke, config
@@ -700,7 +740,9 @@ def test_kobo_defaults_db_to_imports(monkeypatch, tmp_path):
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "kobo"
     folder.mkdir(parents=True)
-    _make_db(folder / "KoboReader.sqlite")  # existing test helper
+    _make_db(folder / "KoboReader.sqlite")
+    # No device mounted.
+    monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
     monkeypatch.setattr(config, "resolve_imports",
                         lambda name, output=None: vault / ".imports" / name)
 
@@ -713,12 +755,13 @@ def test_kobo_defaults_db_to_imports(monkeypatch, tmp_path):
     assert out_zip.exists()
 
 
-def test_kobo_default_missing_folder_errors(monkeypatch, tmp_path):
+def test_kobo_default_missing_everything_errors(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
     from booktools import kobo_export as ke, config
 
     vault = tmp_path / "Vault"
+    monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
     monkeypatch.setattr(config, "resolve_imports",
                         lambda name, output=None: vault / ".imports" / name)
 
@@ -731,30 +774,62 @@ def test_kobo_default_missing_folder_errors(monkeypatch, tmp_path):
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `uv run pytest tests/test_kobo_export.py -k "defaults_db or missing_folder" -q`
-Expected: FAIL (default is `./KoboReader.sqlite`, so the `.imports/kobo` DB is not found).
+Run: `uv run pytest tests/test_kobo_export.py -k "device or existing_imports or missing_everything" -q`
+Expected: FAIL (default is `./KoboReader.sqlite`; `KOBO_DEVICE_DB` and the helpers don't exist yet).
 
-- [ ] **Step 3: Implement the default**
+- [ ] **Step 3: Implement the default + safe copy**
 
-In `booktools/kobo_export.py`, add a module-level helper near the top (after imports):
+In `booktools/kobo_export.py`, confirm `sqlite3` and `config` are imported at the
+top (the module already uses `sqlite3` and imports `config`). Add a module-level
+constant and two helpers near the top (after imports):
 
 ```python
-def _default_kobo_db(output: Path | None) -> Path:
-    """Locate the Kobo DB under <vault>/.imports/kobo.
+KOBO_DEVICE_DB = Path("/Volumes/KOBOeReader/.kobo/KoboReader.sqlite")
 
-    Prefers KoboReader.sqlite, else the newest *.sqlite. Raises
-    typer.BadParameter naming the folder when nothing is found.
+
+def _safe_copy_db(src: Path, dest: Path) -> Path:
+    """Snapshot a Kobo sqlite DB to *dest* via SQLite's backup API.
+
+    Opens *src* read-only (``mode=ro``) so the device file is never modified, and
+    produces a consistent copy even with an active WAL. Returns *dest*.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        dest.unlink()
+    src_uri = f"file:{src}?mode=ro"
+    source = sqlite3.connect(src_uri, uri=True)
+    try:
+        target = sqlite3.connect(dest)
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+    finally:
+        source.close()
+    return dest
+
+
+def _default_kobo_db(output: Path | None) -> Path:
+    """Resolve the Kobo DB under <vault>/.imports/kobo.
+
+    If the Kobo device is mounted (``KOBO_DEVICE_DB`` exists), safely copy its DB
+    into the imports folder and use the copy. Otherwise fall back to an existing
+    KoboReader.sqlite, then the newest *.sqlite. Raises typer.BadParameter naming
+    the folder when nothing is available.
     """
     folder = config.resolve_imports("kobo", output)
-    named = folder / "KoboReader.sqlite"
-    if named.is_file():
-        return named
+    dest = folder / "KoboReader.sqlite"
+    if KOBO_DEVICE_DB.is_file():
+        return _safe_copy_db(KOBO_DEVICE_DB, dest)
+    if dest.is_file():
+        return dest
     if folder.is_dir():
         sqlites = list(folder.glob("*.sqlite"))
         if sqlites:
             return max(sqlites, key=lambda p: p.stat().st_mtime)
     raise typer.BadParameter(
-        f"no KoboReader.sqlite (or *.sqlite) found in {folder}", param_hint="DB")
+        f"no Kobo device mounted and no KoboReader.sqlite (or *.sqlite) found in "
+        f"{folder}", param_hint="DB")
 ```
 
 Replace the resolution line:
@@ -779,9 +854,18 @@ Update the `db` argument help text:
     db: Path | None = typer.Argument(
         None,
         help="Path to KoboReader.sqlite. Relative paths resolve against the current "
-             "directory. [default: <vault>/.imports/kobo/KoboReader.sqlite]",
+             "directory. When omitted, a mounted Kobo's DB "
+             "(/Volumes/KOBOeReader/.kobo/KoboReader.sqlite) is safely copied into "
+             "<vault>/.imports/kobo/ and used; otherwise the existing copy there is "
+             "used. [default: <vault>/.imports/kobo/KoboReader.sqlite]",
     ),
 ```
+
+Also update the INPUT paragraph of the `kobo_export` docstring to describe the
+auto-copy: when no path is given, a mounted Kobo's DB is safely snapshotted (via the
+read-only SQLite backup API — the device file is never modified) into
+`<vault>/.imports/kobo/` and read from there; otherwise the existing snapshot there
+is used.
 
 - [ ] **Step 4: Run tests to verify they pass**
 
@@ -792,7 +876,7 @@ Expected: PASS.
 
 ```bash
 git add booktools/kobo_export.py tests/test_kobo_export.py
-git commit -m "feat(kobo): default DB to <vault>/.imports/kobo (KoboReader.sqlite)
+git commit -m "feat(kobo): default DB to .imports/kobo, safely snapshot a mounted device
 
 Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```
@@ -833,8 +917,11 @@ For `readwise`, append to its bullet:
 
 For `kobo`, append to its bullet:
 
-> The DB input defaults to `<vault>/.imports/kobo/KoboReader.sqlite` (or the newest
-> `*.sqlite` in that folder) when no path is given.
+> When no DB path is given, a mounted Kobo device
+> (`/Volumes/KOBOeReader/.kobo/KoboReader.sqlite`) is safely snapshotted into
+> `<vault>/.imports/kobo/` via SQLite's read-only backup API (the device file is
+> never modified) and read from there; otherwise the existing
+> `<vault>/.imports/kobo/KoboReader.sqlite` (or newest `*.sqlite`) is used.
 
 For `calibre`, append to its bullet:
 
