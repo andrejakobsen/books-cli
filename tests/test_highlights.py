@@ -89,11 +89,16 @@ def test_page_none_is_unchanged():
 
 
 def test_sanitize_tag_whitespace_to_hyphen():
-    assert hl.sanitize_tag("Cold War") == "Cold-War"
+    assert hl.sanitize_tag("Cold War") == "cold-war"
+
+
+def test_sanitize_tag_lowercases():
+    assert hl.sanitize_tag("#USSR") == "ussr"
+    assert hl.sanitize_tag("Cold WAR") == "cold-war"
 
 
 def test_sanitize_tag_strips_leading_hash():
-    assert hl.sanitize_tag("#Stalin") == "Stalin"
+    assert hl.sanitize_tag("#Stalin") == "stalin"
 
 
 def test_sanitize_tag_trims_surrounding_whitespace():

@@ -31,16 +31,16 @@ class Highlight:
 def sanitize_tag(raw: str | None) -> str | None:
     """Normalize a raw tag into a valid Obsidian inline tag, or None if empty.
 
-    Strips surrounding whitespace and a single leading '#', then collapses
-    internal whitespace runs to a single '-' (Obsidian inline tags cannot
-    contain spaces). Returns None when nothing is left.
+    Strips surrounding whitespace and a single leading '#', collapses internal
+    whitespace runs to a single '-' (Obsidian inline tags cannot contain
+    spaces), and lowercases the result. Returns None when nothing is left.
     """
     if raw is None:
         return None
     cleaned = raw.strip()
     if cleaned.startswith("#"):
         cleaned = cleaned[1:].strip()
-    cleaned = re.sub(r"\s+", "-", cleaned)
+    cleaned = re.sub(r"\s+", "-", cleaned).lower()
     return cleaned or None
 
 
