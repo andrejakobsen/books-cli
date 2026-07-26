@@ -40,6 +40,19 @@ Links render on the `[!quote]` callout **title line** (middot-joined after the l
 `ch. 2 · 42% · [[Trotsky]]`) so people/events scan from the header; tags render on a trailing
 line inside the callout body. The author's note sits between them as a nested blockquote (`>>`).
 
+**Chapter subheaders** (in `booktools/highlights.py`, `render_highlights`): when a source
+knows chapter titles, highlights group under `## Chapter Title` markdown headers so all the
+highlights for a chapter collect under one heading. Grouping triggers when **any** highlight
+carries a `chapter_title`; if none do, the output stays flat (unchanged) so page-based sources
+(Highlighted) and chapter-less exports (Readwise) are unaffected. In grouped mode a header is
+emitted at each chapter change (consecutive-run grouping in reading order), and each callout's
+locator drops the now-redundant `ch. N` (keeps `42%`/`p.`/`loc.`). A source's reading-order
+index — which may not be the book's printed chapter number — renders as a hidden Obsidian
+comment beneath the header (`%% {chapter_label} {index} %%`); the label is a `chapter_label`
+argument to `render_highlights` (Kobo passes `"Kobo ch."`, so `%% Kobo ch. 12 %%`), omitted
+when no label is given. A title-less highlight sitting among titled ones falls back to a
+`## Chapter {index}` header. Highlights are never separated by `---` dividers (blank line only).
+
 ### The shared Obsidian layer
 
 `booktools/obsidian.py` is the heart of the design and the reason the Calibre and
