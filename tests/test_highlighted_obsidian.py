@@ -32,6 +32,26 @@ def test_parse_and_map(tmp_path):
     assert h1.page == "45-49"
 
 
+def test_row_to_highlight_splits_tags_on_comma():
+    h = hi.row_to_highlight({"Highlight": "x", "Tags": "Stalin, USSR"})
+    assert h.tags == ["stalin", "ussr"]
+
+
+def test_row_to_highlight_single_tag():
+    h = hi.row_to_highlight({"Highlight": "x", "Tags": "Stalin"})
+    assert h.tags == ["stalin"]
+
+
+def test_row_to_highlight_no_tags():
+    assert hi.row_to_highlight({"Highlight": "x", "Tags": ""}).tags == []
+    assert hi.row_to_highlight({"Highlight": "x"}).tags == []
+
+
+def test_row_to_highlight_sanitizes_tag_whitespace():
+    h = hi.row_to_highlight({"Highlight": "x", "Tags": "Cold War, USSR"})
+    assert h.tags == ["cold-war", "ussr"]
+
+
 def test_convert_writes_highlights_and_embed(tmp_path):
     out = tmp_path / "Obsidian"
     stats = hi.convert(write_csv(tmp_path), out)
