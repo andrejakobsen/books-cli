@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
+from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 
@@ -104,6 +105,19 @@ def write_stub(hub_dir: Path, name: str, note_type: str) -> None:
     write_if_absent(hub_dir / f"{safe}.md", f"---\ntype: {note_type}\n---\n")
 
 
+def ensure_embed_section(note_text: str, heading: str, target: str) -> str:
+    """Append a '## <heading>' section embedding *target* iff not already present.
+
+    Uses a relative Markdown embed (``![](target)``) so generic leaf filenames
+    (Highlights.md/Review.md) resolve against the note's own folder. The existing
+    body is otherwise untouched.
+    """
+    if re.search(rf"(?m)^##\s+{re.escape(heading)}\s*$", note_text):
+        return note_text
+    sep = "" if note_text.endswith("\n") else "\n"
+    return f"{note_text}{sep}\n## {heading}\n![]({target})\n"
+
+
 # --- Frontmatter reading ----------------------------------------------------
 
 def _split_frontmatter(text: str) -> tuple[list[str], str]:
@@ -195,6 +209,106 @@ def update_frontmatter(note_text: str, updates: dict[str, str]) -> str:
         new_lines.append(f"{key}:" if formatted == "" else f"{key}: {formatted}")
 
     return "---\n" + "\n".join(new_lines) + "\n---\n" + body
+
+
+# --- Book-note orchestration (shared by importers) --------------------------
+
+@dataclass
+class BookRef:
+    """Source-neutral book identity used for matching and note creation."""
+    title: str
+    authors: list[str] = field(default_factory=list)
+    isbn: str | None = None
+
+
+def build_index(vault: Path) -> tuple[dict[str, Path], dict[tuple, Path]]:
+    """Index existing book notes by normalized ISBN and (title, author)."""
+    by_isbn: dict[str, Path] = {}
+    by_title_author: dict[tuple, Path] = {}
+    for md in vault.rglob("*.md"):
+        if md.parent.name in ("Authors", "Genres"):
+            continue
+        try:
+            text = md.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fm = frontmatter_values(text)
+        if unquote(fm.get("type", "")) != "book":
+            continue
+        isbn = norm_isbn(unquote(fm.get("isbn", "")))
+        if isbn:
+            by_isbn.setdefault(isbn, md)
+        title = unquote(fm.get("title", ""))
+        authors = extract_wikilinks(fm.get("authors", ""))
+        if title and authors:
+            by_title_author.setdefault((norm_title(title), author_key(authors[0])), md)
+    return by_isbn, by_title_author
+
+
+class VaultIndex:
+    """Match books to existing notes, creating stub notes when absent."""
+
+    def __init__(self, vault: Path) -> None:
+        self.vault = vault
+        self.by_isbn, self.by_ta = build_index(vault)
+
+    def _match(self, ref: BookRef) -> Path | None:
+        isbn = norm_isbn(ref.isbn)
+        if isbn and isbn in self.by_isbn:
+            return self.by_isbn[isbn]
+        if ref.title and ref.authors:
+            key = (norm_title(ref.title), author_key(ref.authors[0]))
+            if key in self.by_ta:
+                return self.by_ta[key]
+        return None
+
+    def _register(self, ref: BookRef, note: Path) -> None:
+        isbn = norm_isbn(ref.isbn)
+        if isbn:
+            self.by_isbn.setdefault(isbn, note)
+        if ref.title and ref.authors:
+            self.by_ta.setdefault(
+                (norm_title(ref.title), author_key(ref.authors[0])), note)
+
+    def find_or_create(self, ref: BookRef) -> tuple[Path, bool]:
+        """Return (note_path, created). Creates a stub note+folder when absent."""
+        note = self._match(ref)
+        created = note is None
+        if created:
+            author = ref.authors[0] if ref.authors else "Unknown Author"
+            folder = self.vault / safe_filename(author) / safe_filename(ref.title)
+            folder.mkdir(parents=True, exist_ok=True)
+            note = folder / f"{safe_filename(ref.title)}.md"
+            stub = update_frontmatter("---\ntype: book\n---\n", {
+                "title": yaml_quote(ref.title) if ref.title else "",
+                "authors": link_list(ref.authors) if ref.authors else "",
+            })
+            note.write_text(stub, encoding="utf-8")
+        self._register(ref, note)
+        return note, created
+
+
+def write_leaf_with_embed(
+    note_path: Path, leaf_name: str, content: str, heading: str,
+    overwrite: bool = True,
+) -> bool:
+    """Write ``<folder>/<leaf_name>`` and ensure a '## heading' embed in the note.
+
+    With ``overwrite=False`` an existing leaf is left untouched (used for reviews);
+    the embed section is still ensured either way. Returns True if the leaf was
+    written.
+    """
+    leaf = note_path.parent / leaf_name
+    wrote = False
+    if overwrite or not leaf.exists():
+        leaf.parent.mkdir(parents=True, exist_ok=True)
+        leaf.write_text(content, encoding="utf-8")
+        wrote = True
+    text = note_path.read_text(encoding="utf-8")
+    updated = ensure_embed_section(text, heading, leaf_name)
+    if updated != text:
+        note_path.write_text(updated, encoding="utf-8")
+    return wrote
 
 
 # --- HTML -> Markdown -------------------------------------------------------

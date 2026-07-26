@@ -120,10 +120,13 @@ def test_convert_shelf_all_imports_everything(tmp_path):
 def test_convert_writes_review_file(tmp_path):
     out = tmp_path / "Obsidian"
     gr.convert(write_csv(tmp_path), out)
-    reviews = list(out.rglob("*- Review.md"))
+    reviews = list(out.rglob("Review.md"))
     assert len(reviews) == 1
     text = reviews[0].read_text()
     assert "Great book." in text and "Loved it." in text
+    # The book note embeds the review.
+    note = out / "Andrew Roberts" / "Napoleon_ A Life" / "Napoleon_ A Life.md"
+    assert "![](Review.md)" in note.read_text()
 
 
 def test_convert_merges_into_existing_note_by_isbn(tmp_path):

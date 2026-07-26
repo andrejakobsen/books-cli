@@ -4,8 +4,9 @@
 Reads the CSV Goodreads produces from "My Books -> Import and export", and for
 each *read* book (by default) creates or merges an Obsidian note in the same
 shape as the Calibre importer. Existing information is never overwritten: only
-absent/empty properties are filled. Reviews are written to a separate
-"<Title> - Review.md" note alongside any highlights.
+absent/empty properties are filled. A review is written to a generic
+"Review.md" in the book's folder and embedded into the book note via
+"![](Review.md)".
 
 Standard library only.
 """
@@ -21,18 +22,13 @@ import typer
 from booktools import resolve_path
 from booktools.obsidian import (
     BOOK_PROPERTY_ORDER,
-    author_key,
-    extract_wikilinks,
-    frontmatter_values,
+    BookRef,
+    VaultIndex,
     html_to_markdown,
     link_list,
-    norm_isbn,
-    norm_title,
     plain_list,
-    safe_filename,
-    unquote,
     update_frontmatter,
-    write_if_absent,
+    write_leaf_with_embed,
     write_stub,
     yaml_quote,
 )
@@ -136,43 +132,6 @@ def parse_csv(path: Path) -> list[GoodreadsBook]:
     return books
 
 
-# --- Matching against an existing vault -------------------------------------
-
-def build_index(output: Path) -> tuple[dict[str, Path], dict[tuple, Path]]:
-    """Index existing book notes by normalized ISBN and (title, author)."""
-    by_isbn: dict[str, Path] = {}
-    by_title_author: dict[tuple, Path] = {}
-    for md in output.rglob("*.md"):
-        if md.parent.name in ("Authors", "Genres"):
-            continue
-        try:
-            text = md.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        fm = frontmatter_values(text)
-        if unquote(fm.get("type", "")) != "book":
-            continue
-        isbn = norm_isbn(unquote(fm.get("isbn", "")))
-        if isbn:
-            by_isbn.setdefault(isbn, md)
-        title = unquote(fm.get("title", ""))
-        authors = extract_wikilinks(fm.get("authors", ""))
-        if title and authors:
-            by_title_author.setdefault((norm_title(title), author_key(authors[0])), md)
-    return by_isbn, by_title_author
-
-
-def match_note(book: GoodreadsBook, by_isbn, by_title_author) -> Path | None:
-    for isbn in (norm_isbn(book.isbn13), norm_isbn(book.isbn)):
-        if isbn and isbn in by_isbn:
-            return by_isbn[isbn]
-    if book.title and book.authors:
-        key = (norm_title(book.title), author_key(book.authors[0]))
-        if key in by_title_author:
-            return by_title_author[key]
-    return None
-
-
 # --- Note construction ------------------------------------------------------
 
 def _goodreads_updates(book: GoodreadsBook) -> dict[str, str]:
@@ -222,7 +181,7 @@ def _review_markdown(book: GoodreadsBook) -> str | None:
 
 def convert(csv_path: Path, output: Path, shelf: str = "read") -> dict:
     stats = {"created": 0, "merged": 0, "reviews": 0, "skipped": 0, "authors": set()}
-    by_isbn, by_ta = build_index(output)
+    index = VaultIndex(output)
     authors_dir = output / "Authors"
 
     for book in parse_csv(csv_path):
@@ -233,31 +192,22 @@ def convert(csv_path: Path, output: Path, shelf: str = "read") -> dict:
             stats["skipped"] += 1
             continue
 
-        note_path = match_note(book, by_isbn, by_ta)
-        if note_path is not None:
-            base = note_path.read_text(encoding="utf-8")
-            stats["merged"] += 1
-        else:
-            folder = output / safe_filename(book.authors[0]) / safe_filename(book.title)
-            note_path = folder / f"{safe_filename(book.title)}.md"
-            base = "---\ntype: book\n---\n"
-            stats["created"] += 1
+        ref = BookRef(title=book.title, authors=book.authors,
+                      isbn=book.isbn13 or book.isbn)
+        note_path, created = index.find_or_create(ref)
+        stats["created" if created else "merged"] += 1
 
-        note_path.parent.mkdir(parents=True, exist_ok=True)
-        note_path.write_text(update_frontmatter(base, _goodreads_updates(book)), encoding="utf-8")
-
-        # Keep the index current so later rows can match this note.
-        isbn = norm_isbn(book.isbn13) or norm_isbn(book.isbn)
-        if isbn:
-            by_isbn.setdefault(isbn, note_path)
-        by_ta.setdefault((norm_title(book.title), author_key(book.authors[0])), note_path)
+        base = note_path.read_text(encoding="utf-8")
+        note_path.write_text(
+            update_frontmatter(base, _goodreads_updates(book)), encoding="utf-8")
 
         for author in book.authors:
             write_stub(authors_dir, author, "author")
             stats["authors"].add(author)
 
         review = _review_markdown(book)
-        if review and write_if_absent(note_path.parent / f"{note_path.stem} - Review.md", review):
+        if review and write_leaf_with_embed(
+                note_path, "Review.md", review, "Review", overwrite=False):
             stats["reviews"] += 1
 
     return stats
@@ -283,9 +233,10 @@ def goodreads_to_obsidian(
     """Convert a Goodreads CSV export into Obsidian book notes.
 
     By default only books on the 'read' shelf are imported. Existing notes are
-    never overwritten: only empty/absent properties are filled, and reviews are
-    written to a separate '<Title> - Review.md' note. Books are matched to
-    existing notes by ISBN, then by a strict Author/Title comparison.
+    never overwritten: only empty/absent properties are filled, and a review is
+    written to a generic 'Review.md' in the book's folder and embedded into the
+    book note via '![](Review.md)'. Books are matched to existing notes by ISBN,
+    then by a strict Author/Title comparison.
     """
     csv = resolve_path(csv, Path.cwd())
     output = resolve_path(output, Path.cwd())
