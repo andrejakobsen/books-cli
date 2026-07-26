@@ -5,8 +5,17 @@ Scans an Obsidian vault for `type: book` notes whose `cover:` frontmatter is
 blank/absent and fetches a cover image. Sources are tried in order — Google
 Books, then Open Library (paperback editions preferred where the format is
 known), then Amazon (only when the note already carries an `amazon` ASIN, by
-constructing the known cover-image URL — no scraping). All network I/O is
-injected so the logic is unit-testable; vault writing reuses booktools.obsidian.
+constructing the known cover-image URL — no scraping). When a note has an ISBN
+it drives the lookup directly (Google `isbn:` query / Open Library `/b/isbn/`
+cover), which is the most reliable path. All network I/O is injected so the
+logic is unit-testable; vault writing reuses booktools.obsidian.
+
+Robustness: HTTP fetches retry transient failures (429/5xx) with exponential
+backoff, and a source that errors outright is reported separately from one that
+simply found nothing. Author/title queries are normalized (whitespace collapsed,
+translator/co-author tails dropped); fetched images are validated by parsing
+their pixel dimensions (rejecting placeholders); and an ISBN learned from a
+source is backfilled into the note's frontmatter.
 
 Standard library only.
 """
@@ -14,8 +23,11 @@ Standard library only.
 from __future__ import annotations
 
 import json
+import re
+import time
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.error import HTTPError, URLError
 from urllib.parse import quote
 from urllib.request import Request, urlopen
 
@@ -32,6 +44,7 @@ from booktools.obsidian import (
     frontmatter_values,
     unquote,
     update_frontmatter,
+    yaml_quote,
 )
 
 
@@ -52,6 +65,7 @@ class Candidate:
     label: str           # matched title / author, for display
     image_url: str
     fmt: str | None      # "paperback" | "hardcover" | None (unknown)
+    isbn: str | None = None   # ISBN learned from the source, for frontmatter backfill
 
 
 def _cover_is_blank(fm: dict[str, str]) -> bool:
@@ -109,6 +123,33 @@ def _label(title: str, authors: list[str]) -> str:
     return f"{title} — {authors[0]}" if authors else title
 
 
+# Tails that mark a translator / co-author glued onto a single author string;
+# everything from the first match onward is dropped for querying.
+_AUTHOR_TAILS = (" and ", " with ", ", translated", ", trans.", ", edited")
+
+
+def normalize_author(name: str) -> str:
+    """Clean an author string for querying book-cover APIs.
+
+    Collapses runs of whitespace and drops translator/co-author tails such as
+    ``"Plato and Benjamin Jowett"`` → ``"Plato"`` so the query matches the work
+    rather than the specific translation.
+    """
+    name = re.sub(r"\s+", " ", name).strip()
+    low = name.lower()
+    for sep in _AUTHOR_TAILS:
+        idx = low.find(sep)
+        if idx != -1:
+            name = name[:idx].strip()
+            low = name.lower()
+    return name
+
+
+def _clean(text: str) -> str:
+    """Collapse whitespace in a free-form string (title) for querying."""
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def _upgrade_google_url(url: str) -> str:
     """Prefer https and drop the page-curl overlay."""
     url = url.replace("http://", "https://")
@@ -121,15 +162,12 @@ def google_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
     if book.isbn:
         q = f"isbn:{book.isbn}"
     else:
-        parts = [f'intitle:{book.title}']
+        parts = [f'intitle:{_clean(book.title)}']
         if book.authors:
-            parts.append(f"inauthor:{book.authors[0]}")
+            parts.append(f"inauthor:{normalize_author(book.authors[0])}")
         q = " ".join(parts)
     url = f"{GOOGLE_API}?q={quote(q, safe=':')}&maxResults=5"
-    try:
-        data = fetch_json(url) or {}
-    except Exception:
-        return []
+    data = fetch_json(url) or {}
     out: list[Candidate] = []
     for item in data.get("items", []):
         info = item.get("volumeInfo", {})
@@ -142,8 +180,16 @@ def google_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
             label=_label(info.get("title", book.title), info.get("authors", [])),
             image_url=_upgrade_google_url(chosen),
             fmt=None,
+            isbn=_google_isbn(info),
         ))
     return out
+
+
+def _google_isbn(info: dict) -> str | None:
+    """Pull an ISBN (13 preferred) from a Google volumeInfo, if present."""
+    idents = info.get("industryIdentifiers", []) or []
+    by_type = {i.get("type"): i.get("identifier") for i in idents}
+    return by_type.get("ISBN_13") or by_type.get("ISBN_10")
 
 
 OL_SEARCH_API = "https://openlibrary.org/search.json"
@@ -176,24 +222,18 @@ def openlibrary_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
     label = _label(book.title, book.authors)
     if book.isbn:
         url = OL_ISBN_API.format(isbn=quote(book.isbn))
-        try:
-            data = fetch_json(url) or {}
-        except Exception:
-            return []
+        data = fetch_json(url) or {}
         fmt = _norm_fmt(data.get("physical_format"))
         out.append(Candidate(
             source="openlibrary", label=label,
             image_url=OL_COVER_ISBN.format(isbn=quote(book.isbn)), fmt=fmt))
         return out
 
-    params = f"title={quote(book.title)}"
+    params = f"title={quote(_clean(book.title))}"
     if book.authors:
-        params += f"&author={quote(book.authors[0])}"
+        params += f"&author={quote(normalize_author(book.authors[0]))}"
     url = f"{OL_SEARCH_API}?{params}&fields=key,cover_i&limit=5"
-    try:
-        data = fetch_json(url) or {}
-    except Exception:
-        return []
+    data = fetch_json(url) or {}
     docs = data.get("docs", [])
     for doc in docs:
         work_key = doc.get("key")
@@ -241,26 +281,164 @@ def amazon_candidates(book: MissingBook) -> list[Candidate]:
     )]
 
 
+ITUNES_API = "https://itunes.apple.com/search"
+ITUNES_COUNTRY = "gb"
+ITUNES_ENTITY = "ebook"
+ITUNES_ART_SIZE = "1400x1400bb"   # iTunes artwork is resizable via this token
+
+
+def _itunes_artwork(artwork_url: str) -> str:
+    """Rewrite an iTunes ``artworkUrl100`` to a large render.
+
+    The size token is the final path segment (``.../<name>.jpg/100x100bb.jpg``),
+    so we swap it for ``ITUNES_ART_SIZE`` while keeping the rest of the path.
+    """
+    base = artwork_url.rsplit("/", 1)[0]
+    return f"{base}/{ITUNES_ART_SIZE}.jpg"
+
+
+def _itunes_isbn(artwork_url: str) -> str | None:
+    """Extract an ISBN from an iTunes artwork URL, if the path embeds one.
+
+    iTunes names many artwork paths ``.../<isbn>.jpg/100x100bb.jpg`` — the ISBN
+    is the segment *before* the size token. Returns it only when that stem is a
+    10- or 13-digit number; opaque stems (e.g. ``mzi.mwffatop``) yield ``None``.
+    """
+    parts = artwork_url.rsplit("/", 2)   # [prefix, "<isbn>.jpg", "100x100bb.jpg"]
+    if len(parts) < 3:
+        return None
+    stem = parts[1].rsplit(".", 1)[0]
+    if stem.isdigit() and len(stem) in (10, 13):
+        return stem
+    return None
+
+
+def apple_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
+    """Query the iTunes Search API (Apple Books); one candidate per ebook result.
+
+    Always searches by title + author, scoped to the GB store — iTunes ISBN-term
+    search is unreliable, so the note's ISBN is not used as a query term. Artwork
+    URLs are upgraded to a large render, and an ISBN embedded in the artwork path
+    is captured for frontmatter backfill.
+    """
+    parts = [_clean(book.title)]
+    if book.authors:
+        parts.append(normalize_author(book.authors[0]))
+    term = " ".join(p for p in parts if p)
+    url = (f"{ITUNES_API}?term={quote(term)}"
+           f"&entity={ITUNES_ENTITY}&country={ITUNES_COUNTRY}&limit=5")
+    data = fetch_json(url) or {}
+    out: list[Candidate] = []
+    for result in data.get("results", []):
+        artwork = result.get("artworkUrl100")
+        if not artwork:
+            continue
+        name = result.get("trackName") or result.get("collectionName") or book.title
+        artist = result.get("artistName")
+        out.append(Candidate(
+            source="apple",
+            label=_label(name, [artist] if artist else []),
+            image_url=_itunes_artwork(artwork),
+            fmt=None,
+            isbn=_itunes_isbn(artwork),
+        ))
+    return out
+
+
+# The API-backed sources, in priority order; amazon is URL-only (no fetch).
+_API_SOURCES = (
+    ("google", google_books_candidates),
+    ("openlibrary", openlibrary_candidates),
+)
+
+
+def gather_with_errors(book: MissingBook, fetch_json):
+    """Gather candidates and report which sources errored outright.
+
+    Returns ``(candidates, errored)`` where *candidates* are in source-priority
+    order (Google, Open Library, Amazon) and *errored* is the list of source
+    names that raised (e.g. a rate-limit / network failure) — distinct from a
+    source that simply found nothing.
+    """
+    candidates: list[Candidate] = []
+    errored: list[str] = []
+    for name, fn in _API_SOURCES:
+        try:
+            candidates.extend(fn(book, fetch_json))
+        except Exception:
+            errored.append(name)
+    candidates.extend(amazon_candidates(book))
+    return candidates, errored
+
+
 def gather_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
     """All candidates in source-priority order: Google, Open Library, Amazon."""
-    return (
-        google_books_candidates(book, fetch_json)
-        + openlibrary_candidates(book, fetch_json)
-        + amazon_candidates(book)
-    )
+    return gather_with_errors(book, fetch_json)[0]
 
 
 MIN_IMAGE_BYTES = 1000
+MIN_IMAGE_DIM = 100   # px; anything smaller is a placeholder/thumbnail, not a cover
+
+_JPEG_SOF_MARKERS = frozenset(
+    range(0xC0, 0xD0)) - {0xC4, 0xC8, 0xCC}   # SOF0..SOF15 except DHT/JPG/DAC
 
 
 class QuitRequested(Exception):
     """Raised from pick_cover when the user chooses to quit the whole run."""
 
 
+def _jpeg_dimensions(data: bytes) -> tuple[int, int] | None:
+    """Scan JPEG segments for a Start-Of-Frame marker and read its size."""
+    i, n = 2, len(data)
+    while i + 9 < n:
+        if data[i] != 0xFF:
+            i += 1
+            continue
+        marker = data[i + 1]
+        if marker in _JPEG_SOF_MARKERS:
+            height = int.from_bytes(data[i + 5:i + 7], "big")
+            width = int.from_bytes(data[i + 7:i + 9], "big")
+            return (width, height)
+        if marker in (0xD8, 0xD9) or 0xD0 <= marker <= 0xD7:
+            i += 2   # standalone markers carry no length
+            continue
+        seg_len = int.from_bytes(data[i + 2:i + 4], "big")
+        if seg_len < 2:
+            break
+        i += 2 + seg_len
+    return None
+
+
+def image_dimensions(data: bytes) -> tuple[int, int] | None:
+    """Return (width, height) parsed from a PNG/GIF/JPEG header, else None.
+
+    Header-only parsing (stdlib, no image library); returns None when the bytes
+    are not a recognizable image so callers can fall back to a size heuristic.
+    """
+    if data[:8] == b"\x89PNG\r\n\x1a\n" and len(data) >= 24:
+        return (int.from_bytes(data[16:20], "big"),
+                int.from_bytes(data[20:24], "big"))
+    if data[:6] in (b"GIF87a", b"GIF89a") and len(data) >= 10:
+        return (int.from_bytes(data[6:8], "little"),
+                int.from_bytes(data[8:10], "little"))
+    if data[:2] == b"\xff\xd8":
+        return _jpeg_dimensions(data)
+    return None
+
+
 def is_valid_image(data: bytes, content_type: str | None) -> bool:
-    """Heuristic: content-type is an image and payload is non-trivially sized."""
+    """True if *data* looks like a real cover image.
+
+    Requires an image content-type. When the dimensions are parseable, both must
+    be at least MIN_IMAGE_DIM (rejects 1x1 placeholders); when they are not
+    parseable, falls back to the byte-size heuristic.
+    """
     if not content_type or not content_type.lower().startswith("image/"):
         return False
+    dims = image_dimensions(data)
+    if dims is not None:
+        width, height = dims
+        return width >= MIN_IMAGE_DIM and height >= MIN_IMAGE_DIM
     return len(data) >= MIN_IMAGE_BYTES
 
 
@@ -294,35 +472,73 @@ def pick_cover(candidates, fetch_bytes, *, interactive, prompt):
     return None
 
 
-def apply_cover(index: VaultIndex, book: MissingBook, image: bytes) -> None:
-    """Write the cover image and fill the note's cover frontmatter + embed."""
+def apply_cover(index: VaultIndex, book: MissingBook, image: bytes,
+                isbn: str | None = None) -> None:
+    """Write the cover image and fill the note's cover frontmatter + embed.
+
+    When *isbn* is supplied (learned from a source), it is backfilled into the
+    note's frontmatter; the never-overwrite merge leaves any existing ISBN alone.
+    """
     dst = cover_path(book.note_path)
     dst.parent.mkdir(parents=True, exist_ok=True)
     dst.write_bytes(image)
 
     cover_fm, cover_embed = cover_refs(book.note_path)
+    updates = {"cover": cover_fm}
+    if isbn:
+        updates["isbn"] = yaml_quote(isbn)
     text = book.note_path.read_text(encoding="utf-8")
-    text = update_frontmatter(text, {"cover": cover_fm})
+    text = update_frontmatter(text, updates)
     text = ensure_top_embed(text, cover_embed)
     book.note_path.write_text(text, encoding="utf-8")
 
 
 USER_AGENT = "booktools-covers/1.0 (+https://github.com/)"
 HTTP_TIMEOUT = 15
+HTTP_RETRIES = 3
+HTTP_BACKOFF = 1.0   # base seconds; doubles each attempt (1s, 2s, 4s, …)
+
+# Transient HTTP statuses worth retrying: rate limiting + server errors.
+RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+
+
+def fetch_with_retry(do_fetch, *, retries=HTTP_RETRIES, backoff=HTTP_BACKOFF,
+                     sleep=time.sleep):
+    """Call *do_fetch* (a zero-arg fetcher), retrying transient failures.
+
+    Retries on retryable HTTP statuses (429/5xx) and connection errors with
+    exponential backoff; re-raises non-retryable errors (e.g. 404) immediately
+    and re-raises the last error once *retries* attempts are exhausted.
+    """
+    for attempt in range(retries):
+        try:
+            return do_fetch()
+        except HTTPError as exc:
+            if exc.code not in RETRYABLE_STATUS or attempt == retries - 1:
+                raise
+        except URLError:
+            if attempt == retries - 1:
+                raise
+        sleep(backoff * (2 ** attempt))
+    raise RuntimeError("unreachable")   # pragma: no cover
 
 
 def default_fetch_json(url: str) -> dict:
-    """GET *url* and parse JSON (default injected fetcher)."""
-    req = Request(url, headers={"User-Agent": USER_AGENT})
-    with urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-        return json.loads(resp.read().decode("utf-8"))
+    """GET *url* and parse JSON, retrying transient failures."""
+    def do():
+        req = Request(url, headers={"User-Agent": USER_AGENT})
+        with urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+            return json.loads(resp.read().decode("utf-8"))
+    return fetch_with_retry(do)
 
 
 def default_fetch_bytes(url: str) -> tuple[bytes, str | None]:
-    """GET *url* returning (body, content_type) (default injected fetcher)."""
-    req = Request(url, headers={"User-Agent": USER_AGENT})
-    with urlopen(req, timeout=HTTP_TIMEOUT) as resp:
-        return resp.read(), resp.headers.get("Content-Type")
+    """GET *url* returning (body, content_type), retrying transient failures."""
+    def do():
+        req = Request(url, headers={"User-Agent": USER_AGENT})
+        with urlopen(req, timeout=HTTP_TIMEOUT) as resp:
+            return resp.read(), resp.headers.get("Content-Type")
+    return fetch_with_retry(do)
 
 
 def _terminal_prompt(cand: Candidate) -> str:
@@ -357,13 +573,16 @@ def run(vault, *, interactive, dry_run, limit,
         "fetched": 0,
         "not_found": 0,
         "by_source": {"google": 0, "openlibrary": 0, "amazon": 0},
+        "errored": {"google": 0, "openlibrary": 0, "amazon": 0},
     }
     todo = missing if (book_path is not None or limit is None) else missing[:limit]
     for book in todo:
         stats["processed"] += 1
         if interactive:
             print(f"\n{book.title} — {', '.join(book.authors) or 'Unknown'}")
-        candidates = gather_candidates(book, fetch_json)
+        candidates, errored = gather_with_errors(book, fetch_json)
+        for src in errored:
+            stats["errored"][src] = stats["errored"].get(src, 0) + 1
         try:
             picked = pick_cover(
                 candidates, fetch_bytes, interactive=interactive, prompt=prompt)
@@ -380,7 +599,7 @@ def run(vault, *, interactive, dry_run, limit,
         if dry_run:
             print(f"  [dry-run] {cand.source}: {cand.image_url}")
         else:
-            apply_cover(index, book, data)
+            apply_cover(index, book, data, isbn=cand.isbn)
             print(f"  ✓ {cand.source}: {book.title}")
     return stats
 
@@ -455,6 +674,13 @@ def covers_command(
         f"(google {bs['google']}, openlibrary {bs['openlibrary']}, amazon {bs['amazon']}), "
         f"{stats['not_found']} not found."
     )
+    errored = {src: n for src, n in stats.get("errored", {}).items() if n}
+    if errored:
+        detail = ", ".join(f"{src} {n}" for src, n in errored.items())
+        typer.secho(
+            f"⚠ source errors (rate-limited / unreachable, not 'no match'): {detail}",
+            fg=typer.colors.YELLOW,
+        )
 
 
 def register(app: typer.Typer) -> None:

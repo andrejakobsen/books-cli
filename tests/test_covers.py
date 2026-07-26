@@ -77,6 +77,105 @@ GOOGLE_VOLUME = {
 }
 
 
+# iTunes Search API shape: results[] with artworkUrl100 (size token = last
+# path segment; ISBN, when present, is the second-to-last segment's stem).
+ITUNES_RESULTS = {
+    "results": [
+        {
+            "trackName": "The Deluge",
+            "artistName": "Adam Tooze",
+            "artworkUrl100": (
+                "https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
+                "abc/9780241006115.jpg/100x100bb.jpg"
+            ),
+        }
+    ]
+}
+
+# artwork with an opaque (non-ISBN) filename stem -> no ISBN to backfill
+ITUNES_RESULTS_NO_ISBN = {
+    "results": [
+        {
+            "collectionName": "The Anatomy of Fascism",
+            "artistName": "Robert O. Paxton",
+            "artworkUrl100": (
+                "https://is1-ssl.mzstatic.com/image/thumb/Publication/52/22/e8/"
+                "mzi.mwffatop.jpg/100x100bb.jpg"
+            ),
+        }
+    ]
+}
+
+
+def test_itunes_artwork_upgrades_size_token():
+    art = ("https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
+           "abc/9780241006115.jpg/100x100bb.jpg")
+    big = covers._itunes_artwork(art)
+    assert big.endswith("/9780241006115.jpg/1400x1400bb.jpg")
+    assert "100x100bb" not in big
+
+
+def test_itunes_isbn_reads_second_to_last_segment():
+    art = ("https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
+           "abc/9780241006115.jpg/100x100bb.jpg")
+    assert covers._itunes_isbn(art) == "9780241006115"
+
+
+def test_itunes_isbn_none_for_opaque_stem():
+    art = ("https://is1-ssl.mzstatic.com/image/thumb/Publication/52/22/e8/"
+           "mzi.mwffatop.jpg/100x100bb.jpg")
+    assert covers._itunes_isbn(art) is None
+
+
+def test_normalize_author_collapses_whitespace():
+    assert covers.normalize_author("James   Barr") == "James Barr"
+    assert covers.normalize_author("  Andrew  Roberts ") == "Andrew Roberts"
+
+
+def test_normalize_author_strips_translator_and_coauthor_tails():
+    # translator merged into the author string
+    assert covers.normalize_author("Plato and Benjamin Jowett") == "Plato"
+    assert covers.normalize_author("Homer, translated by Emily Wilson") == "Homer"
+    assert covers.normalize_author("Tolstoy with Louise Maude") == "Tolstoy"
+
+
+def test_normalize_author_leaves_simple_names():
+    assert covers.normalize_author("Adam Tooze") == "Adam Tooze"
+    assert covers.normalize_author("") == ""
+
+
+def test_google_query_uses_normalized_author():
+    book = covers.MissingBook(
+        note_path=None, title="The  Republic", authors=["Plato and Benjamin Jowett"],
+        isbn=None, amazon=None)
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return {"items": []}
+
+    covers.google_books_candidates(book, fake_fetch)
+    # translator tail dropped, whitespace collapsed
+    assert "Benjamin" not in captured["url"]
+    assert "inauthor:Plato" in captured["url"]
+    assert "The%20Republic" in captured["url"] or "The+Republic" in captured["url"]
+
+
+def test_openlibrary_query_uses_normalized_author():
+    book = covers.MissingBook(
+        note_path=None, title="X", authors=["James   Barr"], isbn=None, amazon=None)
+    captured = {}
+
+    def fake_fetch(url):
+        captured.setdefault("urls", []).append(url)
+        return {"docs": []}
+
+    covers.openlibrary_candidates(book, fake_fetch)
+    search_url = next(u for u in captured["urls"] if "search.json" in u)
+    assert "James+Barr" in search_url or "James%20Barr" in search_url
+    assert "James++" not in search_url and "James%20%20" not in search_url
+
+
 def test_google_books_prefers_largest_and_upgrades_url():
     book = covers.MissingBook(
         note_path=None, title="The Deluge", authors=["Adam Tooze"],
@@ -98,6 +197,57 @@ def test_google_books_prefers_largest_and_upgrades_url():
     # title/author query when no ISBN
     assert "intitle" in captured["url"]
     assert "inauthor" in captured["url"]
+
+
+def test_google_books_captures_isbn13_from_identifiers():
+    data = {"items": [{"volumeInfo": {
+        "title": "The Deluge", "authors": ["Adam Tooze"],
+        "industryIdentifiers": [
+            {"type": "ISBN_10", "identifier": "0141032189"},
+            {"type": "ISBN_13", "identifier": "9780141032184"},
+        ],
+        "imageLinks": {"thumbnail": "http://x/y?zoom=1"},
+    }}]}
+    book = covers.MissingBook(
+        note_path=None, title="The Deluge", authors=["Adam Tooze"],
+        isbn=None, amazon=None)
+    cands = covers.google_books_candidates(book, lambda url: data)
+    assert cands[0].isbn == "9780141032184"   # ISBN_13 preferred over ISBN_10
+
+
+def test_apply_cover_backfills_isbn_when_learned(tmp_path):
+    from booktools.obsidian import VaultIndex
+
+    note = _write_note(tmp_path, "Deluge - Adam Tooze.md",
+        '---\ntype: book\ntitle: "The Deluge"\n'
+        'authors: ["[[Adam Tooze]]"]\nisbn:\ncover:\n---\n\nbody\n')
+    book = covers.MissingBook(
+        note_path=note, title="The Deluge", authors=["Adam Tooze"],
+        isbn=None, amazon=None)
+    index = VaultIndex(tmp_path)
+
+    covers.apply_cover(index, book, _png(200, 300), isbn="9780141032184")
+
+    text = note.read_text(encoding="utf-8")
+    assert 'isbn: "9780141032184"' in text
+
+
+def test_apply_cover_does_not_overwrite_existing_isbn(tmp_path):
+    from booktools.obsidian import VaultIndex
+
+    note = _write_note(tmp_path, "Deluge - Adam Tooze.md",
+        '---\ntype: book\ntitle: "The Deluge"\n'
+        'authors: ["[[Adam Tooze]]"]\nisbn: "111"\ncover:\n---\n')
+    book = covers.MissingBook(
+        note_path=note, title="The Deluge", authors=["Adam Tooze"],
+        isbn="111", amazon=None)
+    index = VaultIndex(tmp_path)
+
+    covers.apply_cover(index, book, _png(200, 300), isbn="999")
+
+    text = note.read_text(encoding="utf-8")
+    assert 'isbn: "111"' in text
+    assert "999" not in text
 
 
 def test_google_books_uses_isbn_query_when_present():
@@ -224,6 +374,88 @@ def test_amazon_no_asin_returns_empty():
     assert covers.amazon_candidates(book) == []
 
 
+def _http_error(code):
+    from urllib.error import HTTPError
+    return HTTPError("http://x", code, "err", {}, None)
+
+
+def test_fetch_with_retry_retries_on_429_then_succeeds():
+    calls = {"n": 0}
+    slept = []
+
+    def do():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise _http_error(429)
+        return {"ok": True}
+
+    out = covers.fetch_with_retry(do, retries=3, backoff=0.1, sleep=slept.append)
+    assert out == {"ok": True}
+    assert calls["n"] == 3
+    assert len(slept) == 2   # two backoff sleeps before the successful third call
+
+
+def test_fetch_with_retry_does_not_retry_on_404():
+    calls = {"n": 0}
+
+    def do():
+        calls["n"] += 1
+        raise _http_error(404)
+
+    import pytest
+    with pytest.raises(Exception):
+        covers.fetch_with_retry(do, retries=3, backoff=0.1, sleep=lambda s: None)
+    assert calls["n"] == 1   # 404 is not retryable
+
+
+def test_fetch_with_retry_exhausts_and_raises():
+    from urllib.error import HTTPError
+    calls = {"n": 0}
+
+    def do():
+        calls["n"] += 1
+        raise _http_error(503)
+
+    import pytest
+    with pytest.raises(HTTPError):
+        covers.fetch_with_retry(do, retries=2, backoff=0.1, sleep=lambda s: None)
+    assert calls["n"] == 2   # tried exactly `retries` times
+
+
+def test_gather_with_errors_reports_failing_source():
+    book = covers.MissingBook(
+        note_path=None, title="X", authors=["Y"], isbn=None, amazon="B00ABCDEFG")
+
+    def fetch_json(url):
+        if "googleapis" in url:
+            raise _http_error(429)      # google source fails entirely
+        return {"docs": []}             # openlibrary finds nothing (not an error)
+
+    cands, errored = covers.gather_with_errors(book, fetch_json)
+    assert "google" in errored
+    assert "openlibrary" not in errored
+    # amazon still contributes despite google failing
+    assert any(c.source == "amazon" for c in cands)
+
+
+def test_run_counts_errored_sources(tmp_path):
+    _write_note(tmp_path, "X - Y.md",
+        '---\ntype: book\ntitle: "X"\nauthors: ["[[Y]]"]\namazon: "B00ABCDEFG"\ncover:\n---\n')
+
+    def fetch_json(url):
+        if "googleapis" in url:
+            raise _http_error(429)
+        return {"docs": []}
+
+    stats = covers.run(
+        tmp_path, interactive=False, dry_run=True, limit=None,
+        fetch_json=fetch_json,
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+
+    assert stats["errored"]["google"] == 1
+    assert stats["fetched"] == 1   # amazon still succeeded
+
+
 def test_gather_candidates_source_order():
     book = covers.MissingBook(
         note_path=None, title="Napoleon", authors=["Andrew Roberts"],
@@ -245,11 +477,39 @@ def test_gather_candidates_source_order():
     assert sources.index("google") < sources.index("openlibrary") < sources.index("amazon")
 
 
+def _png(width: int, height: int) -> bytes:
+    """A byte string with a valid PNG signature + IHDR width/height."""
+    return (b"\x89PNG\r\n\x1a\n"
+            + b"\x00\x00\x00\rIHDR"
+            + width.to_bytes(4, "big") + height.to_bytes(4, "big")
+            + b"\x08\x06\x00\x00\x00" + b"x" * 2000)
+
+
+def _gif(width: int, height: int) -> bytes:
+    return b"GIF89a" + width.to_bytes(2, "little") + height.to_bytes(2, "little") + b"x" * 2000
+
+
+def test_image_dimensions_png_gif_and_unknown():
+    assert covers.image_dimensions(_png(200, 300)) == (200, 300)
+    assert covers.image_dimensions(_gif(120, 160)) == (120, 160)
+    assert covers.image_dimensions(b"x" * 5000) is None   # not a recognizable image
+
+
 def test_is_valid_image():
     assert covers.is_valid_image(b"x" * 5000, "image/jpeg") is True
     assert covers.is_valid_image(b"x" * 5000, "text/html") is False   # wrong type
     assert covers.is_valid_image(b"x" * 10, "image/gif") is False      # too small
     assert covers.is_valid_image(b"x" * 5000, None) is False           # unknown type
+
+
+def test_is_valid_image_rejects_tiny_dimensions():
+    # a real but tiny placeholder image is rejected even though it is large enough in bytes
+    assert covers.is_valid_image(_png(1, 1), "image/png") is False
+    # a properly sized image passes
+    assert covers.is_valid_image(_png(200, 300), "image/png") is True
+    # a big-enough GIF passes; a 10x10 one does not
+    assert covers.is_valid_image(_gif(300, 400), "image/gif") is True
+    assert covers.is_valid_image(_gif(10, 10), "image/gif") is False
 
 
 def _cand(source):
@@ -378,6 +638,26 @@ def test_run_fetches_and_applies(tmp_path):
     assert cover_file.is_file()
 
 
+def test_run_backfills_isbn_from_chosen_candidate(tmp_path):
+    note = _write_note(tmp_path, "Deluge - Adam Tooze.md",
+        '---\ntype: book\ntitle: "The Deluge"\n'
+        'authors: ["[[Adam Tooze]]"]\nisbn:\ncover:\n---\n')
+
+    volume = {"items": [{"volumeInfo": {
+        "title": "The Deluge", "authors": ["Adam Tooze"],
+        "industryIdentifiers": [{"type": "ISBN_13", "identifier": "9780141032184"}],
+        "imageLinks": {"thumbnail": "http://x/y?zoom=1"},
+    }}]}
+
+    covers.run(
+        tmp_path, interactive=False, dry_run=False, limit=None,
+        fetch_json=lambda url: volume if "googleapis" in url else {"docs": []},
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+
+    text = note.read_text(encoding="utf-8")
+    assert 'isbn: "9780141032184"' in text
+
+
 def test_run_dry_run_writes_nothing(tmp_path):
     _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
         '---\ntype: book\ntitle: "Napoleon"\n'
@@ -497,6 +777,29 @@ def test_cli_covers_dry_run(tmp_path, monkeypatch):
     assert not (tmp_path / "Covers").exists()
 
 
+def test_cli_covers_reports_errored_sources(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+    from booktools.cli import app
+
+    _write_note(tmp_path, "X - Y.md",
+        '---\ntype: book\ntitle: "X"\nauthors: ["[[Y]]"]\namazon: "B00ABCDEFG"\ncover:\n---\n')
+
+    def fetch_json(url):
+        if "googleapis" in url:
+            raise _http_error(429)
+        return {"docs": []}
+
+    monkeypatch.setattr(covers, "default_fetch_json", fetch_json)
+    monkeypatch.setattr(
+        covers, "default_fetch_bytes", lambda url: (_png(200, 300), "image/jpeg"))
+
+    result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path), "--dry-run"])
+    assert result.exit_code == 0, result.output
+    # the summary distinguishes a source that errored from one that found nothing
+    assert "google" in result.output.lower()
+    assert "error" in result.output.lower()
+
+
 def test_cli_covers_registered():
     from booktools.cli import app
     names = {c.name for c in app.registered_commands}
@@ -534,3 +837,76 @@ def test_cli_covers_single_book_rejects_note_outside_books(tmp_path):
     stray.write_text('---\ntype: book\ntitle: "S"\ncover:\n---\n', encoding="utf-8")
     result = CliRunner().invoke(app, ["covers", "-b", str(stray)])
     assert result.exit_code != 0
+
+
+def test_apple_books_query_uses_title_and_author_not_isbn():
+    book = covers.MissingBook(
+        note_path=None, title="The  Deluge", authors=["Adam Tooze"],
+        isbn="9781847374530", amazon=None)
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return {"results": []}
+
+    covers.apple_books_candidates(book, fake_fetch)
+    url = captured["url"]
+    assert "Deluge" in url and "Adam" in url and "Tooze" in url
+    assert "The%20%20Deluge" not in url   # collapsed, not doubled
+    assert "isbn" not in url.lower()
+    assert "9781847374530" not in url
+    assert "entity=ebook" in url
+    assert "country=gb" in url
+
+
+def test_apple_books_builds_candidate_with_hires_url_and_isbn():
+    book = covers.MissingBook(
+        note_path=None, title="The Deluge", authors=["Adam Tooze"],
+        isbn=None, amazon=None)
+    cands = covers.apple_books_candidates(book, lambda url: ITUNES_RESULTS)
+    assert len(cands) == 1
+    c = cands[0]
+    assert c.source == "apple"
+    assert c.fmt is None
+    assert c.label == "The Deluge — Adam Tooze"
+    assert c.image_url.endswith("/9780241006115.jpg/1400x1400bb.jpg")
+    assert c.isbn == "9780241006115"
+
+
+def test_apple_books_uses_collection_name_and_no_isbn_for_opaque_art():
+    book = covers.MissingBook(
+        note_path=None, title="The Anatomy of Fascism",
+        authors=["Robert O. Paxton"], isbn=None, amazon=None)
+    cands = covers.apple_books_candidates(book, lambda url: ITUNES_RESULTS_NO_ISBN)
+    assert len(cands) == 1
+    assert cands[0].label == "The Anatomy of Fascism — Robert O. Paxton"
+    assert cands[0].isbn is None
+    assert "1400x1400bb" in cands[0].image_url
+
+
+def test_apple_books_normalizes_author():
+    book = covers.MissingBook(
+        note_path=None, title="The Republic",
+        authors=["Plato and Benjamin Jowett"], isbn=None, amazon=None)
+    captured = {}
+
+    def fake_fetch(url):
+        captured["url"] = url
+        return {"results": []}
+
+    covers.apple_books_candidates(book, fake_fetch)
+    assert "Plato" in captured["url"]
+    assert "Benjamin" not in captured["url"]
+
+
+def test_apple_books_no_results_returns_empty():
+    book = covers.MissingBook(
+        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+    assert covers.apple_books_candidates(book, lambda url: {"results": []}) == []
+
+
+def test_apple_books_skips_results_without_artwork():
+    book = covers.MissingBook(
+        note_path=None, title="X", authors=["Y"], isbn=None, amazon=None)
+    data = {"results": [{"trackName": "X", "artistName": "Y"}]}
+    assert covers.apple_books_candidates(book, lambda url: data) == []
