@@ -58,12 +58,17 @@ def test_render_multiline_text_prefixes_each_line():
     assert "> line two" in out
 
 
-def test_render_label_falls_back_to_chapter_title_then_percent():
+def test_render_chapter_title_becomes_header_index_absent_no_comment():
     hs = [hl.Highlight(text="x", chapter_title="Intro", progress=0.1, block="2")]
-    out = hl.render_highlights(hs)
-    assert "> [!quote]+ Intro · 10%" in out
-    hs2 = [hl.Highlight(text="y", progress=0.9, block="2")]
-    assert "> [!quote]+ 90%" in hl.render_highlights(hs2)
+    out = hl.render_highlights(hs, chapter_label="Kobo ch.")
+    assert "## Intro" in out
+    assert "%%" not in out               # no index -> no hidden comment
+    assert "> [!quote]+ 10%" in out      # locator dropped the title, kept percent
+
+
+def test_render_no_chapter_locator_is_percent_only():
+    hs = [hl.Highlight(text="y", progress=0.9, block="2")]
+    assert "> [!quote]+ 90%" in hl.render_highlights(hs)
 
 
 def test_page_label_and_anchor_single():
@@ -314,3 +319,73 @@ def test_render_links_only_no_location_title_is_links():
     out = hl.render_highlights(hs)
     assert "> [!quote]+ [[Trotsky]]" in out
     assert "#" not in out  # no tags anywhere
+
+
+# --- chapter subheaders ------------------------------------------------------
+
+def test_grouped_emits_title_header_and_hidden_index_comment():
+    hs = [hl.Highlight(text="a", chapter_index=12, chapter_title="The Battle",
+                       progress=0.42, block="3", segment="5")]
+    out = hl.render_highlights(hs, chapter_label="Kobo ch.")
+    assert "## The Battle" in out
+    assert "%% Kobo ch. 12 %%" in out
+    # locator drops "ch. 12", keeps progress
+    assert "> [!quote]+ 42%" in out
+    assert "ch. 12" not in out.split("%%")[-1]  # no "ch. 12" in the callout region
+
+
+def test_grouped_no_label_omits_comment():
+    hs = [hl.Highlight(text="a", chapter_index=12, chapter_title="The Battle",
+                       progress=0.42, block="3", segment="5")]
+    out = hl.render_highlights(hs)  # no chapter_label
+    assert "## The Battle" in out
+    assert "%%" not in out
+    assert "> [!quote]+ 42%" in out
+
+
+def test_grouped_one_header_per_chapter_run():
+    hs = [
+        hl.Highlight(text="a", chapter_index=1, chapter_title="One",
+                     progress=0.1, block="1"),
+        hl.Highlight(text="b", chapter_index=1, chapter_title="One",
+                     progress=0.2, block="2"),
+        hl.Highlight(text="c", chapter_index=2, chapter_title="Two",
+                     progress=0.3, block="3"),
+    ]
+    out = hl.render_highlights(hs, chapter_label="Kobo ch.")
+    assert out.count("## One") == 1   # consecutive same-chapter share one header
+    assert out.count("## Two") == 1
+    assert out.index("## One") < out.index("## Two")
+
+
+def test_flat_fallback_when_no_chapter_title():
+    # No chapter_title anywhere -> flat output, unchanged, no "##" headers.
+    hs = [hl.Highlight(text="a", chapter_index=2, progress=0.42,
+                       block="17", segment="5")]
+    out = hl.render_highlights(hs, chapter_label="Kobo ch.")
+    assert "## " not in out
+    assert "> [!quote]+ ch. 2 · 42%" in out  # locator keeps chapter in flat mode
+
+
+def test_grouped_index_only_run_gets_chapter_fallback_header():
+    # A title-less highlight among titled ones gets "## Chapter {index}", no comment.
+    hs = [
+        hl.Highlight(text="a", chapter_index=1, chapter_title="Intro",
+                     progress=0.1, block="1"),
+        hl.Highlight(text="b", chapter_index=2, chapter_title=None,
+                     progress=0.2, block="2"),
+    ]
+    out = hl.render_highlights(hs, chapter_label="Kobo ch.")
+    assert "## Intro" in out
+    assert "## Chapter 2" in out
+    assert "%% Kobo ch. 2 %%" not in out  # no comment under a "## Chapter N" header
+
+
+def test_no_hr_divider_between_highlights():
+    hs = [
+        hl.Highlight(text="a", chapter_index=1, chapter_title="One", block="1"),
+        hl.Highlight(text="b", chapter_index=1, chapter_title="One", block="2"),
+    ]
+    out = hl.render_highlights(hs, chapter_label="Kobo ch.")
+    assert "\n---\n" not in out
+    assert "\n***\n" not in out

@@ -173,12 +173,13 @@ def build_anchors(highlights: list[Highlight]) -> list[str]:
     return anchors
 
 
-def _label(h: Highlight) -> str:
+def _label(h: Highlight, include_chapter: bool = True) -> str:
     parts: list[str] = []
-    if h.chapter_index is not None:
-        parts.append(f"ch. {h.chapter_index}")
-    elif h.chapter_title:
-        parts.append(h.chapter_title)
+    if include_chapter:
+        if h.chapter_index is not None:
+            parts.append(f"ch. {h.chapter_index}")
+        elif h.chapter_title:
+            parts.append(h.chapter_title)
     if h.page:
         prefix = h.location_label or "p."
         parts.append(f"{prefix} {h.page.replace('-', '–')}")
@@ -187,25 +188,69 @@ def _label(h: Highlight) -> str:
     return " · ".join(parts)
 
 
+def _chapter_key(h: Highlight) -> tuple:
+    """Identity of the chapter a highlight belongs to, for consecutive-run grouping."""
+    if h.chapter_title:
+        return ("title", h.chapter_title)
+    if h.chapter_index is not None:
+        return ("index", h.chapter_index)
+    return ("none",)
+
+
+def _chapter_header(h: Highlight, chapter_label: str | None) -> str | None:
+    """Markdown header for a chapter run, plus an optional hidden index comment.
+
+    ``## {title}`` when a title is known; the reading-order index renders as a
+    hidden ``%% {chapter_label} {index} %%`` comment beneath it (only when both an
+    index and a label are present). A title-less run with only an index falls back
+    to ``## Chapter {index}`` (no comment). Returns None when the run has neither.
+    """
+    if h.chapter_title:
+        header = f"## {h.chapter_title}"
+        if h.chapter_index is not None and chapter_label:
+            header += f"\n%% {chapter_label} {h.chapter_index} %%"
+        return header
+    if h.chapter_index is not None:
+        return f"## Chapter {h.chapter_index}"
+    return None
+
+
 def _quote_lines(text: str, prefix: str) -> list[str]:
     """Prefix each line of *text* for a callout body; blank lines keep the bare marker."""
     return [f"{prefix} {ln}" if ln.strip() else prefix.rstrip()
             for ln in text.split("\n")]
 
 
-def render_highlights(highlights: list[Highlight]) -> str:
+def render_highlights(highlights: list[Highlight],
+                      chapter_label: str | None = None) -> str:
     """Render an ordered list of highlights as an Obsidian ``Highlights.md`` body.
+
+    When any highlight carries a ``chapter_title`` the output is *grouped*: a
+    ``## {title}`` header (with a hidden ``%% {chapter_label} N %%`` reading-order
+    comment) is emitted at each chapter change, and each callout's locator drops
+    the now-redundant ``ch. N``. When no highlight has a chapter title the output
+    is flat (locator keeps ``ch. N``). ``chapter_label`` is the prefix for the
+    hidden comment (e.g. Kobo passes ``"Kobo ch."``); when None the comment is
+    omitted but grouping still happens.
 
     Each highlight is a single expanded ``[!quote]`` callout (one block anchor).
     The title line carries the locator plus the ``@links`` as comma-separated
-    ``[[wikilinks]]`` (middot-joined after the location, so people/events are
-    scannable from the header). The body holds the quoted text, then the author's
-    note as a nested blockquote (``>> ...``), then the ``#tags`` on a trailing line.
+    ``[[wikilinks]]``. The body holds the quoted text, then the author's note as a
+    nested blockquote (``>> ...``), then the ``#tags`` on a trailing line.
     """
     anchors = build_anchors(highlights)
+    grouped = any(h.chapter_title for h in highlights)
     blocks: list[str] = []
+    prev_key = None
     for h, anchor in zip(highlights, anchors):
-        title_parts = [p for p in (_label(h),) if p]
+        if grouped:
+            key = _chapter_key(h)
+            if key != prev_key:
+                header = _chapter_header(h, chapter_label)
+                if header:
+                    blocks.append(header)
+                prev_key = key
+        title_parts = [p for p in (_label(h, include_chapter=not grouped),) if p]
         if h.links:
             title_parts.append(", ".join(wikilink(name) for name in h.links))
         title = " · ".join(title_parts)
