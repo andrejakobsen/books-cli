@@ -41,6 +41,54 @@ from booktools.obsidian import (
 )
 
 
+KOBO_DEVICE_DB = Path("/Volumes/KOBOeReader/.kobo/KoboReader.sqlite")
+
+
+def _safe_copy_db(src: Path, dest: Path) -> Path:
+    """Snapshot a Kobo sqlite DB to *dest* via SQLite's backup API.
+
+    Opens *src* read-only (``mode=ro``) so the device file is never modified, and
+    produces a consistent copy even with an active WAL. Returns *dest*.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        dest.unlink()
+    src_uri = f"file:{src}?mode=ro"
+    source = sqlite3.connect(src_uri, uri=True)
+    try:
+        target = sqlite3.connect(dest)
+        try:
+            source.backup(target)
+        finally:
+            target.close()
+    finally:
+        source.close()
+    return dest
+
+
+def _default_kobo_db(output: Path | None) -> Path:
+    """Resolve the Kobo DB under <vault>/.imports/kobo.
+
+    If the Kobo device is mounted (``KOBO_DEVICE_DB`` exists), safely copy its DB
+    into the imports folder and use the copy. Otherwise fall back to an existing
+    KoboReader.sqlite, then the newest *.sqlite. Raises typer.BadParameter naming
+    the folder when nothing is available.
+    """
+    folder = config.resolve_imports("kobo", output)
+    dest = folder / "KoboReader.sqlite"
+    if KOBO_DEVICE_DB.is_file():
+        return _safe_copy_db(KOBO_DEVICE_DB, dest)
+    if dest.is_file():
+        return dest
+    if folder.is_dir():
+        sqlites = list(folder.glob("*.sqlite"))
+        if sqlites:
+            return max(sqlites, key=lambda p: p.stat().st_mtime)
+    raise typer.BadParameter(
+        f"no Kobo device mounted and no KoboReader.sqlite (or *.sqlite) found in "
+        f"{folder}", param_hint="DB")
+
+
 # One row per highlight/note. Kobo stores chapters as content rows
 # (ContentType=899) whose ContentID is the bookmark's ContentID plus a "-N"
 # suffix; the `matched` CTE resolves each bookmark to its chapter row by prefix
@@ -250,7 +298,10 @@ def kobo_export(
     db: Path | None = typer.Argument(
         None,
         help="Path to KoboReader.sqlite. Relative paths resolve against the current "
-             "directory. [default: KoboReader.sqlite]",
+             "directory. When omitted, a mounted Kobo's DB "
+             "(/Volumes/KOBOeReader/.kobo/KoboReader.sqlite) is safely copied into "
+             "<vault>/.imports/kobo/ and used; otherwise the existing copy there is "
+             "used. [default: <vault>/.imports/kobo/KoboReader.sqlite]",
     ),
     input_path: Path | None = typer.Option(
         None, "--input", "-i", help="Alternative way to specify the sqlite path."
@@ -279,8 +330,11 @@ def kobo_export(
 
     INPUT (DB argument, or --input): a KoboReader.sqlite database (found in the
     .kobo folder on your Kobo device). Opened read-only, so the original file is
-    never modified. Relative paths resolve against the current directory;
-    default: ./KoboReader.sqlite.
+    never modified. Relative paths resolve against the current directory. When no
+    path is given, a mounted Kobo's DB is safely snapshotted (via SQLite's
+    read-only backup API — the device file is never modified) into
+    <vault>/.imports/kobo/ and read from there; otherwise the existing snapshot
+    there is used.
 
     OUTPUT (--csv, --output): with --csv (the default), writes a .zip archive.
     Relative paths resolve against the current directory; default:
@@ -293,7 +347,11 @@ def kobo_export(
     instead; --output is then the vault directory (default: the vault from
     ~/.config/booktools/config.toml).
     """
-    db_path = resolve_path(input_path or db or Path("KoboReader.sqlite"), Path.cwd())
+    explicit = input_path or db
+    if explicit is None:
+        db_path = _default_kobo_db(output if obsidian else None)
+    else:
+        db_path = resolve_path(explicit, Path.cwd())
 
     if obsidian:
         vault = config.resolve_vault(output)

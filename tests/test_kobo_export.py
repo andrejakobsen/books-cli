@@ -143,3 +143,121 @@ def test_kobo_note_only_markers_becomes_none():
     assert h.note is None
     assert h.links == ["Trotsky"]
     assert h.tags == ["history"]
+
+
+def test_kobo_copies_from_mounted_device(monkeypatch, tmp_path):
+    import typer
+    from typer.testing import CliRunner
+    from booktools import kobo_export as ke, config
+
+    vault = tmp_path / "Vault"
+    device = tmp_path / "device" / "KoboReader.sqlite"
+    device.parent.mkdir(parents=True)
+    _make_db(device)
+    monkeypatch.setattr(ke, "KOBO_DEVICE_DB", device)
+    monkeypatch.setattr(config, "resolve_imports",
+                        lambda name, output=None: vault / ".imports" / name)
+
+    out_zip = tmp_path / "out.zip"
+    app = typer.Typer()
+    ke.register(app)
+    result = CliRunner().invoke(app, ["--output", str(out_zip)])
+
+    assert result.exit_code == 0, result.output
+    assert out_zip.exists()
+    assert (vault / ".imports" / "kobo" / "KoboReader.sqlite").is_file()
+    assert device.is_file()
+
+
+def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
+    import typer
+    from typer.testing import CliRunner
+    from booktools import kobo_export as ke, config
+
+    vault = tmp_path / "Vault"
+    folder = vault / ".imports" / "kobo"
+    folder.mkdir(parents=True)
+    _make_db(folder / "KoboReader.sqlite")
+    monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
+    monkeypatch.setattr(config, "resolve_imports",
+                        lambda name, output=None: vault / ".imports" / name)
+
+    out_zip = tmp_path / "out.zip"
+    app = typer.Typer()
+    ke.register(app)
+    result = CliRunner().invoke(app, ["--output", str(out_zip)])
+
+    assert result.exit_code == 0, result.output
+    assert out_zip.exists()
+
+
+def test_kobo_csv_mode_default_ignores_zip_output_for_imports(monkeypatch, tmp_path):
+    import typer
+    from typer.testing import CliRunner
+    from booktools import kobo_export as ke, config
+
+    vault = tmp_path / "Vault"
+    folder = vault / ".imports" / "kobo"
+    folder.mkdir(parents=True)
+    _make_db(folder / "KoboReader.sqlite")
+    monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
+
+    seen = {}
+
+    def fake_resolve_imports(name, output=None):
+        seen["output"] = output
+        return folder
+
+    monkeypatch.setattr(config, "resolve_imports", fake_resolve_imports)
+
+    out_zip = tmp_path / "out.zip"
+    app = typer.Typer()
+    ke.register(app)
+    result = CliRunner().invoke(app, ["--output", str(out_zip)])  # CSV mode (default)
+
+    assert result.exit_code == 0, result.output
+    assert seen["output"] is None  # zip path NOT forwarded as the vault
+
+
+def test_kobo_obsidian_mode_default_forwards_output_for_imports(monkeypatch, tmp_path):
+    import typer
+    from typer.testing import CliRunner
+    from booktools import kobo_export as ke, config
+
+    vault = tmp_path / "Vault"
+    folder = vault / ".imports" / "kobo"
+    folder.mkdir(parents=True)
+    _make_db(folder / "KoboReader.sqlite")
+    monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
+
+    seen = {}
+
+    def fake_resolve_imports(name, output=None):
+        seen["output"] = output
+        return folder
+
+    monkeypatch.setattr(config, "resolve_imports", fake_resolve_imports)
+
+    app = typer.Typer()
+    ke.register(app)
+    result = CliRunner().invoke(app, ["--obsidian", "--output", str(vault)])
+
+    assert result.exit_code == 0, result.output
+    assert seen["output"] == vault  # vault path forwarded in obsidian mode
+
+
+def test_kobo_default_missing_everything_errors(monkeypatch, tmp_path):
+    import typer
+    from typer.testing import CliRunner
+    from booktools import kobo_export as ke, config
+
+    vault = tmp_path / "Vault"
+    monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
+    monkeypatch.setattr(config, "resolve_imports",
+                        lambda name, output=None: vault / ".imports" / name)
+
+    app = typer.Typer()
+    ke.register(app)
+    result = CliRunner().invoke(app, [])
+
+    assert result.exit_code != 0
