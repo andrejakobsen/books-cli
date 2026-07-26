@@ -67,14 +67,25 @@ def test_normalization_helpers():
     assert ob.author_key("Broué, Pierre") == ob.author_key("Pierre Broue")
 
 
-def test_convert_creates_only_read_books(tmp_path):
+def test_convert_default_imports_read_and_currently_reading(tmp_path):
     out = tmp_path / "Obsidian"
     stats = gr.convert(write_csv(tmp_path), out)
-    # Only the "read" book (Napoleon) is created by default.
-    assert stats["created"] == 1
-    assert stats["skipped"] == 2
+    # By default the "read" (Napoleon) and "currently-reading" (Stalin) books
+    # are created; only the "to-read" book is skipped.
+    assert stats["created"] == 2
+    assert stats["skipped"] == 1
     # Filenames read "<Title> - <Author>" with the subtitle dropped.
     assert (out / "Books" / "Napoleon - Andrew Roberts.md").exists()
+    assert (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
+
+
+def test_convert_shelf_read_only_excludes_currently_reading(tmp_path):
+    out = tmp_path / "Obsidian"
+    stats = gr.convert(write_csv(tmp_path), out, shelf="read")
+    assert stats["created"] == 1
+    assert stats["skipped"] == 2
+    assert (out / "Books" / "Napoleon - Andrew Roberts.md").exists()
+    assert not (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
 
 
 def test_norm_format_maps_bindings():
@@ -144,7 +155,7 @@ def test_convert_merges_into_existing_note_by_isbn(tmp_path):
         'status:\npages:\nrating: 4\n---\n\nMy body.\n',
         encoding="utf-8",
     )
-    stats = gr.convert(write_csv(tmp_path), out)
+    stats = gr.convert(write_csv(tmp_path), out, shelf="read")
     assert stats["merged"] == 1 and stats["created"] == 0
     updated = note.read_text()
     assert "status: read" in updated       # blank filled
@@ -164,7 +175,7 @@ def test_convert_merges_by_strict_title_author(tmp_path):
         'authors: ["[[Andrew Roberts]]"]\nstatus:\n---\n\nBody.\n',
         encoding="utf-8",
     )
-    stats = gr.convert(write_csv(tmp_path), out)
+    stats = gr.convert(write_csv(tmp_path), out, shelf="read")
     assert stats["merged"] == 1 and stats["created"] == 0
     assert "status: read" in note.read_text()
 

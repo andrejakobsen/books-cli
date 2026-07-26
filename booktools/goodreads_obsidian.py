@@ -2,7 +2,8 @@
 """Convert a Goodreads library CSV export into an Obsidian book vault.
 
 Reads the CSV Goodreads produces from "My Books -> Import and export", and for
-each *read* book (by default) creates or merges an Obsidian note in the same
+each *read* or *currently-reading* book (by default) creates or merges an
+Obsidian note in the same
 shape as the Calibre importer. Existing information is never overwritten: only
 absent/empty properties are filled. A review is written to
 "Exports/<Author>/<Title>/Review.md" and embedded into the flat book note under
@@ -181,13 +182,27 @@ def _review_markdown(book: GoodreadsBook) -> str | None:
     return "\n".join(parts)
 
 
-def convert(csv_path: Path, output: Path, shelf: str = "read") -> dict:
+DEFAULT_SHELVES = "read,currently-reading"
+
+
+def _parse_shelves(shelf: str) -> set[str] | None:
+    """Parse the ``--shelf`` value into a set of shelves, or None for "all".
+
+    Accepts a comma-separated list (e.g. ``read,currently-reading``). The special
+    value ``all`` (alone or within the list) means "import every book".
+    """
+    wanted = {s.strip() for s in (shelf or "").split(",") if s.strip()}
+    return None if "all" in wanted else wanted
+
+
+def convert(csv_path: Path, output: Path, shelf: str = DEFAULT_SHELVES) -> dict:
     stats = {"created": 0, "merged": 0, "reviews": 0, "skipped": 0, "authors": set()}
     index = VaultIndex(output)
     authors_dir = output / "Authors"
+    wanted = _parse_shelves(shelf)
 
     for book in parse_csv(csv_path):
-        if shelf != "all" and (book.exclusive_shelf or "") != shelf:
+        if wanted is not None and (book.exclusive_shelf or "") not in wanted:
             stats["skipped"] += 1
             continue
         if not book.title or not book.authors:
@@ -228,14 +243,16 @@ def goodreads_to_obsidian(
         help="Output Obsidian vault. Relative paths resolve against the current directory.",
     ),
     shelf: str = typer.Option(
-        "read",
+        DEFAULT_SHELVES,
         "--shelf",
-        help="Only import books on this Goodreads exclusive shelf (read/currently-reading/to-read). Use 'all' for every book.",
+        help="Comma-separated Goodreads exclusive shelves to import (read/currently-reading/to-read). Defaults to 'read,currently-reading'. Use 'all' for every book.",
     ),
 ) -> None:
     """Convert a Goodreads CSV export into Obsidian book notes.
 
-    By default only books on the 'read' shelf are imported. Existing notes are
+    By default books on the 'read' and 'currently-reading' shelves are imported
+    (pass --shelf to narrow, e.g. '--shelf read', or 'all' for everything).
+    Existing notes are
     never overwritten: only empty/absent properties are filled, and a review is
     written to 'Exports/<Author>/<Title>/Review.md' and embedded into the flat
     book note under a '## Review' heading. Books are matched to existing notes by
