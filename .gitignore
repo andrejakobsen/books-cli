@@ -1,0 +1,20 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+
+# Tooling
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Generated tool output
+/Obsidian/
+
+# OS / editor metadata
+.DS_Store
+
+# Local data & tooling scratch (not source)
+/data/
