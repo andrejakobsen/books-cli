@@ -16,11 +16,14 @@ from booktools import resolve_path
 
 DEFAULT_OBSIDIAN_PATH = "~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian"
 DEFAULT_VAULT = "History"
+DEFAULT_IMPORTS = ".imports"
 
 _DEFAULT_FILE = (
     "# booktools configuration\n"
     f'obsidian_path = "{DEFAULT_OBSIDIAN_PATH}"\n'
     f'vault = "{DEFAULT_VAULT}"\n'
+    "# Folder (inside the vault) holding raw import sources, hidden from Obsidian.\n"
+    f'imports = "{DEFAULT_IMPORTS}"\n'
 )
 
 
@@ -30,6 +33,7 @@ class Config:
 
     obsidian_path: str = DEFAULT_OBSIDIAN_PATH
     vault: str = DEFAULT_VAULT
+    imports: str = DEFAULT_IMPORTS
 
 
 def config_path() -> Path:
@@ -63,7 +67,10 @@ def load_config(path: Path | None = None) -> Config:
         obsidian_path = DEFAULT_OBSIDIAN_PATH
     if not isinstance(vault, str) or not vault:
         vault = DEFAULT_VAULT
-    return Config(obsidian_path=obsidian_path, vault=vault)
+    imports = data.get("imports")
+    if not isinstance(imports, str) or not imports:
+        imports = DEFAULT_IMPORTS
+    return Config(obsidian_path=obsidian_path, vault=vault, imports=imports)
 
 
 def _expand_user(raw: str) -> Path:

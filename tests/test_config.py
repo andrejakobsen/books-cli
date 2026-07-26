@@ -87,6 +87,34 @@ def test_resolve_vault_uses_config_when_output_none(tmp_path, monkeypatch):
     assert config.resolve_vault(None) == Path("/data/Obs/History")
 
 
+def test_load_config_reads_imports_key(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        'obsidian_path = "~/Obs"\nvault = "History"\nimports = "Sources"\n')
+    cfg = config.load_config(cfg_file)
+    assert cfg.imports == "Sources"
+
+
+def test_load_config_defaults_imports_when_absent(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('vault = "History"\n')
+    cfg = config.load_config(cfg_file)
+    assert cfg.imports == config.DEFAULT_IMPORTS
+
+
+def test_load_config_defaults_imports_on_non_string(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('imports = 5\nvault = "History"\n')
+    cfg = config.load_config(cfg_file)
+    assert cfg.imports == config.DEFAULT_IMPORTS
+
+
+def test_default_file_includes_imports(tmp_path):
+    cfg_file = tmp_path / "booktools" / "config.toml"
+    config.load_config(cfg_file)
+    assert 'imports = ".imports"' in cfg_file.read_text()
+
+
 def test_importer_writes_to_configured_vault_without_output(monkeypatch, tmp_path):
     """An importer invoked without --output writes into the configured vault.
 
