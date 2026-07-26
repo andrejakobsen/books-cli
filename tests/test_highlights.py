@@ -381,6 +381,60 @@ def test_grouped_index_only_run_gets_chapter_fallback_header():
     assert "%% Kobo ch. 2 %%" not in out  # no comment under a "## Chapter N" header
 
 
+# --- ordering ----------------------------------------------------------------
+
+def test_render_sorts_page_based_by_page():
+    # Page-based highlights given out of order render sorted by starting page.
+    hs = [
+        hl.Highlight(text="third", page="120"),
+        hl.Highlight(text="first", page="5"),
+        hl.Highlight(text="second", page="45-49"),
+    ]
+    out = hl.render_highlights(hs)
+    assert out.index("first") < out.index("second") < out.index("third")
+
+
+def test_render_sorts_chapter_then_progress():
+    # Chapter highlights given out of order render sorted by chapter then %.
+    hs = [
+        hl.Highlight(text="c2-late", chapter_index=2, progress=0.9, block="9"),
+        hl.Highlight(text="c1-early", chapter_index=1, progress=0.1, block="1"),
+        hl.Highlight(text="c2-early", chapter_index=2, progress=0.2, block="2"),
+    ]
+    out = hl.render_highlights(hs)
+    assert out.index("c1-early") < out.index("c2-early") < out.index("c2-late")
+
+
+def test_render_sorts_within_chapter_by_block_segment():
+    # Same chapter/progress: finer KoboSpan block/segment orders reading position.
+    hs = [
+        hl.Highlight(text="later", chapter_index=1, progress=0.5, block="17", segment="5"),
+        hl.Highlight(text="earlier", chapter_index=1, progress=0.5, block="3", segment="2"),
+    ]
+    out = hl.render_highlights(hs)
+    assert out.index("earlier") < out.index("later")
+
+
+def test_render_sort_groups_scattered_chapters_under_one_header():
+    # Scattered same-chapter highlights collect under one header once sorted.
+    hs = [
+        hl.Highlight(text="a", chapter_index=1, chapter_title="One", progress=0.1, block="1"),
+        hl.Highlight(text="b", chapter_index=2, chapter_title="Two", progress=0.1, block="1"),
+        hl.Highlight(text="c", chapter_index=1, chapter_title="One", progress=0.9, block="2"),
+    ]
+    out = hl.render_highlights(hs, chapter_label="Kobo ch.")
+    assert out.count("## One") == 1
+    assert out.count("## Two") == 1
+    assert out.index("## One") < out.index("## Two")
+
+
+def test_render_sort_is_stable_for_unlocated_highlights():
+    # No location info anywhere -> original order preserved (stable sort).
+    hs = [hl.Highlight(text="one"), hl.Highlight(text="two"), hl.Highlight(text="three")]
+    out = hl.render_highlights(hs)
+    assert out.index("one") < out.index("two") < out.index("three")
+
+
 def test_no_hr_divider_between_highlights():
     hs = [
         hl.Highlight(text="a", chapter_index=1, chapter_title="One", block="1"),

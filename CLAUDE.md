@@ -59,6 +59,14 @@ argument to `render_highlights` (Kobo passes `"Kobo ch."`, so `%% Kobo ch. 12 %%
 when no label is given. A title-less highlight sitting among titled ones falls back to a
 `## Chapter {index}` header. Highlights are never separated by `---` dividers (blank line only).
 
+**Ordering** (in `booktools/highlights.py`, `render_highlights` via `sort_key`): `render_highlights`
+always sorts its input into reading order before rendering, so output is ordered regardless of the
+caller's input order — by `chapter_index`, then `progress` (% within chapter), then the leading page
+number, then KoboSpan `block`/`segment`. Missing components sort last (located highlights lead), and
+equal keys keep their original order (stable sort). This is why chapter grouping stays correct even if
+a source hands over scattered rows (Readwise/Highlighted preserve CSV order, which isn't guaranteed to
+be reading order); Kobo's SQL `ORDER BY` produces the same order and is merely reinforced.
+
 ### The shared Obsidian layer
 
 `booktools/obsidian.py` is the heart of the design and the reason the Calibre and

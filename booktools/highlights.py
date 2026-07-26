@@ -10,6 +10,7 @@ Standard library only.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 
@@ -143,6 +144,35 @@ def split_tag_column(raw: str | None) -> tuple[list[str], list[str]]:
     return links, tags
 
 
+def _leading_int(value: str | None) -> float:
+    """First integer in *value* (e.g. "45-49" -> 45), or +inf when none/absent.
+
+    Missing locations sort last so located highlights lead the reading order.
+    """
+    if value is None:
+        return math.inf
+    m = re.search(r"\d+", str(value))
+    return int(m.group()) if m else math.inf
+
+
+def sort_key(h: Highlight) -> tuple:
+    """Reading-order sort key: chapter, then % within chapter, then page/block.
+
+    Ordered so a source using either scheme sorts correctly (missing components
+    are +inf, so they don't interfere): chapter-based sources (Kobo) sort by
+    ``chapter_index`` then ``progress`` then KoboSpan ``block``/``segment``;
+    page-based sources (Highlighted, Readwise) sort by the leading page number.
+    Equal keys keep their original order under a stable sort.
+    """
+    return (
+        h.chapter_index if h.chapter_index is not None else math.inf,
+        h.progress if h.progress is not None else math.inf,
+        _leading_int(h.page),
+        _leading_int(h.block),
+        _leading_int(h.segment),
+    )
+
+
 def build_anchors(highlights: list[Highlight]) -> list[str]:
     """Compute a unique Obsidian block-id per highlight.
 
@@ -223,7 +253,12 @@ def _quote_lines(text: str, prefix: str) -> list[str]:
 
 def render_highlights(highlights: list[Highlight],
                       chapter_label: str | None = None) -> str:
-    """Render an ordered list of highlights as an Obsidian ``Highlights.md`` body.
+    """Render a list of highlights as an Obsidian ``Highlights.md`` body.
+
+    Highlights are first sorted into reading order (see :func:`sort_key`) so
+    output is always ordered by chapter + ``%`` (or by page for physical books),
+    regardless of the caller's input order; this also makes the chapter grouping
+    below robust against scattered input.
 
     When any highlight carries a ``chapter_title`` the output is *grouped*: a
     ``## {title}`` header (with a hidden ``%% {chapter_label} N %%`` reading-order
@@ -238,6 +273,7 @@ def render_highlights(highlights: list[Highlight],
     ``[[wikilinks]]``. The body holds the quoted text, then the author's note as a
     nested blockquote (``>> ...``), then the ``#tags`` on a trailing line.
     """
+    highlights = sorted(highlights, key=sort_key)
     anchors = build_anchors(highlights)
     grouped = any(h.chapter_title for h in highlights)
     blocks: list[str] = []
