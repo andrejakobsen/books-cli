@@ -30,7 +30,8 @@ class Highlight:
 def build_anchors(highlights: list[Highlight]) -> list[str]:
     """Compute a unique Obsidian block-id per highlight.
 
-    Base is ``ch<index>`` (when known) joined with the location ``b<block>-<seg>``.
+    Base is ``ch<index>`` (when known) joined with a location component: the page
+    ``p<page>`` (physical books) when set, else ``b<block>-<seg>`` (e.g. KoboSpan).
     When no location is available a per-list counter ``hl<n>`` is used instead.
     Collisions get a ``-2``, ``-3`` suffix so ids are always unique in the file.
     """

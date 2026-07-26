@@ -139,3 +139,12 @@ def test_with_source_frontmatter_has_no_book_type():
 def test_source_in_property_order():
     from booktools import obsidian as ob
     assert "source" in ob.BOOK_PROPERTY_ORDER
+
+
+def test_source_never_overwrites_existing():
+    # "First metadata importer wins" on a shared note (spec addendum).
+    from booktools import obsidian as ob
+    note = "---\ntype: book\nsource: calibre\n---\n\nBody.\n"
+    out = ob.update_frontmatter(note, {"source": "goodreads"})
+    assert "source: calibre" in out
+    assert "source: goodreads" not in out

@@ -1,8 +1,9 @@
 """Shared helpers for writing Obsidian book-note vaults.
 
-Both the Calibre and Goodreads importers write book notes with the same YAML
-frontmatter schema and the same "never overwrite" rule, so their data (plus your
-own manual edits) composes without clobbering. Everything they share lives here.
+All importers (Calibre, Goodreads, Kobo, Highlighted) write book notes with the
+same YAML frontmatter schema and the same "never overwrite" rule, so their data
+(plus your own manual edits) composes without clobbering. Everything they share
+lives here.
 
 Standard library only.
 """
