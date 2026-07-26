@@ -150,3 +150,51 @@ def test_readwise_missing_csv_errors(tmp_path):
     result = CliRunner().invoke(
         app, ["--csv", str(tmp_path / "nope.csv"), "--output", str(tmp_path / "o")])
     assert result.exit_code != 0
+
+
+def test_convert_same_title_different_authors_no_amazon_stay_separate(tmp_path):
+    out = tmp_path / "Obsidian"
+    csv = tmp_path / "rw.csv"
+    csv.write_text(
+        "Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
+        "Location Type,Location,Highlighted at,Document tags\n"
+        '"From A.","Selected Essays",Author A,,,,,page,1,2026-01-01 00:00:00+00:00,\n'
+        '"From B.","Selected Essays",Author B,,,,,page,2,2026-01-02 00:00:00+00:00,\n',
+        encoding="utf-8")
+    stats = rw.convert(csv, out)
+    assert stats["books"] == 2
+    assert (out / "Exports" / "Author A" / "Selected Essays" / "Highlights.md").exists()
+    assert (out / "Exports" / "Author B" / "Selected Essays" / "Highlights.md").exists()
+
+
+def test_convert_same_amazon_different_title_rows_group_together(tmp_path):
+    # Same Amazon id groups rows even if a later row's title differs slightly.
+    out = tmp_path / "Obsidian"
+    csv = tmp_path / "rw.csv"
+    csv.write_text(
+        "Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
+        "Location Type,Location,Highlighted at,Document tags\n"
+        '"One.","Book (Series #1)",Kotkin,B00INIXPYE,,,,page,1,2026-01-01 00:00:00+00:00,\n'
+        '"Two.","Book (Series #1)",Kotkin,B00INIXPYE,,,,page,2,2026-01-02 00:00:00+00:00,\n',
+        encoding="utf-8")
+    stats = rw.convert(csv, out)
+    assert stats["books"] == 1 and stats["entries"] == 2
+
+
+def test_split_series_ignores_non_numbered_parenthetical():
+    # A trailing parenthetical without "#N" must NOT be treated as a series.
+    title, series, index = rw.split_series(
+        "The Landscape of History: How Historians Map the Past (Inaugural Lectures)")
+    assert title == "The Landscape of History: How Historians Map the Past (Inaugural Lectures)"
+    assert series is None and index is None
+
+
+def test_convert_empty_csv_creates_nothing(tmp_path):
+    out = tmp_path / "Obsidian"
+    csv = tmp_path / "rw.csv"
+    csv.write_text(
+        "Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
+        "Location Type,Location,Highlighted at,Document tags\n",
+        encoding="utf-8")
+    stats = rw.convert(csv, out)
+    assert stats == {"books": 0, "entries": 0, "authors": set()}

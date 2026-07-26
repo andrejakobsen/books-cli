@@ -111,7 +111,7 @@ def convert(csv_path: Path, output: Path) -> dict:
         author = (row.get("Book Author") or "").strip()
         doc_tags = [t.strip() for t in (row.get("Document tags") or "").split(",")
                     if t.strip()]
-        key = amazon or title
+        key = amazon or f"{title}\x00{author}"
         group = groups.setdefault(key, {
             "title": title, "author": author, "amazon": amazon,
             "series": series, "series_index": series_index,
