@@ -37,6 +37,17 @@ Six capabilities exist today:
 - `booktools/readwise_obsidian.py` → `readwise` — reads a Readwise CSV export and writes per-book `Highlights.md` notes (via `booktools/highlights.py`) embedded into the canonical book note. Fills `amazon`/`shelves`/`series`/`series_index` frontmatter, renders type-aware location labels (`p.`/`loc.`), and matches existing notes by Amazon id then standardized title/author. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
 - `booktools/covers.py` → `covers` — scans an existing vault for `type: book` notes with a blank `cover:` field and fetches a cover image. Sources are tried in order — Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping). Stdlib-only (`urllib`); all network I/O is injected for testing. Writes `cover.jpg` into `Exports/<Author>/<Title>/` and fills the note's `cover:` frontmatter + top embed via the shared `obsidian.py` helpers (never overwriting an existing cover). Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run. `--book PATH` targets a single note under `Books/` (vault inferred from the path) and is interactive by default.
 
+### Configuration
+
+`booktools/config.py` supplies the default Obsidian vault. It reads
+`~/.config/booktools/config.toml` (respecting `$XDG_CONFIG_HOME`), auto-creating it
+with defaults on first run: `obsidian_path` (the folder holding your vaults, default
+`~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian`) and `vault` (the vault
+name, default `History`). `default_vault()` joins them; `resolve_vault(output)` is
+the single helper every command calls — explicit `--output` wins, otherwise the
+configured vault is used. This is why most commands need no `--output`. Reads use
+stdlib `tomllib` (Python 3.11+); malformed/partial config falls back per key.
+
 **The `#tag` / `@link` convention** (in `booktools/highlights.py`): highlight annotations
 carry two marker kinds — `#tag` renders as an Obsidian inline tag, `@link` renders as a
 `[[wikilink]]`. Inline in free-form note text (Kobo), `parse_markers` captures each marker
