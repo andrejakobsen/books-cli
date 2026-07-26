@@ -121,7 +121,7 @@ def highlighted_to_obsidian(
     csv: Path = typer.Option(
         ...,
         "--csv", "-c",
-        help="Path to the Highlighted CSV export. Relative paths resolve against the current directory.",
+        help="Path to a Highlighted CSV export, or a folder of CSV exports (every top-level *.csv is imported). Relative paths resolve against the current directory.",
     ),
     output: Path | None = typer.Option(
         None,
@@ -137,6 +137,9 @@ def highlighted_to_obsidian(
     the flat note under a '## Highlights' heading; books are matched to existing
     notes by ISBN, then by a strict Author/Title comparison. Existing notes are
     never overwritten.
+
+    When --csv is a folder, every top-level '*.csv' file in it is imported in
+    sorted order; a file that fails to parse is skipped and reported.
     """
     csv = resolve_path(csv, Path.cwd())
     output = config.resolve_vault(output)
