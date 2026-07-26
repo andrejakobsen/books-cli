@@ -56,26 +56,66 @@ uv sync                 # create the project venv and install deps
 uv run books --help     # run via uv without a global install
 ```
 
+## Configuration
+
+`booktools` reads a config file at `~/.config/booktools/config.toml` (honoring
+`$XDG_CONFIG_HOME`), auto-created with defaults on first run. It has three keys:
+
+```toml
+obsidian_path = "~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian"
+vault = "History"
+imports = ".imports"
+```
+
+The vault used by every command is `obsidian_path/vault`; pass `--output` to
+override it for a single run. `imports` names a **hidden** (dot-prefixed) folder
+*inside* the vault that holds raw import sources — because it starts with a dot,
+Obsidian keeps it out of its file explorer, search, and graph. Each importer reads
+its own subfolder: `.imports/calibre`, `.imports/goodreads`, `.imports/readwise`,
+`.imports/highlighted`, `.imports/kobo`. This is why the zero-config
+`books <command>` invocations below just work — drop a source in the right
+subfolder and the importer finds it.
+
 ## Commands
 
 ```bash
+# With sources dropped into <vault>/.imports/<name>/ and a configured vault,
+# every importer runs with no arguments (output defaults to the configured vault):
+books calibre        # imports <vault>/.imports/calibre
+books goodreads      # newest CSV in <vault>/.imports/goodreads
+books readwise       # newest CSV in <vault>/.imports/readwise
+books highlighted    # every CSV in <vault>/.imports/highlighted
+books kobo           # copies a mounted Kobo's DB into <vault>/.imports/kobo, exports a zip
+
+# ...or point at explicit paths (overrides the defaults):
 books calibre --library ~/"Calibre Library" --output ~/Obsidian
-books goodreads --csv ~/goodreads_library_export.csv --output ~/Obsidian
-books kobo ~/KoboReader.sqlite --csv -o kobo_highlights.zip
+books goodreads --csv ~/goodreads_library_export.csv
+books kobo ~/KoboReader.sqlite --obsidian
 ```
+
+Output defaults to the configured vault; in kobo's CSV mode `--output` is a zip
+path that defaults to `./kobo_highlights.zip`.
 
 - **`calibre`** — Convert a Calibre library into an Obsidian markdown
   vault: copies covers, extracts `.opf` metadata into YAML properties, and links
-  authors/genres for a graph-friendly vault.
+  authors/genres for a graph-friendly vault. `--library` defaults to
+  `<vault>/.imports/calibre`.
 - **`goodreads`** — Convert a Goodreads CSV export into Obsidian book
   notes (read books by default; `--shelf all` for everything). Merges with
   existing Calibre notes without overwriting, and extracts each review into a
-  generic `Review.md` embedded in the book note via `![](Review.md)`.
+  generic `Review.md` embedded in the book note via `![](Review.md)`. `--csv`
+  accepts a file or a folder (newest CSV), defaulting to `<vault>/.imports/goodreads`.
+- **`readwise`** — Convert a Readwise CSV export into Obsidian book notes,
+  writing per-book `Highlights.md` callouts embedded into the book note. `--csv`
+  accepts a file or a folder (newest CSV), defaulting to `<vault>/.imports/readwise`.
 - **`kobo`** — Export Kobo highlights & notes to per-book CSVs in a zip (`--csv`,
-  the default output mode); pass `--obsidian` for the Obsidian vault mode.
+  the default output mode); pass `--obsidian` for the Obsidian vault mode. When no
+  DB path is given, a mounted Kobo's database is safely copied into
+  `<vault>/.imports/kobo/` and read from there.
 - **`highlighted`** — Import highlights captured from *physical* books with the
   [Highlighted](https://highlighted.app) app (CSV export) into Obsidian book
-  notes, labelled and anchored by page.
+  notes, labelled and anchored by page. `--csv` imports every CSV in a folder,
+  defaulting to `<vault>/.imports/highlighted`.
 
 Every export records provenance: content leaves (`Highlights.md`/`Review.md`)
 carry a `source:` property (`kobo`/`highlighted`/`goodreads`), and the `calibre`
