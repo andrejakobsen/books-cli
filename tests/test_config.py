@@ -70,10 +70,31 @@ def test_resolve_vault_uses_config_when_output_none(tmp_path, monkeypatch):
     assert config.resolve_vault(None) == Path("/data/Obs/History")
 
 
-def test_importers_use_config_default(monkeypatch, tmp_path):
-    """resolve_vault(None) is the single source every importer relies on."""
-    cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text('obsidian_path = "/vaults"\nvault = "History"\n')
-    monkeypatch.setattr(config, "config_path", lambda: cfg_file)
-    from booktools import config as cfg_mod
-    assert cfg_mod.resolve_vault(None) == Path("/vaults/History")
+def test_importer_writes_to_configured_vault_without_output(monkeypatch, tmp_path):
+    """An importer invoked without --output writes into the configured vault.
+
+    Drives the readwise command end-to-end with no --output, proving it relies
+    on config.resolve_vault(None) to locate the vault.
+    """
+    import typer
+    from typer.testing import CliRunner
+
+    from booktools import readwise_obsidian as rw
+
+    vault = tmp_path / "ConfiguredVault"
+    monkeypatch.setattr(config, "default_vault", lambda path=None: vault)
+
+    csv = tmp_path / "readwise.csv"
+    csv.write_text(
+        "Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
+        "Location Type,Location,Highlighted at,Document tags\n"
+        '"A passage.","Stalin: Volume I (Stalin #1)",Stephen Kotkin,B00INIXPYE,'
+        ',,,page,3,2026-07-17 14:00:25+00:00,\n',
+        encoding="utf-8")
+
+    app = typer.Typer()
+    rw.register(app)
+    result = CliRunner().invoke(app, ["--csv", str(csv)])
+
+    assert result.exit_code == 0, result.output
+    assert (vault / "Books" / "Stalin - Stephen Kotkin.md").exists()
