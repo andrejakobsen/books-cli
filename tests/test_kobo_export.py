@@ -87,10 +87,10 @@ def test_export_obsidian_writes_highlights_and_embed(tmp_path):
     assert "%% books:highlights:start %%" in note
     assert "%% books:highlights:end %%" in note
     assert "source: kobo" in note                # provenance frontmatter
-    assert "## The Valley of Ashes" in note      # chapter title header
-    assert "%% Kobo ch. 2 %%" in note            # hidden reading-order comment
-    assert "> [!quote]+ 42%" in note             # locator drops the chapter
-    assert "^ch2-b17-5" in note
+    assert "### The Valley of Ashes" in note     # chapter title header (level 3)
+    assert "%% Kobo ch." not in note             # hidden reading-order comment removed
+    assert "> [!quote]+ Kobo ch. 2 · 42%" in note  # locator keeps the chapter
+    assert "^ch2-42" in note                      # anchor mirrors the locator
     assert ">> my note" in note                  # first highlight's note as nested quote
     assert "[!note]" not in note                 # no separate note callout
 

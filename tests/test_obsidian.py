@@ -134,15 +134,10 @@ def test_cover_refs_builds_vault_relative_wikilinks_with_width(tmp_path):
     assert embed == "![[Covers/Napoleon - Andrew Roberts.jpg|150]]"
 
 
-def test_notes_ref_is_path_qualified_wikilink(tmp_path):
-    note_path = tmp_path / "Books" / "Napoleon - Andrew Roberts.md"
-    assert ob.notes_ref(note_path) == '"[[Notes/Napoleon - Andrew Roberts]]"'
-
-
-def test_property_order_uses_topics_and_notes():
+def test_property_order_uses_topics_not_genres():
     assert "topics" in ob.BOOK_PROPERTY_ORDER
     assert "genres" not in ob.BOOK_PROPERTY_ORDER
-    assert "notes" in ob.BOOK_PROPERTY_ORDER
+    assert "notes" not in ob.BOOK_PROPERTY_ORDER
 
 
 def test_vaultindex_creates_new_note_with_stub(tmp_path):
@@ -156,8 +151,8 @@ def test_vaultindex_creates_new_note_with_stub(tmp_path):
     assert "type: book" in text
     assert 'title: "Napoleon: A Life"' in text
     assert "[[Andrew Roberts]]" in text
-    # The note links to where a hand-made personal note would live.
-    assert 'notes: "[[Notes/Napoleon - Andrew Roberts]]"' in text
+    # The book note no longer carries a personal-notes wikilink.
+    assert "notes:" not in text
 
 
 def test_vaultindex_matches_existing_by_title_author(tmp_path):

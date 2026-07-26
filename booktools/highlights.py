@@ -174,22 +174,23 @@ def sort_key(h: Highlight) -> tuple:
 
 
 def build_anchors(highlights: list[Highlight]) -> list[str]:
-    """Compute a unique Obsidian block-id per highlight.
+    """Compute a unique Obsidian block-id per highlight, mirroring its locator.
 
-    Base is ``ch<index>`` (when known) joined with a location component: the page
-    ``p<page>`` (physical books) when set, else ``b<block>-<seg>`` (e.g. KoboSpan).
-    When no location is available a per-list counter ``hl<n>`` is used instead.
-    Collisions get a ``-2``, ``-3`` suffix so ids are always unique in the file.
+    Base is ``ch<index>`` (when known) joined with a location component that
+    matches the callout title: the reading ``<percent>`` within the chapter when
+    a progress is set (e.g. ``ch1-42`` for 42%), else the page ``p<page>``
+    (physical books). When neither is available a per-list counter ``hl<n>`` is
+    used. Collisions get a ``-2``, ``-3`` suffix so ids are always unique.
     """
     seen: set[str] = set()
     anchors: list[str] = []
     for i, h in enumerate(highlights, start=1):
         chapter = f"ch{h.chapter_index}" if h.chapter_index is not None else ""
         page = re.sub(r"[^0-9-]", "", h.page) if h.page else ""
-        if page:
+        if h.progress is not None:
+            loc = str(round(h.progress * 100))
+        elif page:
             loc = f"p{page}"
-        elif h.block:
-            loc = f"b{h.block}" + (f"-{h.segment}" if h.segment else "")
         else:
             loc = f"hl{i}"
         base = "-".join(p for p in (chapter, loc) if p)
@@ -203,13 +204,10 @@ def build_anchors(highlights: list[Highlight]) -> list[str]:
     return anchors
 
 
-def _label(h: Highlight, include_chapter: bool = True) -> str:
+def _label(h: Highlight, chapter_prefix: str = "ch.") -> str:
     parts: list[str] = []
-    if include_chapter:
-        if h.chapter_index is not None:
-            parts.append(f"ch. {h.chapter_index}")
-        elif h.chapter_title:
-            parts.append(h.chapter_title)
+    if h.chapter_index is not None:
+        parts.append(f"{chapter_prefix} {h.chapter_index}")
     if h.page:
         prefix = h.location_label or "p."
         parts.append(f"{prefix} {h.page.replace('-', '–')}")
@@ -227,21 +225,17 @@ def _chapter_key(h: Highlight) -> tuple:
     return ("none",)
 
 
-def _chapter_header(h: Highlight, chapter_label: str | None) -> str | None:
-    """Markdown header for a chapter run, plus an optional hidden index comment.
+def _chapter_header(h: Highlight) -> str | None:
+    """Markdown header for a chapter run.
 
-    ``## {title}`` when a title is known; the reading-order index renders as a
-    hidden ``%% {chapter_label} {index} %%`` comment beneath it (only when both an
-    index and a label are present). A title-less run with only an index falls back
-    to ``## Chapter {index}`` (no comment). Returns None when the run has neither.
+    ``### {title}`` when a title is known (``###`` because the whole block sits
+    under a ``## Highlights`` section); a title-less run with only an index falls
+    back to ``### Chapter {index}``. Returns None when the run has neither.
     """
     if h.chapter_title:
-        header = f"## {h.chapter_title}"
-        if h.chapter_index is not None and chapter_label:
-            header += f"\n%% {chapter_label} {h.chapter_index} %%"
-        return header
+        return f"### {h.chapter_title}"
     if h.chapter_index is not None:
-        return f"## Chapter {h.chapter_index}"
+        return f"### Chapter {h.chapter_index}"
     return None
 
 
@@ -261,32 +255,32 @@ def render_highlights(highlights: list[Highlight],
     below robust against scattered input.
 
     When any highlight carries a ``chapter_title`` the output is *grouped*: a
-    ``## {title}`` header (with a hidden ``%% {chapter_label} N %%`` reading-order
-    comment) is emitted at each chapter change, and each callout's locator drops
-    the now-redundant ``ch. N``. When no highlight has a chapter title the output
-    is flat (locator keeps ``ch. N``). ``chapter_label`` is the prefix for the
-    hidden comment (e.g. Kobo passes ``"Kobo ch."``); when None the comment is
-    omitted but grouping still happens.
+    ``### {title}`` header is emitted at each chapter change (``###`` because the
+    block sits under a ``## Highlights`` section). Each callout's locator always
+    keeps the chapter, prefixed by ``chapter_label`` when given (Kobo passes
+    ``"Kobo ch."`` → ``Kobo ch. 12 · 42%``) or ``"ch."`` otherwise.
 
-    Each highlight is a single expanded ``[!quote]`` callout (one block anchor).
-    The title line carries the locator plus the ``@links`` as comma-separated
-    ``[[wikilinks]]``. The body holds the quoted text, then the author's note as a
-    nested blockquote (``>> ...``), then the ``#tags`` on a trailing line.
+    Each highlight is a single expanded ``[!quote]`` callout (one block anchor
+    mirroring the locator, e.g. ``^ch12-42``). The title line carries the locator
+    plus the ``@links`` as comma-separated ``[[wikilinks]]``. The body holds the
+    quoted text, then the author's note as a nested blockquote (``>> ...``), then
+    the ``#tags`` on a trailing line.
     """
     highlights = sorted(highlights, key=sort_key)
     anchors = build_anchors(highlights)
     grouped = any(h.chapter_title for h in highlights)
+    chapter_prefix = chapter_label or "ch."
     blocks: list[str] = []
     prev_key = None
     for h, anchor in zip(highlights, anchors):
         if grouped:
             key = _chapter_key(h)
             if key != prev_key:
-                header = _chapter_header(h, chapter_label)
+                header = _chapter_header(h)
                 if header:
                     blocks.append(header)
                 prev_key = key
-        title_parts = [p for p in (_label(h, include_chapter=not grouped),) if p]
+        title_parts = [p for p in (_label(h, chapter_prefix),) if p]
         if h.links:
             title_parts.append(", ".join(wikilink(name) for name in h.links))
         title = " · ".join(title_parts)

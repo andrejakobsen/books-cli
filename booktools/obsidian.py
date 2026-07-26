@@ -46,7 +46,6 @@ BOOK_PROPERTY_ORDER = (
     "date_read",
     "source",
     "cover",
-    "notes",
 )
 
 
@@ -221,15 +220,6 @@ def cover_refs(note_path: Path) -> tuple[str, str]:
     """
     target = cover_path(note_path).relative_to(note_path.parents[1]).as_posix()
     return yaml_quote(f"[[{target}]]"), f"![[{target}|{COVER_WIDTH}]]"
-
-
-def notes_ref(note_path: Path) -> str:
-    """Yaml-quoted, path-qualified wikilink to the book's personal-notes file.
-
-    Path-qualified (``[[Notes/<stem>]]``) so it does not collide with the
-    identically-named ``Books/<stem>`` note. The file itself is hand-made.
-    """
-    return yaml_quote(f"[[{NOTES_DIRNAME}/{note_path.stem}]]")
 
 
 # --- Frontmatter reading ----------------------------------------------------
@@ -463,7 +453,6 @@ class VaultIndex:
             stub = update_frontmatter("---\ntype: book\n---\n", {
                 "title": yaml_quote(ref.title) if ref.title else "",
                 "authors": link_list(ref.authors) if ref.authors else "",
-                "notes": notes_ref(note),
             })
             note.write_text(stub, encoding="utf-8")
         self._register(ref, note)

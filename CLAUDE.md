@@ -41,7 +41,7 @@ via `VaultIndex.find` (match-only) vs `VaultIndex.find_or_create` (creates). A s
 - `booktools/highlighted_obsidian.py` → `highlighted` — reads a Highlighted app CSV export (highlights from physical books, page-located) and renders highlights (via the shared `booktools/highlights.py`) into a marker-wrapped `## Highlights` section of an **existing** book note (matched via `VaultIndex.find`; unmatched books are skipped and counted). `--csv` accepts a single CSV file or a folder of CSV exports (every top-level `*.csv` is imported in sorted order; a file that fails to parse is skipped and reported), defaulting to `<vault>/.imports/highlighted`. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
 - `booktools/readwise_obsidian.py` → `readwise` — reads a Readwise CSV export and renders highlights (via `booktools/highlights.py`) into a marker-wrapped `## Highlights` section of an **existing** book note (matched via `VaultIndex.find` by Amazon id then standardized title/author; unmatched books are skipped and counted). `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/readwise`. Fills `amazon`/`shelves`/`series`/`series_index` frontmatter, renders type-aware location labels (`p.`/`loc.`). Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
 - `booktools/sync.py` → `sync` — master orchestrator that runs the importers in dependency order using each command's default options: `calibre` → `goodreads` → `kobo` → `highlighted` → `readwise` (covers is **not** included). Each step is skipped when its source is absent (calibre: `~/Calibre Library` exists; goodreads/highlighted/readwise: a `*.csv` in the `.imports/<name>` folder; kobo: a mounted device or a `*.sqlite` in `.imports/kobo`). Each step calls the module's core function directly (`convert`/`export_obsidian`) — no shelling out. Failures are reported but never stop the remaining steps (continue-on-error); a colored per-step + summary report is printed via `typer.secho`. `--output` overrides the vault; `--dry-run` prints the detection plan without writing. Creates no notes itself — it delegates note creation to `calibre`/`goodreads`.
-- `booktools/covers.py` → `covers` — scans an existing vault for `type: book` notes with a blank `cover:` field and fetches a cover image. Sources are tried in order — Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping). Stdlib-only (`urllib`); all network I/O is injected for testing. Writes `<Title> - <Author>.jpg` into the flat `Covers/` folder and fills the note's `cover:` frontmatter + top embed (at width 150) via the shared `obsidian.py` helpers (never overwriting an existing cover). Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run. `--book PATH` targets a single note under `Books/` (vault inferred from the path) and is interactive by default.
+- `booktools/covers.py` → `covers` — scans an existing vault for `type: book` notes with a blank `cover:` field and fetches a cover image. Sources are tried in order — Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping). When a note carries an ISBN it drives the lookup directly (Google `isbn:` query / Open Library `/b/isbn/` cover) — the most reliable path, unaffected by Google's title-search rate limiting. Stdlib-only (`urllib`); all network I/O is injected for testing. HTTP fetches retry transient failures (429/5xx) with exponential backoff (`fetch_with_retry`), and a source that errors outright (rate-limited/unreachable) is counted and reported separately from one that merely found no match. Author/title queries are normalized before sending (`normalize_author` collapses whitespace and drops translator/co-author tails like "Plato and Benjamin Jowett" → "Plato"). Fetched images are validated by parsing their pixel dimensions (`image_dimensions`, PNG/GIF/JPEG headers, stdlib) and rejecting anything below `MIN_IMAGE_DIM`, falling back to a byte-size check when dimensions are unparseable. An ISBN learned from a source is backfilled into the note's frontmatter (never overwriting an existing one). Writes `<Title> - <Author>.jpg` into the flat `Covers/` folder and fills the note's `cover:` frontmatter + top embed (at width 150) via the shared `obsidian.py` helpers (never overwriting an existing cover). Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run. `--book PATH` targets a single note under `Books/` (vault inferred from the path) and is interactive by default.
 
 ### Configuration
 
@@ -76,17 +76,16 @@ Links render on the `[!quote]` callout **title line** (middot-joined after the l
 line inside the callout body. The author's note sits between them as a nested blockquote (`>>`).
 
 **Chapter subheaders** (in `booktools/highlights.py`, `render_highlights`): when a source
-knows chapter titles, highlights group under `## Chapter Title` markdown headers so all the
-highlights for a chapter collect under one heading. Grouping triggers when **any** highlight
-carries a `chapter_title`; if none do, the output stays flat (unchanged) so page-based sources
+knows chapter titles, highlights group under `### Chapter Title` markdown headers (level 3,
+because the whole block sits under a `## Highlights` section) so all the highlights for a
+chapter collect under one heading. Grouping triggers when **any** highlight carries a
+`chapter_title`; if none do, the output stays flat (unchanged) so page-based sources
 (Highlighted) and chapter-less exports (Readwise) are unaffected. In grouped mode a header is
-emitted at each chapter change (consecutive-run grouping in reading order), and each callout's
-locator drops the now-redundant `ch. N` (keeps `42%`/`p.`/`loc.`). A source's reading-order
-index — which may not be the book's printed chapter number — renders as a hidden Obsidian
-comment beneath the header (`%% {chapter_label} {index} %%`); the label is a `chapter_label`
-argument to `render_highlights` (Kobo passes `"Kobo ch."`, so `%% Kobo ch. 12 %%`), omitted
-when no label is given. A title-less highlight sitting among titled ones falls back to a
-`## Chapter {index}` header. Highlights are never separated by `---` dividers (blank line only).
+emitted at each chapter change (consecutive-run grouping in reading order). Each callout's
+locator always keeps the chapter, prefixed by the `chapter_label` argument to
+`render_highlights` when given (Kobo passes `"Kobo ch."` → `Kobo ch. 12 · 42%`) or `"ch."`
+otherwise. A title-less highlight sitting among titled ones falls back to a `### Chapter {index}`
+header. Highlights are never separated by `---` dividers (blank line only).
 
 **Ordering** (in `booktools/highlights.py`, `render_highlights` via `sort_key`): `render_highlights`
 always sorts its input into reading order before rendering, so output is ordered regardless of the
@@ -110,11 +109,10 @@ Goodreads importers compose. Read it before changing either importer. It owns:
 - **The book note anatomy.** A book note is frontmatter + a cover embed
   (`![[Covers/<stem>.jpg|150]]`, width from `COVER_WIDTH`) + an optional write-once
   `## Review` section + a marker-wrapped `## Highlights` section. Personal notes are not
-  in the book note: the importer only fills a `notes:` frontmatter wikilink pointing at
-  `[[Notes/<stem>]]`, which the user authors by hand.
+  in the book note; the `Notes/` folder holds fully manual notes the user authors by hand.
 - **A canonical frontmatter schema** (`BOOK_PROPERTY_ORDER`). Every book note emits
   all keys (empty when unknown) so any importer or a manual edit can fill a field later.
-  The key is `topics` (not `genres`), and `notes` follows `cover`.
+  The key is `topics` (not `genres`), and `cover` is the last key.
 - **The "never overwrite" merge rule** (`update_frontmatter`): fills only absent or
   blank keys, leaves non-empty values and the note body untouched, appends new keys in
   canonical order. This is what lets Calibre → Goodreads (in either order) plus hand
@@ -127,10 +125,9 @@ Goodreads importers compose. Read it before changing either importer. It owns:
   outside the markers survive). `ensure_section(text, heading, content)` is write-once:
   it appends a `## heading` section only if that heading is absent (used for `## Review`,
   so a hand-edited review is never clobbered).
-- **Cover/notes reference helpers**: `cover_path(note_path)` maps a book note to its flat
+- **Cover reference helpers**: `cover_path(note_path)` maps a book note to its flat
   `Covers/<stem>.jpg` file; `cover_refs(note_path)` returns the `(frontmatter, embed)`
-  pair (the embed carrying `|150`); `notes_ref(note_path)` returns the quoted
-  `[[Notes/<stem>]]` wikilink.
+  pair (the embed carrying `|150`).
 - **Matching normalization** used to detect that a Goodreads row and an existing Calibre
   note are the same book: `norm_title`, `norm_isbn`, `author_key` (reduces names to
   (first, last), handling "Last, First"), and `fold` (accent/case folding).

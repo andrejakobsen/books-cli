@@ -3,14 +3,15 @@
 from booktools import highlights as hl
 
 
-def test_build_anchors_chapter_and_location():
-    hs = [hl.Highlight(text="a", chapter_index=2, block="17", segment="5")]
-    assert hl.build_anchors(hs) == ["ch2-b17-5"]
+def test_build_anchors_chapter_and_progress():
+    # anchor mirrors the locator: chapter + reading percentage
+    hs = [hl.Highlight(text="a", chapter_index=1, progress=0.42, block="17", segment="5")]
+    assert hl.build_anchors(hs) == ["ch1-42"]
 
 
-def test_build_anchors_missing_chapter_drops_prefix():
-    hs = [hl.Highlight(text="a", block="17", segment="5")]
-    assert hl.build_anchors(hs) == ["b17-5"]
+def test_build_anchors_missing_chapter_uses_progress_only():
+    hs = [hl.Highlight(text="a", progress=0.42)]
+    assert hl.build_anchors(hs) == ["42"]
 
 
 def test_build_anchors_missing_location_uses_counter():
@@ -23,10 +24,10 @@ def test_build_anchors_missing_location_uses_counter():
 
 def test_build_anchors_dedupes_collisions():
     hs = [
-        hl.Highlight(text="a", chapter_index=2, block="17", segment="5"),
-        hl.Highlight(text="b", chapter_index=2, block="17", segment="5"),
+        hl.Highlight(text="a", chapter_index=2, progress=0.42),
+        hl.Highlight(text="b", chapter_index=2, progress=0.42),
     ]
-    assert hl.build_anchors(hs) == ["ch2-b17-5", "ch2-b17-5-2"]
+    assert hl.build_anchors(hs) == ["ch2-42", "ch2-42-2"]
 
 
 def test_render_single_highlight_no_note():
@@ -35,7 +36,7 @@ def test_render_single_highlight_no_note():
     out = hl.render_highlights(hs)
     assert "> [!quote]+ ch. 2 · 42%" in out
     assert "> A line" in out
-    assert "^ch2-b17-5" in out
+    assert "^ch2-42" in out
     assert "[!note]" not in out  # no annotation -> no note callout
 
 
@@ -45,10 +46,10 @@ def test_render_note_is_nested_quote_in_same_block():
     out = hl.render_highlights(hs)
     assert ">> my thought" in out          # note is a nested blockquote
     assert "[!note]" not in out            # no separate note callout
-    assert "^ch2-b1-0-note" not in out     # single block, single anchor
-    assert "^ch2-b1-0" in out
+    assert "^ch2-50-note" not in out       # single block, single anchor
+    assert "^ch2-50" in out
     # note sits under the highlight text, inside the quote block
-    assert out.index("> A line") < out.index(">> my thought") < out.index("^ch2-b1-0")
+    assert out.index("> A line") < out.index(">> my thought") < out.index("^ch2-50")
 
 
 def test_render_multiline_text_prefixes_each_line():
@@ -58,12 +59,12 @@ def test_render_multiline_text_prefixes_each_line():
     assert "> line two" in out
 
 
-def test_render_chapter_title_becomes_header_index_absent_no_comment():
+def test_render_chapter_title_becomes_header_index_absent():
     hs = [hl.Highlight(text="x", chapter_title="Intro", progress=0.1, block="2")]
     out = hl.render_highlights(hs, chapter_label="Kobo ch.")
-    assert "## Intro" in out
-    assert "%%" not in out               # no index -> no hidden comment
-    assert "> [!quote]+ 10%" in out      # locator dropped the title, kept percent
+    assert "### Intro" in out             # chapter header is level-3 under ## Highlights
+    assert "%%" not in out                # no hidden comment anymore
+    assert "> [!quote]+ 10%" in out       # no index -> locator is percent only
 
 
 def test_render_no_chapter_locator_is_percent_only():
@@ -92,7 +93,7 @@ def test_page_same_page_collisions_dedupe():
 
 def test_page_none_is_unchanged():
     hs = [hl.Highlight(text="a", chapter_index=2, block="17", segment="5")]
-    assert hl.build_anchors(hs) == ["ch2-b17-5"]
+    assert hl.build_anchors(hs) == ["ch2-hl1"]   # no progress/page -> counter
     assert "p. " not in hl.render_highlights(hs)
 
 
@@ -135,14 +136,14 @@ def test_render_tags_inside_quote_callout_above_anchor():
     # tag line lives inside the callout (prefixed with "> ")
     assert "> #Stalin #USSR" in out
     # ...above the block anchor, below the quoted text
-    quote_block = out.split("^ch2-b17-5")[0]
+    quote_block = out.split("^ch2-hl1")[0]
     assert quote_block.index("> A line") < quote_block.index("> #Stalin #USSR")
 
 
 def test_render_no_tags_callout_unchanged():
     hs = [hl.Highlight(text="A line", chapter_index=2, block="17", segment="5")]
     out = hl.render_highlights(hs)
-    assert "#" not in out.split("^ch2-b17-5")[0]  # no tag line in the quote block
+    assert "#" not in out.split("^ch2-hl1")[0]  # no tag line in the quote block
 
 
 def test_render_tags_and_note_both_present():
@@ -323,24 +324,24 @@ def test_render_links_only_no_location_title_is_links():
 
 # --- chapter subheaders ------------------------------------------------------
 
-def test_grouped_emits_title_header_and_hidden_index_comment():
+def test_grouped_emits_title_header_and_chapter_in_quote():
     hs = [hl.Highlight(text="a", chapter_index=12, chapter_title="The Battle",
                        progress=0.42, block="3", segment="5")]
     out = hl.render_highlights(hs, chapter_label="Kobo ch.")
-    assert "## The Battle" in out
-    assert "%% Kobo ch. 12 %%" in out
-    # locator drops "ch. 12", keeps progress
-    assert "> [!quote]+ 42%" in out
-    assert "ch. 12" not in out.split("%%")[-1]  # no "ch. 12" in the callout region
+    assert "### The Battle" in out                     # level-3 header
+    assert "%%" not in out                             # hidden comment removed
+    # the quote carries the Kobo chapter before the percentage
+    assert "> [!quote]+ Kobo ch. 12 · 42%" in out
+    assert "^ch12-42" in out                           # anchor mirrors the locator
 
 
-def test_grouped_no_label_omits_comment():
+def test_grouped_no_label_uses_default_chapter_prefix():
     hs = [hl.Highlight(text="a", chapter_index=12, chapter_title="The Battle",
                        progress=0.42, block="3", segment="5")]
     out = hl.render_highlights(hs)  # no chapter_label
-    assert "## The Battle" in out
+    assert "### The Battle" in out
     assert "%%" not in out
-    assert "> [!quote]+ 42%" in out
+    assert "> [!quote]+ ch. 12 · 42%" in out           # default "ch." prefix
 
 
 def test_grouped_one_header_per_chapter_run():
@@ -353,22 +354,23 @@ def test_grouped_one_header_per_chapter_run():
                      progress=0.3, block="3"),
     ]
     out = hl.render_highlights(hs, chapter_label="Kobo ch.")
-    assert out.count("## One") == 1   # consecutive same-chapter share one header
-    assert out.count("## Two") == 1
-    assert out.index("## One") < out.index("## Two")
+    assert out.count("### One") == 1   # consecutive same-chapter share one header
+    assert out.count("### Two") == 1
+    assert out.index("### One") < out.index("### Two")
 
 
 def test_flat_fallback_when_no_chapter_title():
-    # No chapter_title anywhere -> flat output, unchanged, no "##" headers.
+    # No chapter_title anywhere -> flat output, no chapter headers.
     hs = [hl.Highlight(text="a", chapter_index=2, progress=0.42,
                        block="17", segment="5")]
     out = hl.render_highlights(hs, chapter_label="Kobo ch.")
-    assert "## " not in out
-    assert "> [!quote]+ ch. 2 · 42%" in out  # locator keeps chapter in flat mode
+    assert "###" not in out
+    # the quote still carries the labelled chapter before the percentage
+    assert "> [!quote]+ Kobo ch. 2 · 42%" in out
 
 
 def test_grouped_index_only_run_gets_chapter_fallback_header():
-    # A title-less highlight among titled ones gets "## Chapter {index}", no comment.
+    # A title-less highlight among titled ones gets "### Chapter {index}".
     hs = [
         hl.Highlight(text="a", chapter_index=1, chapter_title="Intro",
                      progress=0.1, block="1"),
@@ -376,9 +378,9 @@ def test_grouped_index_only_run_gets_chapter_fallback_header():
                      progress=0.2, block="2"),
     ]
     out = hl.render_highlights(hs, chapter_label="Kobo ch.")
-    assert "## Intro" in out
-    assert "## Chapter 2" in out
-    assert "%% Kobo ch. 2 %%" not in out  # no comment under a "## Chapter N" header
+    assert "### Intro" in out
+    assert "### Chapter 2" in out
+    assert "%%" not in out                 # no hidden comments anywhere
 
 
 # --- ordering ----------------------------------------------------------------
