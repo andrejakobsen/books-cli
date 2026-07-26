@@ -411,6 +411,23 @@ def test_fetch_with_retry_retries_on_429_then_succeeds():
     assert len(slept) == 2   # two backoff sleeps before the successful third call
 
 
+def test_fetch_with_retry_retries_on_403_itunes_throttle():
+    # iTunes returns 403 (not 429) when it throttles, so 403 must be retryable.
+    calls = {"n": 0}
+    slept = []
+
+    def do():
+        calls["n"] += 1
+        if calls["n"] < 3:
+            raise _http_error(403)
+        return {"ok": True}
+
+    out = covers.fetch_with_retry(do, retries=3, backoff=0.1, sleep=slept.append)
+    assert out == {"ok": True}
+    assert calls["n"] == 3
+    assert len(slept) == 2
+
+
 def test_fetch_with_retry_does_not_retry_on_404():
     calls = {"n": 0}
 
@@ -470,6 +487,35 @@ def test_run_counts_errored_sources(tmp_path):
 
     assert stats["errored"]["google"] == 1
     assert stats["fetched"] == 1   # amazon still succeeded
+
+
+def test_run_does_not_count_later_source_errors_when_earlier_succeeds(tmp_path):
+    # Apple returns a valid cover, so Google/Open Library must never be queried;
+    # a Google rate-limit that would occur is therefore NOT an error here.
+    _write_note(tmp_path, "X - Y.md",
+        '---\ntype: book\ntitle: "X"\nauthors: ["[[Y]]"]\ncover:\n---\n')
+
+    calls = []
+
+    def fetch_json(url):
+        calls.append(url)
+        if "itunes" in url:
+            return {"results": [{
+                "artworkUrl100": "https://ex/img/9780000000001.jpg/100x100bb.jpg",
+                "trackName": "X", "artistName": "Y"}]}
+        if "googleapis" in url:
+            raise _http_error(429)   # would count as an error if ever reached
+        return {"docs": []}
+
+    stats = covers.run(
+        tmp_path, interactive=False, dry_run=True, limit=None,
+        fetch_json=fetch_json,
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+
+    assert stats["fetched"] == 1
+    assert stats["by_source"]["apple"] == 1
+    assert stats["errored"]["google"] == 0   # never queried → not an error
+    assert not any("googleapis" in u for u in calls)   # google was never hit
 
 
 def test_gather_candidates_source_order():

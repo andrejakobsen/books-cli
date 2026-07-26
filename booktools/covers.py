@@ -12,9 +12,11 @@ always queried by title+author because its ISBN-term search is unreliable. All
 network I/O is injected so the logic is unit-testable; vault writing reuses
 booktools.obsidian.
 
-Robustness: HTTP fetches retry transient failures (429/5xx) with exponential
-backoff, and a source that errors outright is reported separately from one that
-simply found nothing. Author/title queries are normalized (whitespace collapsed,
+Robustness: HTTP fetches retry transient failures (403/429/5xx — 403 covers
+iTunes throttling) with exponential backoff, and a source that errors outright is
+reported separately from one that simply found nothing. Sources are also consulted
+lazily, so once one yields a usable cover the rest are never contacted (nor their
+errors counted). Author/title queries are normalized (whitespace collapsed,
 translator/co-author tails dropped); fetched images are validated by parsing
 their pixel dimensions (rejecting placeholders); and an ISBN learned from a
 source is backfilled into the note's frontmatter.
@@ -356,22 +358,38 @@ _API_SOURCES = (
 )
 
 
+def iter_candidates(book: MissingBook, fetch_json, errored: list[str]):
+    """Yield candidates source-by-source in priority order (Apple, Google, Open
+    Library, Amazon), *lazily*.
+
+    A source is only queried when the consumer asks for candidates beyond the
+    previous source's — so if an earlier source already yields a usable cover and
+    the consumer stops, later sources are never contacted (and a later rate-limit
+    never gets counted as an error). The name of any source that raises is
+    appended to *errored* as it happens.
+    """
+    for name, fn in _API_SOURCES:
+        try:
+            cands = fn(book, fetch_json)
+        except Exception:
+            errored.append(name)
+            continue
+        yield from cands
+    yield from amazon_candidates(book)
+
+
 def gather_with_errors(book: MissingBook, fetch_json):
-    """Gather candidates and report which sources errored outright.
+    """Gather *all* candidates and report which sources errored outright.
 
     Returns ``(candidates, errored)`` where *candidates* are in source-priority
     order (Apple, Google, Open Library, Amazon) and *errored* is the list of source
     names that raised (e.g. a rate-limit / network failure) — distinct from a
-    source that simply found nothing.
+    source that simply found nothing. Every source is queried eagerly; prefer
+    :func:`iter_candidates` when a later source's error should not be counted once
+    an earlier source suffices.
     """
-    candidates: list[Candidate] = []
     errored: list[str] = []
-    for name, fn in _API_SOURCES:
-        try:
-            candidates.extend(fn(book, fetch_json))
-        except Exception:
-            errored.append(name)
-    candidates.extend(amazon_candidates(book))
+    candidates = list(iter_candidates(book, fetch_json, errored))
     return candidates, errored
 
 
@@ -503,16 +521,19 @@ HTTP_RETRIES = 3
 HTTP_BACKOFF = 1.0   # base seconds; doubles each attempt (1s, 2s, 4s, …)
 
 # Transient HTTP statuses worth retrying: rate limiting + server errors.
-RETRYABLE_STATUS = frozenset({429, 500, 502, 503, 504})
+# 403 is included because the iTunes Search API (Apple Books) returns Forbidden
+# when it throttles, rather than the standard 429.
+RETRYABLE_STATUS = frozenset({403, 429, 500, 502, 503, 504})
 
 
 def fetch_with_retry(do_fetch, *, retries=HTTP_RETRIES, backoff=HTTP_BACKOFF,
                      sleep=time.sleep):
     """Call *do_fetch* (a zero-arg fetcher), retrying transient failures.
 
-    Retries on retryable HTTP statuses (429/5xx) and connection errors with
-    exponential backoff; re-raises non-retryable errors (e.g. 404) immediately
-    and re-raises the last error once *retries* attempts are exhausted.
+    Retries on retryable HTTP statuses (403/429/5xx — 403 covers iTunes
+    throttling) and connection errors with exponential backoff; re-raises
+    non-retryable errors (e.g. 404) immediately and re-raises the last error once
+    *retries* attempts are exhausted.
     """
     for attempt in range(retries):
         try:
@@ -584,15 +605,19 @@ def run(vault, *, interactive, dry_run, limit,
         stats["processed"] += 1
         if interactive:
             print(f"\n{book.title} — {', '.join(book.authors) or 'Unknown'}")
-        candidates, errored = gather_with_errors(book, fetch_json)
-        for src in errored:
-            stats["errored"][src] = stats["errored"].get(src, 0) + 1
+        errored: list[str] = []
+        candidates = iter_candidates(book, fetch_json, errored)
         try:
             picked = pick_cover(
                 candidates, fetch_bytes, interactive=interactive, prompt=prompt)
         except QuitRequested:
             print("Quit.")
             break
+        finally:
+            # `errored` is populated lazily as pick_cover consumes candidates, so
+            # it only holds sources actually reached before a cover was found.
+            for src in errored:
+                stats["errored"][src] = stats["errored"].get(src, 0) + 1
         if picked is None:
             stats["not_found"] += 1
             print(f"  no cover: {book.title}")
