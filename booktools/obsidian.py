@@ -440,6 +440,19 @@ class VaultIndex:
         self.used_stems.add(stem.lower())
         return self.vault / BOOKS_DIRNAME / f"{stem}.md"
 
+    def find(self, ref: BookRef) -> BookNote | None:
+        """Return the existing BookNote for a ref, or None (never creates).
+
+        Used by the highlight-only importers (kobo/highlighted/readwise), which
+        enrich notes created by calibre/goodreads but never author book identity
+        themselves.
+        """
+        note = self._match(ref)
+        if note is None:
+            return None
+        self._register(ref, note)
+        return BookNote(note, created=False)
+
     def find_or_create(self, ref: BookRef) -> BookNote:
         """Return a BookNote, creating a flat stub note when the book is new."""
         note = self._match(ref)

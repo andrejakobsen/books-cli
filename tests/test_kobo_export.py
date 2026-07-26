@@ -50,10 +50,34 @@ def test_row_to_highlight_maps_fields():
     assert abs(h.progress - 0.42) < 1e-9
 
 
+def _seed_gatsby(vault: Path) -> Path:
+    """Pre-create the book note (as calibre/goodreads would) so kobo can match."""
+    books = vault / "Books"
+    books.mkdir(parents=True, exist_ok=True)
+    note = books / "The Great Gatsby - F. Scott Fitzgerald.md"
+    note.write_text(
+        '---\ntype: book\ntitle: "The Great Gatsby"\n'
+        'authors: ["[[F. Scott Fitzgerald]]"]\nisbn: "9780743273565"\n---\n\n',
+        encoding="utf-8")
+    return note
+
+
+def test_export_obsidian_skips_book_without_existing_note(tmp_path):
+    db = tmp_path / "KoboReader.sqlite"
+    _make_db(db)
+    vault = tmp_path / "Obsidian"
+    stats = ke.export_obsidian(db, vault)
+    assert stats["books"] == 0
+    assert stats["entries"] == 0
+    assert stats["skipped"] == 1
+    assert not (vault / "Books" / "The Great Gatsby - F. Scott Fitzgerald.md").exists()
+
+
 def test_export_obsidian_writes_highlights_and_embed(tmp_path):
     db = tmp_path / "KoboReader.sqlite"
     _make_db(db)
     vault = tmp_path / "Obsidian"
+    _seed_gatsby(vault)
     stats = ke.export_obsidian(db, vault)
     assert stats["books"] == 1 and stats["entries"] == 2
 
@@ -75,6 +99,7 @@ def test_export_obsidian_regenerates_highlights_wholesale(tmp_path):
     db = tmp_path / "KoboReader.sqlite"
     _make_db(db)
     vault = tmp_path / "Obsidian"
+    _seed_gatsby(vault)
     ke.export_obsidian(db, vault)
     note_path = vault / "Books" / "The Great Gatsby - F. Scott Fitzgerald.md"
     # Simulate a hand edit to the book note body; it must survive re-export.

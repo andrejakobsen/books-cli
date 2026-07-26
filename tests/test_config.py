@@ -231,6 +231,15 @@ def test_importer_writes_to_configured_vault_without_output(monkeypatch, tmp_pat
         ',,,page,3,2026-07-17 14:00:25+00:00,\n',
         encoding="utf-8")
 
+    # The highlight importer only enriches, so pre-create the note (as
+    # calibre/goodreads would) inside the configured vault.
+    books = vault / "Books"
+    books.mkdir(parents=True)
+    (books / "Stalin - Stephen Kotkin.md").write_text(
+        '---\ntype: book\ntitle: "Stalin"\n'
+        'authors: ["[[Stephen Kotkin]]"]\namazon: "B00INIXPYE"\n---\n\n',
+        encoding="utf-8")
+
     app = typer.Typer()
     rw.register(app)
     result = CliRunner().invoke(app, ["--csv", str(csv)])

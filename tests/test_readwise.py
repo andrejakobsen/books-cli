@@ -23,6 +23,22 @@ def write_csv(tmp_path: Path) -> Path:
     return p
 
 
+def seed_note(out: Path, stem: str, frontmatter: str) -> Path:
+    """Pre-create a book note (as calibre/goodreads would) so importers can match."""
+    books = out / "Books"
+    books.mkdir(parents=True, exist_ok=True)
+    note = books / f"{stem}.md"
+    note.write_text(frontmatter, encoding="utf-8")
+    return note
+
+
+def seed_stalin(out: Path) -> Path:
+    return seed_note(
+        out, "Stalin - Stephen Kotkin",
+        '---\ntype: book\ntitle: "Stalin"\n'
+        'authors: ["[[Stephen Kotkin]]"]\namazon: "B00INIXPYE"\n---\n\n')
+
+
 def test_split_series_extracts_name_and_index():
     title, series, index = rw.split_series(
         "Stalin: Volume I: Paradoxes of Power, 1878-1928 (Stalin #1)")
@@ -96,6 +112,7 @@ def test_parse_csv_reads_rows(tmp_path):
 
 def test_convert_writes_highlights_and_frontmatter(tmp_path):
     out = tmp_path / "Obsidian"
+    seed_stalin(out)
     stats = rw.convert(write_csv(tmp_path), out)
     assert stats["books"] == 1 and stats["entries"] == 2
     note = out / "Books" / "Stalin - Stephen Kotkin.md"
@@ -113,6 +130,15 @@ def test_convert_writes_highlights_and_frontmatter(tmp_path):
     assert "> [!quote]+ p. 3" in note_text
     assert "First passage." in note_text
     assert "#history" in note_text
+
+
+def test_convert_skips_book_without_existing_note(tmp_path):
+    out = tmp_path / "Obsidian"
+    stats = rw.convert(write_csv(tmp_path), out)
+    assert stats["books"] == 0
+    assert stats["entries"] == 0
+    assert stats["skipped"] == 1
+    assert not (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
 
 
 def test_convert_merges_into_existing_note_by_amazon(tmp_path):
@@ -134,6 +160,7 @@ def test_convert_merges_into_existing_note_by_amazon(tmp_path):
 
 def test_convert_idempotent(tmp_path):
     out = tmp_path / "Obsidian"
+    seed_stalin(out)
     rw.convert(write_csv(tmp_path), out)
     before = {p: p.read_text() for p in out.rglob("*.md")}
     rw.convert(write_csv(tmp_path), out)
@@ -145,6 +172,7 @@ def test_readwise_command_end_to_end(tmp_path):
     app = typer.Typer()
     rw.register(app)
     out = tmp_path / "Obsidian"
+    seed_stalin(out)
     result = CliRunner().invoke(
         app, ["--csv", str(write_csv(tmp_path)), "--output", str(out)])
     assert result.exit_code == 0, result.output
@@ -169,6 +197,12 @@ def test_convert_same_title_different_authors_no_amazon_stay_separate(tmp_path):
         '"From A.","Selected Essays",Author A,,,,,page,1,2026-01-01 00:00:00+00:00,\n'
         '"From B.","Selected Essays",Author B,,,,,page,2,2026-01-02 00:00:00+00:00,\n',
         encoding="utf-8")
+    seed_note(out, "Selected Essays - Author A",
+              '---\ntype: book\ntitle: "Selected Essays"\n'
+              'authors: ["[[Author A]]"]\n---\n\n')
+    seed_note(out, "Selected Essays - Author B",
+              '---\ntype: book\ntitle: "Selected Essays"\n'
+              'authors: ["[[Author B]]"]\n---\n\n')
     stats = rw.convert(csv, out)
     assert stats["books"] == 2
     assert (out / "Books" / "Selected Essays - Author A.md").exists()
@@ -185,6 +219,9 @@ def test_convert_same_amazon_different_title_rows_group_together(tmp_path):
         '"One.","Book (Series #1)",Kotkin,B00INIXPYE,,,,page,1,2026-01-01 00:00:00+00:00,\n'
         '"Two.","Book (Series #1)",Kotkin,B00INIXPYE,,,,page,2,2026-01-02 00:00:00+00:00,\n',
         encoding="utf-8")
+    seed_note(out, "Book - Kotkin",
+              '---\ntype: book\ntitle: "Book"\n'
+              'authors: ["[[Kotkin]]"]\namazon: "B00INIXPYE"\n---\n\n')
     stats = rw.convert(csv, out)
     assert stats["books"] == 1 and stats["entries"] == 2
 
@@ -207,6 +244,7 @@ def test_readwise_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
     monkeypatch.setattr(config, "resolve_imports",
                         lambda name, output=None: vault / ".imports" / name)
+    seed_stalin(vault)
 
     app = typer.Typer()
     rw.register(app)
@@ -230,6 +268,7 @@ def test_readwise_folder_arg_picks_newest(monkeypatch, tmp_path):
     os.utime(old, (1000, 1000))
     os.utime(folder / "new.csv", (2000, 2000))
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
+    seed_stalin(vault)
 
     app = typer.Typer()
     rw.register(app)
@@ -247,4 +286,4 @@ def test_convert_empty_csv_creates_nothing(tmp_path):
         "Location Type,Location,Highlighted at,Document tags\n",
         encoding="utf-8")
     stats = rw.convert(csv, out)
-    assert stats == {"books": 0, "entries": 0, "authors": set()}
+    assert stats == {"books": 0, "entries": 0, "authors": set(), "skipped": 0}

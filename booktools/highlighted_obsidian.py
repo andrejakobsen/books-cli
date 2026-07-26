@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Convert a Highlighted app CSV export into an Obsidian book vault.
+"""Add Highlighted app CSV highlights to existing Obsidian book notes.
 
 Highlighted captures highlights from *physical* books (OCR). This importer maps
-each CSV row into the shared source-agnostic Highlight model and writes a per-book
-"Highlights.md" under "Exports/<Author>/<Title>/", embedded into the flat note
-under a "## Highlights" heading. Books are matched to existing notes by ISBN, then
-by a strict Author/Title comparison, so highlights accumulate alongside any
-Calibre/Goodreads data without clobbering.
+each CSV row into the shared source-agnostic Highlight model and embeds them under
+a marker-wrapped "## Highlights" heading of the matching book note. It only
+enriches notes created by the calibre/goodreads importers -- it never creates book
+notes. Books are matched to existing notes by ISBN, then by a strict Author/Title
+comparison; a book with no matching note is skipped and counted. Highlights thus
+accumulate alongside any Calibre/Goodreads data without clobbering.
 
 CSV columns: Highlight, Title, Author, ISBN, Collections, Reading Status,
 Book Added Date, Location, Tags, Note, Date, Favorite. Location is a page number
@@ -74,7 +75,7 @@ def row_to_highlight(row: dict) -> Highlight:
 
 def convert(csv_path: Path, output: Path) -> dict:
     """Import every highlight, grouped by book, into the Obsidian vault."""
-    stats = {"books": 0, "entries": 0, "authors": set()}
+    stats = {"books": 0, "entries": 0, "authors": set(), "skipped": 0}
     index = VaultIndex(output)
     authors_dir = output / AUTHORS_DIRNAME
 
@@ -94,7 +95,10 @@ def convert(csv_path: Path, output: Path) -> dict:
     for group in groups.values():
         authors = [group["author"]] if group["author"] else []
         ref = BookRef(title=group["title"], authors=authors, isbn=group["isbn"])
-        dest = index.find_or_create(ref)
+        dest = index.find(ref)
+        if dest is None:
+            stats["skipped"] += 1
+            continue
 
         base = dest.note_path.read_text(encoding="utf-8")
         dest.note_path.write_text(update_frontmatter(base, {
@@ -134,13 +138,14 @@ def highlighted_to_obsidian(
              "(~/.config/booktools/config.toml). Relative paths resolve against the current directory.",
     ),
 ) -> None:
-    """Convert a Highlighted CSV export into Obsidian book notes.
+    """Add Highlighted CSV highlights to existing Obsidian book notes.
 
-    Every highlight is imported (regardless of reading status). For each book a
-    'Highlights.md' is written into 'Exports/<Author>/<Title>/' and embedded into
-    the flat note under a '## Highlights' heading; books are matched to existing
-    notes by ISBN, then by a strict Author/Title comparison. Existing notes are
-    never overwritten.
+    Highlights enrich book notes created by the calibre/goodreads importers; this
+    command never creates book notes itself. Every highlight is imported
+    (regardless of reading status) and embedded under a marker-wrapped
+    '## Highlights' heading. Books are matched to existing notes by ISBN, then by
+    a strict Author/Title comparison; a book with no matching note is skipped and
+    counted. Existing notes are never overwritten.
 
     When --csv is a folder, every top-level '*.csv' file in it is imported in
     sorted order; a file that fails to parse is skipped and reported.
@@ -158,7 +163,7 @@ def highlighted_to_obsidian(
 
     output.mkdir(parents=True, exist_ok=True)
 
-    totals = {"books": 0, "entries": 0, "authors": set()}
+    totals = {"books": 0, "entries": 0, "authors": set(), "skipped": 0}
     skipped = 0
     for path in csv_paths:
         try:
@@ -170,12 +175,15 @@ def highlighted_to_obsidian(
         totals["books"] += stats["books"]
         totals["entries"] += stats["entries"]
         totals["authors"].update(stats["authors"])
+        totals["skipped"] += stats["skipped"]
 
     files = len(csv_paths)
     files_word = "file" if files == 1 else "files"
     skipped_note = f" ({skipped} skipped)" if skipped else ""
+    no_note = (f" ({totals['skipped']} skipped — no book note)"
+               if totals["skipped"] else "")
     typer.echo(
-        f"Done. {files} {files_word}{skipped_note}, {totals['books']} books, "
+        f"Done. {files} {files_word}{skipped_note}, {totals['books']} books{no_note}, "
         f"{totals['entries']} highlights, {len(totals['authors'])} authors.\n"
         f"Output: {output}"
     )

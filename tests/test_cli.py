@@ -14,6 +14,15 @@ from booktools.cli import CAPABILITIES, app
 runner = CliRunner()
 
 
+def _seed_note(out: Path, stem: str, frontmatter: str) -> Path:
+    """Pre-create a book note (as calibre/goodreads would) so importers match."""
+    books = out / "Books"
+    books.mkdir(parents=True, exist_ok=True)
+    note = books / f"{stem}.md"
+    note.write_text(frontmatter, encoding="utf-8")
+    return note
+
+
 MINIMAL_OPF = """<?xml version='1.0' encoding='utf-8'?>
 <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
@@ -158,6 +167,9 @@ def _kobo_db(tmp_path: Path) -> Path:
 def test_kobo_obsidian_end_to_end(tmp_path):
     db = _kobo_db(tmp_path)
     out = tmp_path / "Obsidian"
+    _seed_note(out, "Dune - Frank Herbert",
+               '---\ntype: book\ntitle: "Dune"\n'
+               'authors: ["[[Frank Herbert]]"]\n---\n\n')
     result = runner.invoke(app, ["kobo", str(db), "--obsidian", "--output", str(out)])
     assert result.exit_code == 0, result.output
     note = out / "Books" / "Dune - Frank Herbert.md"
@@ -181,6 +193,9 @@ def _highlighted_csv(tmp_path: Path) -> Path:
 def test_highlighted_end_to_end(tmp_path):
     csv_path = _highlighted_csv(tmp_path)
     out = tmp_path / "Obsidian"
+    _seed_note(out, "Stalin - Stephen Kotkin",
+               '---\ntype: book\ntitle: "Stalin"\n'
+               'authors: ["[[Stephen Kotkin]]"]\nisbn: "9781594203794"\n---\n\n')
     result = runner.invoke(app, ["highlighted", "--csv", str(csv_path), "--output", str(out)])
     assert result.exit_code == 0, result.output
     note = out / "Books" / "Stalin - Stephen Kotkin.md"
@@ -206,6 +221,9 @@ def _readwise_csv(tmp_path: Path) -> Path:
 def test_readwise_end_to_end(tmp_path):
     csv_path = _readwise_csv(tmp_path)
     out = tmp_path / "Obsidian"
+    _seed_note(out, "Stalin - Stephen Kotkin",
+               '---\ntype: book\ntitle: "Stalin"\n'
+               'authors: ["[[Stephen Kotkin]]"]\namazon: "B00INIXPYE"\n---\n\n')
     result = runner.invoke(app, ["readwise", "--csv", str(csv_path), "--output", str(out)])
     assert result.exit_code == 0, result.output
     assert (out / "Books" / "Stalin - Stephen Kotkin.md").exists()

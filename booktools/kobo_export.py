@@ -9,7 +9,8 @@ notes, writes a CSV containing:
     Date Created
 
 All CSVs are bundled into a single compressed .zip archive. With --obsidian the
-highlights are written into an Obsidian vault (flat note + Exports/) instead.
+highlights are instead written into existing Obsidian book notes (created by the
+calibre/goodreads importers); a book with no matching note is skipped and counted.
 
 Usage:
     python kobo_export.py                       # uses ~/KoboReader.sqlite
@@ -192,10 +193,12 @@ def row_to_highlight(row: sqlite3.Row) -> Highlight:
 
 
 def export_obsidian(db_path: Path, vault: Path) -> dict:
-    """Export Kobo highlights into an Obsidian vault (flat note + Exports/).
+    """Export Kobo highlights into existing Obsidian book notes.
 
-    Writes a per-book Highlights.md and embeds it in the canonical note. Returns
-    {"books": int, "entries": int}. Raises FileNotFoundError if the db is missing.
+    Highlights are written only into notes that already exist (created by the
+    calibre/goodreads importers); a book with no matching note is skipped and
+    counted. Returns {"books": int, "entries": int, "skipped": int}. Raises
+    FileNotFoundError if the db is missing.
     """
     if not db_path.is_file():
         raise FileNotFoundError(db_path)
@@ -217,13 +220,18 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
         books.setdefault(r["book_title"] or "Untitled", []).append(r)
 
     entries = 0
+    written = 0
+    skipped = 0
     for title, book_rows in books.items():
         author = (book_rows[0]["author"] or "").strip()
         authors = [author] if author else []
         isbn = (book_rows[0]["isbn"] or "").strip() or None
         ref = BookRef(title=title, authors=authors, isbn=isbn)
 
-        dest = index.find_or_create(ref)
+        dest = index.find(ref)
+        if dest is None:
+            skipped += 1
+            continue
 
         updates = {
             "title": yaml_quote(title),
@@ -243,8 +251,9 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
         for a in authors:
             write_stub(authors_dir, a, "author")
         entries += len(highlights)
+        written += 1
 
-    return {"books": len(books), "entries": entries}
+    return {"books": written, "entries": entries, "skipped": skipped}
 
 
 def export(db_path: Path, out_path: Path) -> dict:
@@ -363,8 +372,9 @@ def kobo_export(
     Note, Location in Chapter (%), KoboSpan Block (N), KoboSpan Segment (M),
     Date Created. Rows are ordered by book reading order.
 
-    With --obsidian, writes highlights into an Obsidian vault (flat note + Exports/)
-    instead; --output is then the vault directory (default: the vault from
+    With --obsidian, writes highlights into existing Obsidian book notes instead
+    (never creating notes — a book with no matching note is skipped and counted);
+    --output is then the vault directory (default: the vault from
     ~/.config/booktools/config.toml).
     """
     explicit = input_path or db
@@ -379,12 +389,20 @@ def kobo_export(
             stats = export_obsidian(db_path, vault)
         except FileNotFoundError:
             raise typer.BadParameter(f"database not found: {db_path}", param_hint="DB")
+        skipped = stats.get("skipped", 0)
+        skip_note = (f" ({skipped} book(s) skipped — no book note)"
+                     if skipped else "")
         if stats["entries"] == 0:
-            typer.echo("No highlights or notes found.")
+            if skipped:
+                typer.echo(
+                    f"No highlights written{skip_note}. Import these books with "
+                    f"calibre/goodreads first.")
+            else:
+                typer.echo("No highlights or notes found.")
             return
         typer.echo(
-            f"Exported {stats['entries']} highlights from {stats['books']} book(s) "
-            f"-> {vault}")
+            f"Exported {stats['entries']} highlights from {stats['books']} book(s)"
+            f"{skip_note} -> {vault}")
         return
 
     if not csv_out:

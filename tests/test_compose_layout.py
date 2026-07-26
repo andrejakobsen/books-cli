@@ -100,8 +100,18 @@ def test_compose_calibre_then_goodreads_then_highlighted(tmp_path):
 
 
 def test_compose_is_order_independent(tmp_path):
+    # Creators (calibre/goodreads) compose in either order; the highlight
+    # importer only enriches, so it must run after a note exists.
     out = tmp_path / "Obsidian"
-    hi.convert(_highlighted_csv(tmp_path), out)
     gr.convert(_goodreads_csv(tmp_path), out)
     c2o.convert(_calibre_library(tmp_path), out)
+    hi.convert(_highlighted_csv(tmp_path), out)
     _assert_composed(out)
+
+
+def test_highlights_skipped_when_no_creator_ran(tmp_path):
+    # Without a calibre/goodreads note, the highlight importer creates nothing.
+    out = tmp_path / "Obsidian"
+    stats = hi.convert(_highlighted_csv(tmp_path), out)
+    assert stats["books"] == 0 and stats["skipped"] == 1
+    assert not (out / "Books").exists()

@@ -226,6 +226,29 @@ def test_new_note_filename_counter_when_full_title_also_collides(tmp_path):
     assert c.note_path.name == "Poems, Selected (2).md"
 
 
+def test_vaultindex_find_returns_none_when_no_match(tmp_path):
+    # find() is match-only: no existing note means None and nothing is created.
+    idx = ob.VaultIndex(tmp_path)
+    bn = idx.find(ob.BookRef(title="Napoleon: A Life", authors=["Andrew Roberts"]))
+    assert bn is None
+    assert not (tmp_path / "Books").exists()
+
+
+def test_vaultindex_find_returns_existing_note(tmp_path):
+    books = tmp_path / "Books"
+    books.mkdir(parents=True)
+    note = books / "Napoleon A Life.md"
+    note.write_text(
+        '---\ntype: book\ntitle: "Napoleon - A Life"\n'
+        'authors: ["[[Andrew Roberts]]"]\n---\nBody.\n', encoding="utf-8")
+    idx = ob.VaultIndex(tmp_path)
+    bn = idx.find(
+        ob.BookRef(title="Napoleon: A Life", authors=["Andrew Roberts"]))
+    assert bn is not None
+    assert bn.created is False
+    assert bn.note_path == note
+
+
 def test_source_in_property_order():
     from booktools import obsidian as ob
     assert "source" in ob.BOOK_PROPERTY_ORDER

@@ -33,6 +33,22 @@ def write_csv(tmp_path: Path) -> Path:
     return p
 
 
+def seed_note(out: Path, stem: str, frontmatter: str) -> Path:
+    """Pre-create a book note (as calibre/goodreads would) so importers can match."""
+    books = out / "Books"
+    books.mkdir(parents=True, exist_ok=True)
+    note = books / f"{stem}.md"
+    note.write_text(frontmatter, encoding="utf-8")
+    return note
+
+
+def seed_stalin(out: Path) -> Path:
+    return seed_note(
+        out, "Stalin - Stephen Kotkin",
+        '---\ntype: book\ntitle: "Stalin"\n'
+        'authors: ["[[Stephen Kotkin]]"]\nisbn: "9781594203794"\n---\n\n')
+
+
 def test_resolve_csv_paths_single_file(tmp_path):
     p = write_csv(tmp_path)
     assert hi.resolve_csv_paths(p) == [p]
@@ -96,6 +112,7 @@ def test_row_to_highlight_splits_links_from_tags():
 
 def test_convert_writes_highlights_and_embed(tmp_path):
     out = tmp_path / "Obsidian"
+    seed_stalin(out)
     stats = hi.convert(write_csv(tmp_path), out)
     assert stats["books"] == 1 and stats["entries"] == 2
     note = out / "Books" / "Stalin - Stephen Kotkin.md"
@@ -111,6 +128,16 @@ def test_convert_writes_highlights_and_embed(tmp_path):
     assert "^p45-49" in note_text
     assert "Fear is the mind-killer" in note_text
     assert "#stalin" in note_text   # tag rendered inside the note
+
+
+def test_convert_skips_book_without_existing_note(tmp_path):
+    # Highlight importers enrich only: no calibre/goodreads note -> skip, create nothing.
+    out = tmp_path / "Obsidian"
+    stats = hi.convert(write_csv(tmp_path), out)
+    assert stats["books"] == 0
+    assert stats["entries"] == 0
+    assert stats["skipped"] == 1
+    assert not (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
 
 
 def test_convert_merges_into_existing_note_by_isbn(tmp_path):
@@ -132,6 +159,7 @@ def test_convert_merges_into_existing_note_by_isbn(tmp_path):
 
 def test_convert_idempotent(tmp_path):
     out = tmp_path / "Obsidian"
+    seed_stalin(out)
     hi.convert(write_csv(tmp_path), out)
     before = {p: p.read_text() for p in out.rglob("*.md")}
     hi.convert(write_csv(tmp_path), out)
@@ -145,6 +173,11 @@ def test_cli_folder_imports_all_and_sums(tmp_path):
     (src / "stalin.csv").write_text(HEADER + ROWS, encoding="utf-8")
     (src / "trotsky.csv").write_text(HEADER + ROWS_TROTSKY, encoding="utf-8")
     out = tmp_path / "Obsidian"
+    seed_stalin(out)
+    seed_note(
+        out, "The Prophet Armed - Isaac Deutscher",
+        '---\ntype: book\ntitle: "The Prophet Armed"\n'
+        'authors: ["[[Isaac Deutscher]]"]\nisbn: "9781781683118"\n---\n\n')
     result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "2 files" in result.output
@@ -164,6 +197,7 @@ def test_cli_folder_same_book_last_file_wins(tmp_path):
         HEADER + '"Another line.",Stalin,Stephen Kotkin,9781594203794,,Reading,'
         '2026-07-24,60,Stalin,,2026-07-24 12:00:00,N\n', encoding="utf-8")
     out = tmp_path / "Obsidian"
+    seed_stalin(out)
     result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
     assert result.exit_code == 0, result.output
     # exactly one Stalin note (matched by ISBN, no duplicate)
@@ -182,6 +216,7 @@ def test_cli_folder_skips_bad_csv(tmp_path):
     # bytes that are not valid UTF-8, so parse_csv raises inside convert
     (src / "bad.csv").write_bytes(b"\xff\xfe\x00not a valid utf-8 csv\x00")
     out = tmp_path / "Obsidian"
+    seed_stalin(out)
     result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "1 skipped" in result.output
@@ -191,6 +226,7 @@ def test_cli_folder_skips_bad_csv(tmp_path):
 def test_cli_single_file_shows_one_file(tmp_path):
     csv = write_csv(tmp_path)
     out = tmp_path / "Obsidian"
+    seed_stalin(out)
     result = runner.invoke(app, ["highlighted", "-c", str(csv), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "1 file" in result.output
@@ -219,10 +255,16 @@ def test_highlighted_defaults_csv_to_imports(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
     monkeypatch.setattr(config, "resolve_imports",
                         lambda name, output=None: vault / ".imports" / name)
+    seed_note(
+        vault, "The Deluge - Adam Tooze",
+        '---\ntype: book\ntitle: "The Deluge"\n'
+        'authors: ["[[Adam Tooze]]"]\n---\n\n')
 
     app = typer.Typer()
     hi.register(app)
     result = CliRunner().invoke(app, [])
 
     assert result.exit_code == 0, result.output
-    assert (vault / "Books" / "The Deluge - Adam Tooze.md").exists()
+    note = vault / "Books" / "The Deluge - Adam Tooze.md"
+    assert note.exists()
+    assert "## Highlights" in note.read_text()

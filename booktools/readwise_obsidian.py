@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
-"""Convert a Readwise CSV export into an Obsidian book vault.
+"""Add Readwise CSV highlights to existing Obsidian book notes.
 
 Readwise exports one row per highlight with columns: Highlight, Book Title,
 Book Author, Amazon Book ID, Note, Color, Tags, Location Type, Location,
 Highlighted at, Document tags. Each row maps into the shared source-agnostic
-Highlight model; per book a "Highlights.md" is written under
-"Exports/<Author>/<Title>/" and embedded into the flat note under a
-"## Highlights" heading. Books are matched to existing notes by Amazon id, then
-by a strict Author/Title comparison (using a title with any "(Series #N)" suffix
-removed), so highlights accumulate alongside Calibre/Goodreads data without
+Highlight model and is embedded under a marker-wrapped "## Highlights" heading of
+the matching book note. It only enriches notes created by the calibre/goodreads
+importers -- it never creates book notes. Books are matched to existing notes by
+Amazon id, then by a strict Author/Title comparison (using a title with any
+"(Series #N)" suffix removed); a book with no matching note is skipped and
+counted. Highlights thus accumulate alongside Calibre/Goodreads data without
 clobbering.
 
 Standard library only.
@@ -87,7 +88,7 @@ def parse_csv(path: Path) -> list[dict]:
 
 def convert(csv_path: Path, output: Path) -> dict:
     """Import every highlight, grouped by book, into the Obsidian vault."""
-    stats = {"books": 0, "entries": 0, "authors": set()}
+    stats = {"books": 0, "entries": 0, "authors": set(), "skipped": 0}
     index = VaultIndex(output)
     authors_dir = output / AUTHORS_DIRNAME
 
@@ -113,7 +114,10 @@ def convert(csv_path: Path, output: Path) -> dict:
     for group in groups.values():
         authors = [group["author"]] if group["author"] else []
         ref = BookRef(title=group["title"], authors=authors, amazon=group["amazon"])
-        dest = index.find_or_create(ref)
+        dest = index.find(ref)
+        if dest is None:
+            stats["skipped"] += 1
+            continue
 
         updates = {
             "title": yaml_quote(group["title"]),
@@ -159,13 +163,14 @@ def readwise_to_obsidian(
              "(~/.config/booktools/config.toml). Relative paths resolve against the current directory.",
     ),
 ) -> None:
-    """Convert a Readwise CSV export into Obsidian book notes.
+    """Add Readwise CSV highlights to existing Obsidian book notes.
 
-    Every highlight is imported. For each book a 'Highlights.md' is written into
-    'Exports/<Author>/<Title>/' and embedded into the flat note under a
-    '## Highlights' heading; books are matched to existing notes by Amazon id,
-    then by a strict Author/Title comparison (using the title with any
-    '(Series #N)' suffix removed). Existing notes are never overwritten.
+    Highlights enrich book notes created by the calibre/goodreads importers; this
+    command never creates book notes itself. Every highlight is imported and
+    embedded under a marker-wrapped '## Highlights' heading. Books are matched to
+    existing notes by Amazon id, then by a strict Author/Title comparison (using
+    the title with any '(Series #N)' suffix removed); a book with no matching note
+    is skipped and counted. Existing notes are never overwritten.
     """
     try:
         csv = config.resolve_csv_arg(csv, "readwise", output)
@@ -178,8 +183,10 @@ def readwise_to_obsidian(
 
     output.mkdir(parents=True, exist_ok=True)
     stats = convert(csv, output)
+    no_note = (f" ({stats['skipped']} skipped — no book note)"
+               if stats["skipped"] else "")
     typer.echo(
-        f"Done. {stats['books']} books, {stats['entries']} highlights, "
+        f"Done. {stats['books']} books{no_note}, {stats['entries']} highlights, "
         f"{len(stats['authors'])} authors.\nOutput: {output}"
     )
 
