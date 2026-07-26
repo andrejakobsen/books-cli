@@ -11,7 +11,7 @@ Standard library only.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 
 @dataclass
@@ -25,6 +25,23 @@ class Highlight:
     segment: str | None = None         # secondary location component
     page: str | None = None            # human page/location (physical books), e.g. "45-49"
     date: str | None = None
+    tags: list[str] = field(default_factory=list)
+
+
+def sanitize_tag(raw: str | None) -> str | None:
+    """Normalize a raw tag into a valid Obsidian inline tag, or None if empty.
+
+    Strips surrounding whitespace and a single leading '#', collapses internal
+    whitespace runs to a single '-' (Obsidian inline tags cannot contain
+    spaces), and lowercases the result. Returns None when nothing is left.
+    """
+    if raw is None:
+        return None
+    cleaned = raw.strip()
+    if cleaned.startswith("#"):
+        cleaned = cleaned[1:].strip()
+    cleaned = re.sub(r"\s+", "-", cleaned).lower()
+    return cleaned or None
 
 
 def build_anchors(highlights: list[Highlight]) -> list[str]:
@@ -85,7 +102,11 @@ def render_highlights(highlights: list[Highlight]) -> str:
     anchors = build_anchors(highlights)
     blocks: list[str] = []
     for h, anchor in zip(highlights, anchors):
-        block = f"{_callout('quote', _label(h), h.text, expanded=True)}\n^{anchor}"
+        body = h.text
+        if h.tags:
+            tag_line = " ".join(f"#{t}" for t in h.tags)
+            body = f"{body}\n\n{tag_line}"
+        block = f"{_callout('quote', _label(h), body, expanded=True)}\n^{anchor}"
         if h.note and h.note.strip():
             note = _callout("note", "", h.note, expanded=False)
             block += f"\n\n{note}\n^{anchor}-note"

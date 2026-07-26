@@ -33,8 +33,13 @@ and the quote can be transcluded via `![[Book#^ch3-p45]]`.
   - trim surrounding whitespace,
   - strip a single leading `#` if present,
   - replace internal whitespace runs with a single `-` (Obsidian inline tags
-    cannot contain spaces), so `"Cold War"` → `"Cold-War"`,
+    cannot contain spaces),
+  - lowercase the result by convention, so `"Cold War"` → `"cold-war"` and
+    `"#Stalin"` → `"stalin"`,
   - return `None` for an empty/blank result.
+
+  Because both importers funnel their tags through `sanitize_tag`, tags from
+  Kobo and Highlighted are always lowercase.
 
 ### 2. Rendering — `render_highlights` (`highlights.py`)
 
@@ -76,8 +81,9 @@ In `row_to_highlight`, split the `Tags` column on commas, run each through
 ## Testing
 
 ### `sanitize_tag`
-- `"Cold War"` → `"Cold-War"`.
-- `"#Stalin"` → `"Stalin"` (leading `#` stripped).
+- `"Cold War"` → `"cold-war"` (whitespace→hyphen, lowercased).
+- `"#Stalin"` → `"stalin"` (leading `#` stripped, lowercased).
+- `"#USSR"` → `"ussr"` (lowercased).
 - `"  spaced  "` → `"spaced"`.
 - `""` / `"   "` / `"#"` → `None`.
 
@@ -103,7 +109,7 @@ Plus:
 - `"Stalin, USSR"` → `["Stalin", "USSR"]`.
 - `"Stalin"` → `["Stalin"]`.
 - `""` / missing → `[]`.
-- `"Cold War, USSR"` → `["Cold-War", "USSR"]` (whitespace sanitized).
+- `"Cold War, USSR"` → `["cold-war", "ussr"]` (whitespace sanitized, lowercased).
 
 ## Constraints
 

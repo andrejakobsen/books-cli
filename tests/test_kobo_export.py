@@ -3,6 +3,8 @@
 import sqlite3
 from pathlib import Path
 
+import pytest
+
 from booktools import kobo_export as ke
 
 
@@ -78,3 +80,50 @@ def test_export_obsidian_regenerates_highlights_wholesale(tmp_path):
     ke.export_obsidian(db, vault)
     assert "My own paragraph." in note_path.read_text()
     assert note_path.read_text().count("## Highlights") == 1
+
+
+class _R(dict):
+    """Row stub matching kobo_export's row access (missing keys -> None)."""
+    def __getitem__(self, k):
+        return dict.get(self, k)
+
+
+def _hl(note):
+    row = _R(chapter_index=1, chapter="Ch", chapter_progress=0.1,
+             container_path=r"span#kobo\.1\.0", highlight="Hi", note=note,
+             date_created="2026-07-01")
+    return ke.row_to_highlight(row)
+
+
+@pytest.mark.parametrize("note", [
+    "Note. #tag1 #tag2",
+    "Note.#tag1 #tag2",
+    "Note. #tag1#tag2",
+])
+def test_kobo_extracts_tags_and_strips_note(note):
+    h = _hl(note)
+    assert h.note == "Note."
+    assert h.tags == ["tag1", "tag2"]
+
+
+def test_kobo_note_only_tags_becomes_none():
+    h = _hl("#tag1 #tag2")
+    assert h.note is None
+    assert h.tags == ["tag1", "tag2"]
+
+
+def test_kobo_no_tags_note_verbatim():
+    h = _hl("Just a plain note.")
+    assert h.note == "Just a plain note."
+    assert h.tags == []
+
+
+def test_kobo_dedupes_tags_preserving_order():
+    h = _hl("#tag1 middle #tag1")
+    assert h.note == "middle"
+    assert h.tags == ["tag1"]
+
+
+def test_kobo_preserves_nested_and_hyphen_tags():
+    h = _hl("#history/ussr #cold-war")
+    assert h.tags == ["history/ussr", "cold-war"]

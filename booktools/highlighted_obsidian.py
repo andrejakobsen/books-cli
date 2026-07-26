@@ -9,7 +9,8 @@ so highlights accumulate alongside any Calibre/Goodreads data without clobbering
 
 CSV columns: Highlight, Title, Author, ISBN, Collections, Reading Status,
 Book Added Date, Location, Tags, Note, Date, Favorite. Location is a page number
-or range (e.g. "45-49"); Collections/Tags/Reading Status/Favorite are ignored.
+or range (e.g. "45-49"); Tags is comma-separated and becomes per-highlight
+inline #tags; Collections/Reading Status/Favorite are ignored.
 
 Standard library only.
 """
@@ -22,7 +23,7 @@ from pathlib import Path
 import typer
 
 from booktools import resolve_path
-from booktools.highlights import Highlight, render_highlights
+from booktools.highlights import Highlight, render_highlights, sanitize_tag
 from booktools.obsidian import (
     BookRef,
     VaultIndex,
@@ -43,11 +44,18 @@ def parse_csv(path: Path) -> list[dict]:
 
 def row_to_highlight(row: dict) -> Highlight:
     """Map a Highlighted CSV row to a source-agnostic Highlight."""
+    raw_tags = (row.get("Tags") or "").split(",")
+    tags: list[str] = []
+    for part in raw_tags:
+        tag = sanitize_tag(part)
+        if tag and tag not in tags:
+            tags.append(tag)
     return Highlight(
         text=(row.get("Highlight") or "").strip(),
         note=(row.get("Note") or "").strip() or None,
         page=(row.get("Location") or "").strip() or None,
         date=(row.get("Date") or "").strip() or None,
+        tags=tags,
     )
 
 

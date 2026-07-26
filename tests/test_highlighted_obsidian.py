@@ -32,6 +32,31 @@ def test_parse_and_map(tmp_path):
     assert h1.page == "45-49"
 
 
+def test_row_to_highlight_splits_tags_on_comma():
+    h = hi.row_to_highlight({"Highlight": "x", "Tags": "Stalin, USSR"})
+    assert h.tags == ["stalin", "ussr"]
+
+
+def test_row_to_highlight_single_tag():
+    h = hi.row_to_highlight({"Highlight": "x", "Tags": "Stalin"})
+    assert h.tags == ["stalin"]
+
+
+def test_row_to_highlight_no_tags():
+    assert hi.row_to_highlight({"Highlight": "x", "Tags": ""}).tags == []
+    assert hi.row_to_highlight({"Highlight": "x"}).tags == []
+
+
+def test_row_to_highlight_sanitizes_tag_whitespace():
+    h = hi.row_to_highlight({"Highlight": "x", "Tags": "Cold War, USSR"})
+    assert h.tags == ["cold-war", "ussr"]
+
+
+def test_row_to_highlight_dedupes_tags_preserving_order():
+    h = hi.row_to_highlight({"Highlight": "x", "Tags": "Stalin, USSR, stalin"})
+    assert h.tags == ["stalin", "ussr"]
+
+
 def test_convert_writes_highlights_and_embed(tmp_path):
     out = tmp_path / "Obsidian"
     stats = hi.convert(write_csv(tmp_path), out)
@@ -41,11 +66,12 @@ def test_convert_writes_highlights_and_embed(tmp_path):
     note_text = note.read_text()
     assert "![](Highlights.md)" in note_text
     assert 'isbn: "9781594203794"' in note_text     # ISBN persisted for matching
-    body = (note.parent / "Highlights.md").read_text()
-    assert "source: highlighted" in body          # provenance frontmatter
-    assert "> [!quote]+ p. 4" in body
-    assert "^p45-49" in body
-    assert "Fear is the mind-killer" in body
+    highlights_md = (note.parent / "Highlights.md").read_text()
+    assert "source: highlighted" in highlights_md          # provenance frontmatter
+    assert "> [!quote]+ p. 4" in highlights_md
+    assert "^p45-49" in highlights_md
+    assert "Fear is the mind-killer" in highlights_md
+    assert "#stalin" in highlights_md   # tag rendered inside the note
 
 
 def test_convert_merges_into_existing_note_by_isbn(tmp_path):
