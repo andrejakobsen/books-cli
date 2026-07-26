@@ -63,7 +63,7 @@ class MissingBook:
 @dataclass
 class Candidate:
     """A candidate cover image found for a book."""
-    source: str          # "google" | "openlibrary" | "amazon"
+    source: str          # "apple" | "google" | "openlibrary" | "amazon"
     label: str           # matched title / author, for display
     image_url: str
     fmt: str | None      # "paperback" | "hardcover" | None (unknown)
@@ -304,13 +304,14 @@ def _itunes_isbn(artwork_url: str) -> str | None:
 
     iTunes names many artwork paths ``.../<isbn>.jpg/100x100bb.jpg`` — the ISBN
     is the segment *before* the size token. Returns it only when that stem is a
-    10- or 13-digit number; opaque stems (e.g. ``mzi.mwffatop``) yield ``None``.
+    13-digit ISBN-13 or a 10-character ISBN-10 (last char may be an ``X`` check
+    digit); opaque stems (e.g. ``mzi.mwffatop``) yield ``None``.
     """
     parts = artwork_url.rsplit("/", 2)   # [prefix, "<isbn>.jpg", "100x100bb.jpg"]
     if len(parts) < 3:
         return None
     stem = parts[1].rsplit(".", 1)[0]
-    if stem.isdigit() and len(stem) in (10, 13):
+    if re.fullmatch(r"\d{13}|\d{9}[\dX]", stem):
         return stem
     return None
 

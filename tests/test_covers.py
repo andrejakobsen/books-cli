@@ -127,6 +127,22 @@ def test_itunes_isbn_none_for_opaque_stem():
     assert covers._itunes_isbn(art) is None
 
 
+def test_itunes_isbn_reads_isbn10_with_x_check_digit():
+    art = ("https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
+           "abc/184737453X.jpg/100x100bb.jpg")
+    assert covers._itunes_isbn(art) == "184737453X"
+
+
+def test_itunes_isbn_reads_isbn10_all_digits():
+    art = ("https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
+           "abc/0241006112.jpg/100x100bb.jpg")
+    assert covers._itunes_isbn(art) == "0241006112"
+
+
+def test_itunes_isbn_none_for_short_url():
+    assert covers._itunes_isbn("9780241006115.jpg") is None
+
+
 def test_normalize_author_collapses_whitespace():
     assert covers.normalize_author("James   Barr") == "James Barr"
     assert covers.normalize_author("  Andrew  Roberts ") == "Andrew Roberts"
