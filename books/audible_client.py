@@ -19,7 +19,6 @@ pure parsers below are unit-tested.
 
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from urllib.request import urlopen
 
@@ -91,14 +90,26 @@ def annotations_from_sidecar(payload: dict) -> list[Annotation]:
 class AudibleClient:
     """Thin wrapper over the `audible` package (integration seam)."""
 
-    def __init__(self, auth, client) -> None:
+    #: Audiobook download quality tier used for chapters + AAXC download. Only
+    #: affects download size/speed — clips are transcribed to text, so the
+    #: lowest tier ("normal") is plenty. Override via `--quality`.
+    QUALITY_CHOICES = ("normal", "high", "best")
+
+    def __init__(self, auth, client=None, quality: str = "normal") -> None:
         self._auth = auth
         self._client = client
+        self.quality = quality
+        # Raw `library` API response, cached loop-independently. LibraryItem
+        # objects bind to the AsyncClient they were built with, so they can't
+        # be reused across event loops; the raw dict can, and items are cheaply
+        # re-wrapped against the live client on each call (one HTTP fetch total).
+        self._catalog = None
 
     # ---- construction -----------------------------------------------------
 
     @classmethod
-    def load_or_login(cls, auth_path: Path, marketplace: str = "us"):
+    def load_or_login(cls, auth_path: Path, marketplace: str = "us",
+                      quality: str = "normal"):
         """Load a cached auth file, or run the interactive login and cache it."""
         try:
             import audible
@@ -107,68 +118,133 @@ class AudibleClient:
         if auth_path.is_file():
             auth = audible.Authenticator.from_file(str(auth_path))
         else:
+            # Importing readline replaces the terminal's canonical-mode line
+            # editor (which caps input at ~1KB and silently freezes on a long
+            # paste) with GNU readline, so the long post-login redirect URL can
+            # be pasted. Best-effort: not present on every platform.
+            try:
+                import readline  # noqa: F401
+            except ImportError:
+                pass
             typer_prompt = __import__("typer")
-            username = typer_prompt.prompt("Audible email")
-            password = typer_prompt.prompt("Audible password", hide_input=True)
             country = typer_prompt.prompt(
                 "Audible marketplace (us, uk, de, ...)", default=marketplace)
-            auth = audible.Authenticator.from_login(
-                username, password, locale=country,
-                with_username=False)
+            typer_prompt.secho(
+                "\nOpen the URL below in your browser and sign in to Amazon "
+                "(this is where any email/SMS verification 'CVF' code and "
+                "CAPTCHA will appear, exactly like the website). After you "
+                "finish signing in you'll land on a page that fails to load "
+                "('Page not found' is expected) — copy that page's full URL "
+                "from the address bar and paste it back here.\n",
+                fg="yellow",
+            )
+            auth = audible.Authenticator.from_login_external(
+                locale=country)
             auth_path.parent.mkdir(parents=True, exist_ok=True)
             auth.to_file(str(auth_path))
             auth_path.chmod(0o600)
-        return cls(auth, audible.Client(auth))
+        return cls(auth, None, quality=quality)
+
+    # ---- async plumbing ---------------------------------------------------
+
+    def _run(self, op):
+        """Drive an async operation to completion on a fresh event loop.
+
+        `audible-cli` (>=0.4) exposes async models backed by an
+        `audible.AsyncClient`. httpx's async client binds to the running loop,
+        so the client is created and closed inside the same `asyncio.run` call
+        that awaits `op(client)` — never kept across calls.
+        """
+        import asyncio
+
+        import audible
+
+        async def _driver():
+            async with audible.AsyncClient(self._auth) as client:
+                return await op(client)
+
+        return asyncio.run(_driver())
+
+    async def _fetch_items(self, client):
+        """Return audible-cli LibraryItem models (keyed by asin), fetched once.
+
+        The `library` endpoint is hit over HTTP only on the first call; the raw
+        response is cached on the instance and subsequent calls re-wrap it
+        against the current live client (no network), avoiding a full-library
+        refetch per book for `chapters()`/`download()`.
+        """
+        from audible_cli.models import Library
+        if self._catalog is None:
+            from audible.client import convert_response_content
+            from audible_cli.utils import full_response_callback
+            resp = await client.get(
+                "library",
+                response_callback=full_response_callback,
+                response_groups="product_desc,contributors,relationships")
+            self._catalog = convert_response_content(resp)
+        library = Library(self._catalog, api_client=client)
+        return {item.asin: item for item in library}
 
     # ---- reads ------------------------------------------------------------
 
-    def _library_items(self):
-        """Fetch the library as audible-cli LibraryItem models (keyed by asin)."""
-        from audible_cli.models import Library
-        library = Library.from_api(
-            self._client,
-            response_groups="product_desc,contributors,relationships")
-        return {item.asin: item for item in library}
-
     def library(self) -> list[LibraryBook]:
-        out: list[LibraryBook] = []
-        for asin, item in self._library_items().items():
-            authors = [a.get("name", "").strip()
-                       for a in (getattr(item, "authors", None) or [])
-                       if a.get("name")]
-            out.append(LibraryBook(
-                asin=asin,
-                title=(getattr(item, "title", "") or "").strip(),
-                authors=authors,
-            ))
-        return out
+        async def op(client):
+            out: list[LibraryBook] = []
+            items = await self._fetch_items(client)
+            for asin, item in items.items():
+                authors = [a.get("name", "").strip()
+                           for a in (getattr(item, "authors", None) or [])
+                           if a.get("name")]
+                out.append(LibraryBook(
+                    asin=asin,
+                    title=(getattr(item, "title", "") or "").strip(),
+                    authors=authors,
+                ))
+            return out
+
+        return self._run(op)
 
     def chapters(self, asin: str) -> list[Chapter]:
-        item = self._library_items()[asin]
-        meta = item.get_content_metadata(quality="High")
-        return chapters_from_metadata(meta)
+        async def op(client):
+            item = (await self._fetch_items(client))[asin]
+            meta = await item.get_content_metadata(quality=self.quality)
+            return chapters_from_metadata(meta)
+
+        return self._run(op)
 
     def annotations(self, asin: str) -> list[Annotation]:
-        """Fetch bookmarks/clips from the CDE sidecar (no audible-cli helper)."""
-        with urlopen(self._signed(SIDECAR_URL.format(asin=asin))) as resp:
-            payload = json.loads(resp.read().decode("utf-8"))
+        """Fetch bookmarks/clips from the CDE sidecar (no audible-cli helper).
+
+        `audible.Authenticator` is an `httpx.Auth` flow, so it signs the bare GET
+        when passed as `auth=` (the old `sign_request(method=…)` API is gone).
+        """
+        import httpx
+        url = SIDECAR_URL.format(asin=asin)
+        with httpx.Client(timeout=30) as hx:
+            resp = hx.get(url, auth=self._auth)
+            resp.raise_for_status()
+            payload = resp.json()
         return annotations_from_sidecar(payload)
 
-    def _signed(self, url: str):
-        """Build a urllib Request signed with the Audible auth."""
-        from urllib.request import Request
-        req = Request(url)
-        # The Authenticator produces the Authorization headers for a bare GET.
-        headers = self._auth.sign_request(method="GET", path=url, body=b"")
-        for key, value in headers.items():
-            req.add_header(key, value)
-        return req
-
     def download(self, asin: str, dest_dir: Path) -> DownloadedAudio:
-        """Download the AAXC via audible-cli and return it plus its key/iv."""
-        item = self._library_items()[asin]
-        url, codec, voucher = item.get_aaxc_url("High")
-        dest = Path(dest_dir) / f"{asin}.aaxc"
-        with urlopen(url) as resp, open(dest, "wb") as fh:
-            fh.write(resp.read())
-        return DownloadedAudio(path=dest, key=voucher["key"], iv=voucher["iv"])
+        """Download the AAXC via audible-cli and return it plus its key/iv.
+
+        `get_aaxc_url` returns (url, codec, license_response); the AAXC key/iv
+        live inside the (encrypted) license response and are recovered with
+        `decrypt_voucher_from_licenserequest`. `url` is an `httpx.URL`, so it is
+        stringified for `urlopen` (the offline URL is presigned — no auth).
+        """
+        from audible.aescipher import decrypt_voucher_from_licenserequest
+
+        async def op(client):
+            item = (await self._fetch_items(client))[asin]
+            url, codec, license_response = await item.get_aaxc_url(self.quality)
+            voucher = decrypt_voucher_from_licenserequest(
+                self._auth, license_response)
+            dest = Path(dest_dir) / f"{asin}.aaxc"
+            with urlopen(str(url)) as resp, open(dest, "wb") as fh:
+                fh.write(resp.read())
+            return DownloadedAudio(
+                path=dest, key=voucher["key"], iv=voucher["iv"])
+
+        return self._run(op)

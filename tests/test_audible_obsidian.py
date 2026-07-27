@@ -312,7 +312,8 @@ def test_cli_enriches_note_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr(
         config, "resolve_imports",
         lambda name, output=None: out / ".imports" / name)
-    monkeypatch.setattr(ao, "_build_client", lambda: FakeClient([book], anns))
+    monkeypatch.setattr(ao, "_build_client",
+                        lambda quality="normal": FakeClient([book], anns))
     monkeypatch.setattr(ao, "_build_transcriber",
                         lambda kind, model: _fake_transcriber)
     monkeypatch.setattr(ao, "_build_cutter", lambda: FakeCutter())
@@ -332,7 +333,8 @@ def test_cli_dry_run_builds_no_heavy_adapters(monkeypatch, tmp_path):
     monkeypatch.setattr(
         config, "resolve_imports",
         lambda name, output=None: out / ".imports" / name)
-    monkeypatch.setattr(ao, "_build_client", lambda: FakeClient([book], anns))
+    monkeypatch.setattr(ao, "_build_client",
+                        lambda quality="normal": FakeClient([book], anns))
 
     def _boom(*a, **k):
         raise AssertionError("heavy adapter built during dry-run")

@@ -220,6 +220,19 @@ def _clip_bounds(ann: Annotation, clip_window: int) -> tuple[int, int]:
     return max(0, end - clip_window * 1000), end
 
 
+def _clip_seconds(anns, clip_window: int) -> float:
+    """Total audio seconds that *anns* would be cut/transcribed to."""
+    total_ms = 0
+    for ann in anns:
+        start, end = _clip_bounds(ann, clip_window)
+        total_ms += max(0, end - start)
+    return total_ms / 1000.0
+
+
+# Transcription price estimate (dry-run only): OpenAI-style per-audio-second.
+COST_PER_SECOND = 0.00028
+
+
 def run(vault, *, client, downloader, cutter, transcriber, cache_path,
         clip_window, limit=None, asin=None, dry_run=False,
         echo=lambda *_: None) -> dict:
@@ -234,7 +247,7 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
     authors_dir = vault / AUTHORS_DIRNAME
     cache = load_cache(cache_path)
     stats = {"books": 0, "entries": 0, "skipped": 0,
-             "downloaded": 0, "transcribed": 0}
+             "downloaded": 0, "transcribed": 0, "est_seconds": 0.0}
 
     library = client.library()
     if asin:
@@ -246,6 +259,14 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
         dest = index.find(ref)
         if dest is None:
             stats["skipped"] += 1
+            if dry_run:
+                authors = ", ".join(book.authors) or "?"
+                anns = client.annotations(book.asin)
+                secs = _clip_seconds(anns, clip_window)
+                stats["est_seconds"] += secs
+                echo(f"[dry-run] SKIP (no note): {book.title} — {authors} "
+                     f"[asin {book.asin}] — {len(anns)} clip(s), "
+                     f"~{secs/60:.1f} min, ~${secs * COST_PER_SECOND:.2f}")
             continue
         if limit is not None and matched >= limit:
             break
@@ -261,8 +282,11 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
         new = uncached(annotations, clips)
 
         if dry_run:
+            secs = _clip_seconds(new, clip_window)
+            stats["est_seconds"] += secs
             echo(f"[dry-run] {book.title}: {len(annotations)} annotations, "
-                 f"{len(new)} new to transcribe")
+                 f"{len(new)} new to transcribe — ~{secs/60:.1f} min, "
+                 f"~${secs * COST_PER_SECOND:.2f}")
             continue
 
         if new:
@@ -292,10 +316,10 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
     return stats
 
 
-def _build_client():
+def _build_client(quality: str = "normal"):
     """Construct the live Audible client (auto-login on first run)."""
     from books.audible_client import AudibleClient, default_auth_path
-    return AudibleClient.load_or_login(default_auth_path())
+    return AudibleClient.load_or_login(default_auth_path(), quality=quality)
 
 
 def _build_transcriber(kind: str, model: str):
@@ -334,6 +358,11 @@ def audible_command(
         30, "--clip-window",
         help="Seconds of audio to transcribe for a point bookmark that has no end "
              "position (the window ends at the mark). Clips use their own length."),
+    quality: str = typer.Option(
+        "normal", "--quality",
+        help="Audiobook download quality: 'normal' (smallest/fastest, ample for "
+             "transcription), 'high', or 'best'. Only affects download size — clips "
+             "are transcribed to text either way."),
     limit: int | None = typer.Option(
         None, "--limit", help="Process at most this many matched books."),
     asin: str | None = typer.Option(
@@ -357,10 +386,15 @@ def audible_command(
     with no matching note is skipped and counted (run calibre/goodreads first).
     Transcriptions are cached, so re-runs only download books with new clips.
     """
+    from books.audible_client import AudibleClient
+    if quality not in AudibleClient.QUALITY_CHOICES:
+        raise typer.BadParameter(
+            f"--quality must be one of {', '.join(AudibleClient.QUALITY_CHOICES)}")
+
     vault = config.resolve_vault(output)
     cache_path = config.resolve_imports("audible", output) / "cache.json"
 
-    client = _build_client()
+    client = _build_client(quality)
     if dry_run:
         downloader = cutter = transcribe_fn = None
     else:
@@ -376,7 +410,12 @@ def audible_command(
     )
 
     if dry_run:
-        typer.echo(f"Dry run: {stats['skipped']} book(s) skipped — no note.")
+        secs = stats["est_seconds"]
+        typer.echo(
+            f"Dry run: {stats['skipped']} book(s) skipped — no note. "
+            f"Estimated transcription: ~{secs/60:.1f} min "
+            f"(~${secs * COST_PER_SECOND:.2f} @ ${COST_PER_SECOND:.5f}/sec) "
+            f"across all listed clips.")
         return
     books_word = "book" if stats["books"] == 1 else "books"
     skip = (f" ({stats['skipped']} skipped — no note)"
