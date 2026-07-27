@@ -468,6 +468,7 @@ class VaultIndex:
             stub = update_frontmatter("---\ntype: book\n---\n", {
                 "title": yaml_quote(ref.title) if ref.title else "",
                 "authors": link_list(ref.authors) if ref.authors else "",
+                **BOOK_FLAG_DEFAULTS,
             })
             note.write_text(stub, encoding="utf-8")
         self._register(ref, note)

@@ -315,3 +315,11 @@ def test_non_overwrite_key_still_never_overwrites():
     note = '---\ntype: book\ntitle: "Keep"\n---\n'
     out = ob.update_frontmatter(note, {"title": ob.yaml_quote("New")})
     assert 'title: "Keep"' in out
+
+
+def test_new_stub_carries_flag_defaults(tmp_path):
+    idx = ob.VaultIndex(tmp_path)
+    bn = idx.find_or_create(ob.BookRef(title="A Book", authors=["An Author"]))
+    text = bn.note_path.read_text(encoding="utf-8")
+    assert "highlighted: false" in text
+    assert "reviewed: false" in text
