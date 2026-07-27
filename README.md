@@ -3,9 +3,10 @@
 Turn your reading data into a clean [Obsidian](https://obsidian.md) vault.
 
 `books` is a single command that pulls your library and highlights from Calibre,
-Goodreads, Readwise, Kobo, and the [Highlighted](https://highlighted.app) app
-into tidy, linked Markdown notes — one self-contained note per book, with covers,
-reviews, and highlights. Built with [Typer](https://typer.tiangolo.com/) and
+Goodreads, Readwise, Kobo, the [Highlighted](https://highlighted.app) app, and
+Audible (bookmarks & clips, transcribed to text) into tidy, linked Markdown
+notes — one self-contained note per book, with covers, reviews, and highlights.
+Built with [Typer](https://typer.tiangolo.com/) and
 [uv](https://docs.astral.sh/uv/).
 
 ## Install
@@ -26,6 +27,15 @@ Later:
 uv tool upgrade books     # update to the latest
 uv tool uninstall books   # remove it
 books --install-completion  # optional: tab-completion for commands & options
+```
+
+The `audible` command needs extra, heavier dependencies (and system `ffmpeg`).
+They're an optional extra that no other command loads — install them only if you
+want it:
+
+```bash
+uv tool install 'git+https://github.com/andrejakobsen/books-cli.git[audible]'
+brew install ffmpeg   # ffmpeg is required to decrypt and cut clips
 ```
 
 <details>
@@ -92,6 +102,7 @@ books covers         # fetch missing cover images
 | **`readwise`** | Reads a Readwise CSV and renders highlights into a `## Highlights` section. |
 | **`kobo`** | Exports Kobo highlights to per-book CSVs in a zip (default), or `--obsidian` to render them into book notes. |
 | **`highlighted`** | Imports highlights from *physical* books via the [Highlighted](https://highlighted.app) app, anchored by page. |
+| **`audible`** | Imports Audible bookmarks & clips, transcribing each clip to text in a `## Highlights` section. Needs the `[audible]` extra + `ffmpeg`; not part of `sync`. See below. |
 | **`covers`** | Finds book notes with a blank cover and fetches one (Apple Books → Google Books → Open Library → Amazon). |
 
 Point at explicit paths to override the defaults:
@@ -102,7 +113,48 @@ books kobo ~/KoboReader.sqlite --obsidian --output ~/Obsidian
 ```
 
 The `--csv` importers accept a single file or a folder. Every book note records
-its `source:` (calibre/goodreads/kobo/highlighted/readwise).
+its `source:` (calibre/goodreads/kobo/highlighted/readwise/audible).
+
+## Audible
+
+`books audible` turns your Audible **bookmarks and clips** into highlights. For
+each clip it authenticates to your Audible account, downloads the audiobook,
+uses `ffmpeg` to decrypt and cut the clip's audio, and transcribes it to text —
+rendered into the `## Highlights` section of the *matching* book note. Like the
+other highlight importers it never creates notes: a book with no existing note is
+skipped and counted, so run `calibre`/`goodreads` first to establish book
+identity. It is **not** part of `books sync` — run it on its own.
+
+Prerequisites: install the `[audible]` extra and `ffmpeg` (see
+[Install](#install)). Downloading and decrypting audiobooks you own is for
+personal archival use only.
+
+```bash
+books audible                 # import clips into matching notes
+books audible --dry-run       # log in, show which books match & clip counts; write nothing
+books audible --asin B0ABCDEFG # only this one audiobook
+books audible --limit 5       # process at most 5 matched books
+```
+
+On first run you're prompted for your Audible email, password, and marketplace
+(`us`, `uk`, `de`, …); the auth is cached at `~/.config/books/audible-auth.json`
+(mode `600`) so later runs are non-interactive.
+
+- **Matching** — a library book matches a note by ASIN (the `amazon`
+  frontmatter id), then by standardized title/author.
+- **Point bookmarks** — a plain bookmark has no end position, so a window of
+  audio *ending* at the mark is transcribed. Tune it with `--clip-window`
+  (default `30` seconds); clips use their own recorded length.
+- **Transcriber** — `--transcriber local` (default; `faster-whisper`, offline,
+  no key), `openai` (needs `OPENAI_API_KEY`), or `google` (free, lower quality).
+  `--model` picks the Whisper model size (default `small`) for the local/openai
+  backends.
+- **Caching** — transcriptions are cached in `<vault>/.imports/audible/cache.json`
+  (keyed by ASIN + annotation id). Re-runs re-render for free and only download
+  books that have new clips; the downloaded audio goes to a temp dir and is
+  deleted after cutting.
+- **Notes** — any typed note on a clip renders as a nested blockquote, and its
+  `#tag` / `@link` markers follow the same convention as the other importers.
 
 ## The vault layout
 
