@@ -275,3 +275,44 @@ def test_run_dry_run_writes_nothing(tmp_path):
     assert note.read_text() == before
     assert not (out / "c.json").exists()
     assert stats["books"] == 0
+
+
+def test_cli_enriches_note_end_to_end(monkeypatch, tmp_path):
+    from books import config
+    out, book, anns = _library_and_notes(tmp_path)
+    monkeypatch.setattr(config, "resolve_vault", lambda output=None: out)
+    monkeypatch.setattr(
+        config, "resolve_imports",
+        lambda name, output=None: out / ".imports" / name)
+    monkeypatch.setattr(ao, "_build_client", lambda: FakeClient([book], anns))
+    monkeypatch.setattr(ao, "_build_transcriber",
+                        lambda kind, model: _fake_transcriber)
+    monkeypatch.setattr(ao, "_build_cutter", lambda: FakeCutter())
+    monkeypatch.setattr(ao, "_build_downloader", lambda client: FakeDownloader())
+
+    result = runner.invoke(app, ["audible"])
+    assert result.exit_code == 0, result.output
+    note = out / "Books" / "Stalin - Stephen Kotkin.md"
+    assert "transcribed text" in note.read_text()
+    assert "1 book" in result.output
+
+
+def test_cli_dry_run_builds_no_heavy_adapters(monkeypatch, tmp_path):
+    from books import config
+    out, book, anns = _library_and_notes(tmp_path)
+    monkeypatch.setattr(config, "resolve_vault", lambda output=None: out)
+    monkeypatch.setattr(
+        config, "resolve_imports",
+        lambda name, output=None: out / ".imports" / name)
+    monkeypatch.setattr(ao, "_build_client", lambda: FakeClient([book], anns))
+
+    def _boom(*a, **k):
+        raise AssertionError("heavy adapter built during dry-run")
+
+    monkeypatch.setattr(ao, "_build_transcriber", _boom)
+    monkeypatch.setattr(ao, "_build_cutter", _boom)
+    monkeypatch.setattr(ao, "_build_downloader", _boom)
+
+    result = runner.invoke(app, ["audible", "--dry-run"])
+    assert result.exit_code == 0, result.output
+    assert "[dry-run]" in result.output

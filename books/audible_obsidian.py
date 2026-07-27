@@ -29,6 +29,7 @@ from pathlib import Path
 
 import typer
 
+from books import config
 from books.highlights import Highlight, parse_markers, render_highlights
 from books.obsidian import (
     AUTHORS_DIRNAME,
@@ -283,9 +284,98 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
     return stats
 
 
-def audible_command() -> None:
-    """Import Audible bookmarks & clips into existing Obsidian book notes."""
-    typer.echo("not implemented yet")
+def _build_client():
+    """Construct the live Audible client (auto-login on first run)."""
+    from books.audible_client import AudibleClient, default_auth_path
+    return AudibleClient.load_or_login(default_auth_path())
+
+
+def _build_transcriber(kind: str, model: str):
+    from books.audible_transcribe import make_transcriber
+    return make_transcriber(kind, model)
+
+
+def _build_cutter():
+    from books.audible_transcribe import check_ffmpeg, cut_clip
+
+    class _FfmpegCutter:
+        def cut(self, audio, start_ms, end_ms, dest):
+            return cut_clip(audio, start_ms, end_ms, dest)
+
+    check_ffmpeg()
+    return _FfmpegCutter()
+
+
+def _build_downloader(client):
+    class _AudibleDownloader:
+        def download(self, asin, dest_dir):
+            return client.download(asin, dest_dir)
+
+    return _AudibleDownloader()
+
+
+def audible_command(
+    transcriber: str = typer.Option(
+        "local", "--transcriber", "-t",
+        help="Speech-to-text backend: 'local' (faster-whisper, no key, offline), "
+             "'openai' (needs OPENAI_API_KEY), or 'google' (free, lower quality)."),
+    model: str = typer.Option(
+        "small", "--model",
+        help="Whisper model size for the local/openai backends."),
+    clip_window: int = typer.Option(
+        30, "--clip-window",
+        help="Seconds of audio to transcribe for a point bookmark that has no end "
+             "position (the window ends at the mark). Clips use their own length."),
+    limit: int | None = typer.Option(
+        None, "--limit", help="Process at most this many matched books."),
+    asin: str | None = typer.Option(
+        None, "--asin", help="Only process the book with this Audible ASIN."),
+    output: Path | None = typer.Option(
+        None, "--output", "-o",
+        help="Output Obsidian vault. Defaults to the vault from your config file "
+             "(~/.config/books/config.toml)."),
+    dry_run: bool = typer.Option(
+        False, "--dry-run",
+        help="Show which books match and how many clips would be transcribed, "
+             "without logging in for audio, downloading, or writing."),
+) -> None:
+    """Import Audible bookmarks & clips into existing Obsidian book notes.
+
+    Authenticates to your Audible account (prompting on first run and caching the
+    auth), then for each library book that matches an existing note (by ASIN, then
+    title/author) fetches its bookmarks/clips, downloads the audiobook, and cuts +
+    transcribes each new clip into a marker-wrapped '## Highlights' section. A book
+    with no matching note is skipped and counted (run calibre/goodreads first).
+    Transcriptions are cached, so re-runs only download books with new clips.
+    """
+    vault = config.resolve_vault(output)
+    cache_path = config.resolve_imports("audible", output) / "cache.json"
+
+    client = _build_client()
+    if dry_run:
+        downloader = cutter = transcribe_fn = None
+    else:
+        transcribe_fn = _build_transcriber(transcriber, model)
+        cutter = _build_cutter()
+        downloader = _build_downloader(client)
+
+    stats = run(
+        vault, client=client, downloader=downloader, cutter=cutter,
+        transcriber=transcribe_fn, cache_path=cache_path,
+        clip_window=clip_window, limit=limit, asin=asin, dry_run=dry_run,
+        echo=typer.echo,
+    )
+
+    if dry_run:
+        typer.echo(f"Dry run: {stats['skipped']} book(s) skipped — no note.")
+        return
+    books_word = "book" if stats["books"] == 1 else "books"
+    skip = (f" ({stats['skipped']} skipped — no note)"
+            if stats["skipped"] else "")
+    typer.echo(
+        f"Done. {stats['books']} {books_word}{skip}, {stats['entries']} clips, "
+        f"{stats['downloaded']} downloaded, {stats['transcribed']} transcribed.\n"
+        f"Output: {vault}")
 
 
 def register(app: typer.Typer) -> None:
