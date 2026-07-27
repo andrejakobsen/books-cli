@@ -97,3 +97,49 @@ def test_uncached_returns_only_new_annotations():
     clips = {"a1": {"text": "already"}}
     new = ao.uncached(anns, clips)
     assert [a.id for a in new] == ["a2"]
+
+
+def _seed_note(out, stem, frontmatter):
+    books = out / "Books"
+    books.mkdir(parents=True, exist_ok=True)
+    note = books / f"{stem}.md"
+    note.write_text(frontmatter, encoding="utf-8")
+    return note
+
+
+def test_render_note_writes_frontmatter_and_marked_section(tmp_path):
+    out = tmp_path / "V"
+    note = _seed_note(
+        out, "Stalin - Stephen Kotkin",
+        '---\ntype: book\ntitle: "Stalin"\n'
+        'authors: ["[[Stephen Kotkin]]"]\namazon:\nsource:\n'
+        'highlighted: false\ncover:\n---\n\nMy body.\n')
+    book = ao.LibraryBook(asin="B0ASIN", title="Stalin",
+                          authors=["Stephen Kotkin"])
+    clips = {
+        "a1": {"text": "First clip.", "start_ms": 120_000, "end_ms": 150_000,
+               "note": None, "date": None, "chapter": "The Rise",
+               "chapter_index": 2},
+    }
+    n = ao.render_note(note, book, clips)
+    assert n == 1
+    text = note.read_text(encoding="utf-8")
+    assert "My body." in text                       # body preserved
+    assert 'amazon: "B0ASIN"' in text               # ASIN backfilled (quoted)
+    assert "source: audible" in text
+    assert "highlighted: true" in text
+    assert "## Highlights" in text
+    assert "%% books:highlights:start %%" in text
+    assert "### The Rise" in text                   # chapter grouping header
+    assert "Audible ch. 2 · 0:02:00" in text        # chapter_label + bare timestamp (120_000 ms)
+    assert "First clip." in text
+
+
+def test_render_note_skips_empty_text_highlights(tmp_path):
+    out = tmp_path / "V"
+    note = _seed_note(out, "Stalin - Stephen Kotkin",
+                      '---\ntype: book\ntitle: "Stalin"\n---\n')
+    book = ao.LibraryBook(asin="B0ASIN", title="Stalin")
+    clips = {"a1": {"text": "", "start_ms": 0, "end_ms": None, "note": None,
+                    "date": None, "chapter": None, "chapter_index": None}}
+    assert ao.render_note(note, book, clips) == 0
