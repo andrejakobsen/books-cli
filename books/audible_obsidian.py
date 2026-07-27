@@ -27,6 +27,8 @@ from pathlib import Path
 
 import typer
 
+from books.highlights import Highlight, parse_markers, render_highlights
+
 
 @dataclass
 class LibraryBook:
@@ -91,6 +93,52 @@ def chapter_for(start_ms: int, chapters: list[Chapter]) -> Chapter | None:
         if ch.start_ms <= start_ms < ch.end_ms:
             return ch
     return None
+
+
+def annotation_to_record(ann: Annotation, text: str,
+                         chapters: list[Chapter]) -> dict:
+    """Build the cache record for a transcribed annotation."""
+    ch = chapter_for(ann.start_ms, chapters)
+    return {
+        "text": (text or "").strip(),
+        "start_ms": int(ann.start_ms),
+        "end_ms": None if ann.end_ms is None else int(ann.end_ms),
+        "note": ann.note,
+        "date": ann.date,
+        "chapter": ch.title if ch else None,
+        "chapter_index": ch.index if ch else None,
+    }
+
+
+def record_to_highlight(rec: dict) -> Highlight:
+    """Build a source-agnostic Highlight from a cache record.
+
+    The transcription is the highlight text; the user's typed note becomes the
+    nested blockquote (with its #tag/@link markers parsed out, same convention as
+    Kobo). When there is no transcription, the note text is used as the body so a
+    bookmark that carries only a note still comes through. The locator is a bare
+    timestamp (empty location_label); the zero-padded ms position goes in `block`
+    so highlights sort in exact listening order.
+    """
+    note, links, tags = parse_markers((rec.get("note") or "").strip() or None)
+    body = (rec.get("text") or "").strip()
+    if not body:
+        body = note or ""
+        note = None
+    start = int(rec.get("start_ms") or 0)
+    idx = rec.get("chapter_index")
+    return Highlight(
+        text=body,
+        note=note,
+        chapter_index=idx if isinstance(idx, int) else None,
+        chapter_title=(rec.get("chapter") or None),
+        page=format_timestamp(start),
+        location_label="",
+        block=f"{max(0, start):012d}",
+        date=rec.get("date"),
+        tags=tags,
+        links=links,
+    )
 
 
 def audible_command() -> None:
