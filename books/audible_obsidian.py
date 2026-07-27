@@ -184,6 +184,10 @@ def render_note(note_path: Path, book: LibraryBook, clips: dict) -> int:
     """
     highlights = [record_to_highlight(rec) for rec in clips.values()]
     highlights = [h for h in highlights if h.text]
+    if not highlights:
+        # Nothing transcribed (and no note text): don't flip `highlighted` or
+        # write an empty section — leave the note untouched.
+        return 0
 
     updates = {
         "title": yaml_quote(book.title),
@@ -276,6 +280,9 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
             save_cache(cache_path, cache)
 
         n = render_note(dest.note_path, book, clips)
+        if n == 0:
+            # No renderable highlights for this book — note left untouched.
+            continue
         for author in book.authors:
             write_stub(authors_dir, author, "author")
         stats["books"] += 1
@@ -336,8 +343,9 @@ def audible_command(
              "(~/.config/books/config.toml)."),
     dry_run: bool = typer.Option(
         False, "--dry-run",
-        help="Show which books match and how many clips would be transcribed, "
-             "without logging in for audio, downloading, or writing."),
+        help="Show which books match and how many clips would be transcribed "
+             "(still logs in to read your library), without downloading audio, "
+             "transcribing, or writing."),
 ) -> None:
     """Import Audible bookmarks & clips into existing Obsidian book notes.
 

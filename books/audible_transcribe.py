@@ -39,6 +39,10 @@ def cut_clip(audio: DownloadedAudio, start_ms: int, end_ms: int,
     cmd = ["ffmpeg", "-nostdin", "-y"]
     if audio.key and audio.iv:
         cmd += ["-audible_key", audio.key, "-audible_iv", audio.iv]
+    # -ss/-to are placed AFTER -i (output-side seek) so -to is measured on the
+    # original timeline and the cut is frame-accurate. Trade-off: ffmpeg decodes
+    # from the file start for each clip, so cuts deep into a long audiobook are
+    # slower than input-side seeking would be. Accuracy is preferred here.
     cmd += [
         "-i", str(audio.path),
         "-ss", f"{start_ms / 1000:.3f}",

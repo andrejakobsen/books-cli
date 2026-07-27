@@ -142,7 +142,12 @@ def test_render_note_skips_empty_text_highlights(tmp_path):
     book = ao.LibraryBook(asin="B0ASIN", title="Stalin")
     clips = {"a1": {"text": "", "start_ms": 0, "end_ms": None, "note": None,
                     "date": None, "chapter": None, "chapter_index": None}}
+    before = note.read_text()
     assert ao.render_note(note, book, clips) == 0
+    # No renderable highlights -> note untouched (highlighted not flipped, no
+    # empty Highlights section written).
+    assert note.read_text() == before
+    assert "highlighted: true" not in note.read_text()
 
 
 class FakeClient:
@@ -214,6 +219,28 @@ def test_run_enriches_matched_and_writes_cache(tmp_path):
     assert "transcribed text" in note.read_text()
     cache = ao.load_cache(cache_path)
     assert cache["B0STALIN"]["clips"]["a1"]["text"] == "transcribed text"
+
+
+def test_run_no_highlights_leaves_note_untouched(tmp_path):
+    # A matched book whose clips all transcribe to empty (and carry no note)
+    # is downloaded/transcribed but produces no highlights: the note must be
+    # left untouched (highlighted not flipped) and not counted as a book.
+    out = tmp_path / "V"
+    note = _seed_note(out, "Stalin - Stephen Kotkin",
+                      '---\ntype: book\ntitle: "Stalin"\n'
+                      'authors: ["[[Stephen Kotkin]]"]\namazon:\n---\n')
+    before = note.read_text()
+    book = ao.LibraryBook(asin="B0STALIN", title="Stalin",
+                          authors=["Stephen Kotkin"])
+    anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=0, end_ms=10,
+                                       note=None)]}
+    stats = ao.run(out, client=FakeClient([book], anns),
+                   downloader=FakeDownloader(), cutter=FakeCutter(),
+                   transcriber=lambda path: "", cache_path=out / "c.json",
+                   clip_window=30)
+    assert stats["books"] == 0 and stats["entries"] == 0
+    assert note.read_text() == before
+    assert "highlighted: true" not in note.read_text()
 
 
 def test_run_skips_unmatched_without_download(tmp_path):
