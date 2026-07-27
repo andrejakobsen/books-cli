@@ -8,6 +8,23 @@ dependencies = [
     "typer>=0.12",
 ]
 
+[project.optional-dependencies]
+# Heavy, third-party deps for the `audible` capability only (the documented
+# exception to the stdlib-only rule). We depend on the maintained `audible` +
+# `audible-cli` packages rather than reimplementing auth, the license/voucher
+# flow, download, or annotations ourselves. `cryptography` is
+# optional-but-recommended: it accelerates the `audible` package's voucher
+# decryption / activation bytes.
+audible = [
+    "audible>=0.10",
+    "audible-cli>=0.3",
+    "cryptography>=42",
+    "faster-whisper>=1.0",
+    "openai>=1.0",
+    "SpeechRecognition>=3.10",
+    "pydub>=0.25",
+]
+
 [project.scripts]
 books = "books.cli:main"
 
