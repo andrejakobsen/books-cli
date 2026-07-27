@@ -42,7 +42,8 @@ via `VaultIndex.find` (match-only) vs `VaultIndex.find_or_create` (creates). An 
 - `books/readwise_obsidian.py` → `readwise` — reads a Readwise CSV export and renders highlights (via `books/highlights.py`) into a marker-wrapped `## Highlights` section of an **existing** book note (matched via `VaultIndex.find` by Amazon id then standardized title/author; unmatched books are skipped and counted). `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/readwise`. Fills `amazon`/`shelves`/`series`/`series_index` frontmatter, renders type-aware location labels (`p.`/`loc.`). Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
 - `books/audible_obsidian.py` → `audible` — imports **Audible bookmarks & clips** into
   existing Obsidian book notes (enrich-only via `VaultIndex.find`, matched by ASIN as
-  `amazon` then title/author; unmatched books skipped and counted). Authenticates to
+  `amazon` then title/author; unmatched books skipped and counted). Fills
+  `format: audiobook` (never overwriting an existing value). Authenticates to
   the Audible cloud (auto-prompt on first run, auth cached at
   `~/.config/books/audible-auth.json`), fetches each book's annotations, downloads the
   audiobook, and uses **ffmpeg** to decrypt (AAXC via `-audible_key`/`-audible_iv`) and

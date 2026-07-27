@@ -177,10 +177,10 @@ def uncached(annotations: list[Annotation], clips: dict) -> list[Annotation]:
 def render_note(note_path: Path, book: LibraryBook, clips: dict) -> int:
     """Enrich an existing book note with a book's cached clips.
 
-    Fills provenance frontmatter (never overwriting existing values, except the
-    `highlighted` flag which flips to true) and replaces the marked
-    "## Highlights" section. Empty-text records are dropped. Returns the number of
-    highlights written.
+    Fills provenance frontmatter -- including `format: audiobook` -- (never
+    overwriting existing values, except the `highlighted` flag which flips to
+    true) and replaces the marked "## Highlights" section. Empty-text records are
+    dropped. Returns the number of highlights written.
     """
     highlights = [record_to_highlight(rec) for rec in clips.values()]
     highlights = [h for h in highlights if h.text]
@@ -194,6 +194,7 @@ def render_note(note_path: Path, book: LibraryBook, clips: dict) -> int:
         "authors": link_list(book.authors) if book.authors else "",
         "amazon": yaml_quote(book.asin) if book.asin else "",
         "source": "audible",
+        "format": "audiobook",
         "highlighted": "true",
     }
     base = note_path.read_text(encoding="utf-8")

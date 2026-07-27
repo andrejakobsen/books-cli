@@ -127,6 +127,7 @@ def test_render_note_writes_frontmatter_and_marked_section(tmp_path):
     assert "My body." in text                       # body preserved
     assert 'amazon: "B0ASIN"' in text               # ASIN backfilled (quoted)
     assert "source: audible" in text
+    assert "format: audiobook" in text              # audible books are audiobooks
     assert "highlighted: true" in text
     assert "## Highlights" in text
     assert "%% books:highlights:start %%" in text
