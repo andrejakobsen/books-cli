@@ -287,3 +287,10 @@ def test_convert_empty_csv_creates_nothing(tmp_path):
         encoding="utf-8")
     stats = rw.convert(csv, out)
     assert stats == {"books": 0, "entries": 0, "authors": set(), "skipped": 0}
+
+
+def test_readwise_sets_highlighted_true(tmp_path):
+    out = tmp_path / "Obsidian"
+    note_path = seed_stalin(out)
+    rw.convert(write_csv(tmp_path), out)
+    assert "highlighted: true" in note_path.read_text(encoding="utf-8")

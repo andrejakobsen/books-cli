@@ -125,6 +125,7 @@ def convert(csv_path: Path, output: Path) -> dict:
             "amazon": yaml_quote(group["amazon"]) if group["amazon"] else "",
             "shelves": plain_list(group["shelves"]) if group["shelves"] else "",
             "source": "readwise",
+            "highlighted": "true",
         }
         if group["series"]:
             updates["series"] = yaml_quote(group["series"])

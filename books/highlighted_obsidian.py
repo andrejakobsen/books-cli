@@ -106,6 +106,7 @@ def convert(csv_path: Path, output: Path) -> dict:
             "authors": link_list(authors) if authors else "",
             "isbn": yaml_quote(group["isbn"]) if group["isbn"] else "",
             "source": "highlighted",
+            "highlighted": "true",
         }), encoding="utf-8")
 
         highlights = [row_to_highlight(r) for r in group["rows"]]
