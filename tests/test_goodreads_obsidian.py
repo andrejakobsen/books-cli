@@ -264,3 +264,18 @@ def test_goodreads_updates_emit_flag_defaults():
     u = gr._goodreads_updates(book)
     assert u["highlighted"] == "false"
     assert u["reviewed"] == "false"
+
+
+def test_goodreads_sets_reviewed_true_when_review_written(tmp_path):
+    out = tmp_path / "Obsidian"
+    gr.convert(write_csv(tmp_path), out)
+    # Napoleon has a review; should have both the Review section and reviewed: true.
+    note = out / "Books" / "Napoleon - Andrew Roberts.md"
+    note_text = note.read_text()
+    assert "## Review" in note_text
+    assert "reviewed: true" in note_text
+    # Stalin has no review; should keep reviewed: false.
+    stalin = out / "Books" / "Stalin - Stephen Kotkin.md"
+    stalin_text = stalin.read_text()
+    assert "## Review" not in stalin_text
+    assert "reviewed: false" in stalin_text
