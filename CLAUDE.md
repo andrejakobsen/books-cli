@@ -112,7 +112,9 @@ Goodreads importers compose. Read it before changing either importer. It owns:
   in the book note; the `Notes/` folder holds fully manual notes the user authors by hand.
 - **A canonical frontmatter schema** (`BOOK_PROPERTY_ORDER`). Every book note emits
   all keys (empty when unknown) so any importer or a manual edit can fill a field later.
-  The key is `topics` (not `genres`), and `cover` is the last key.
+  The key is `topics` (not `genres`), and `cover` is the last key. `highlighted` and
+  `reviewed` are booleans (defaulting to `false`) that flip to `true` when highlights or
+  a review are imported, used for filtering the vault on reading progress.
 - **The "never overwrite" merge rule** (`update_frontmatter`): fills only absent or
   blank keys, leaves non-empty values and the note body untouched, appends new keys in
   canonical order. This is what lets Calibre → Goodreads (in either order) plus hand
