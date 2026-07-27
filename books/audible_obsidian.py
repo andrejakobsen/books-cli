@@ -22,6 +22,7 @@ audiobooks is for personal archival use only.
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -139,6 +140,26 @@ def record_to_highlight(rec: dict) -> Highlight:
         tags=tags,
         links=links,
     )
+
+
+def load_cache(path: Path) -> dict:
+    """Load the transcription cache, or {} when missing/corrupt."""
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_cache(path: Path, data: dict) -> None:
+    """Write the transcription cache as pretty JSON (parents created)."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False),
+                    encoding="utf-8")
+
+
+def uncached(annotations: list[Annotation], clips: dict) -> list[Annotation]:
+    """Return the annotations whose id is not already in the cached clips."""
+    return [a for a in annotations if a.id not in clips]
 
 
 def audible_command() -> None:

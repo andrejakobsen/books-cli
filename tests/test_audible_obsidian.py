@@ -75,3 +75,25 @@ def test_record_to_highlight_falls_back_to_note_when_no_text():
     h = ao.record_to_highlight(rec)
     assert h.text == "Just my note"       # note used as body
     assert h.note is None                 # not duplicated
+
+
+def test_cache_roundtrip_and_missing(tmp_path):
+    path = tmp_path / "sub" / "cache.json"
+    assert ao.load_cache(path) == {}          # missing file -> {}
+    data = {"B01": {"title": "Stalin", "clips": {"a1": {"text": "hi"}}}}
+    ao.save_cache(path, data)
+    assert ao.load_cache(path) == data
+
+
+def test_load_cache_tolerates_corrupt_file(tmp_path):
+    path = tmp_path / "cache.json"
+    path.write_text("{not json", encoding="utf-8")
+    assert ao.load_cache(path) == {}
+
+
+def test_uncached_returns_only_new_annotations():
+    anns = [ao.Annotation(id="a1", start_ms=0),
+            ao.Annotation(id="a2", start_ms=10)]
+    clips = {"a1": {"text": "already"}}
+    new = ao.uncached(anns, clips)
+    assert [a.id for a in new] == ["a2"]
