@@ -29,17 +29,29 @@ entry point is `books/cli.py`, which builds one shared `Typer` app and calls
 create `books/<feature>.py` with a `register(app)` function that attaches its
 `@app.command(...)`, then add the module to `CAPABILITIES`.
 
-Seven capabilities exist today. **Two of them create book notes (`calibre`, `goodreads`);
-the three highlight importers (`kobo`, `highlighted`, `readwise`) only enrich existing
-notes and never create them** — a book with no matching note is skipped and counted
+Eight capabilities exist today. **Two of them create book notes (`calibre`, `goodreads`);
+the four highlight importers (`kobo`, `highlighted`, `readwise`, `audible`) only enrich
+existing notes and never create them** — a book with no matching note is skipped and counted
 (run `calibre`/`goodreads` first to establish book identity). This is enforced in code
-via `VaultIndex.find` (match-only) vs `VaultIndex.find_or_create` (creates). A seventh
+via `VaultIndex.find` (match-only) vs `VaultIndex.find_or_create` (creates). An eighth
 (`sync`) is an orchestrator that runs the importers in order and creates nothing itself.
 - `books/calibre_obsidian.py` → `calibre` — reads a Calibre library's `metadata.opf` (XML) + `cover.jpg` per book and writes Obsidian notes (creates notes via `find_or_create`). `--library` defaults to `~/Calibre Library`.
 - `books/goodreads_obsidian.py` → `goodreads` — reads a Goodreads CSV export and writes/merges Obsidian notes (creates notes via `find_or_create`). A review is written once into a write-once `## Review` section of the book note (never clobbered on re-runs). Fills a `goodreads:` frontmatter property with the book's full Goodreads URL (`https://www.goodreads.com/book/show/<Book Id>`), including on notes originally created by Calibre (matched via `find_or_create`). New notes are only created for books on the `--shelf` shelves (default `read,currently-reading`), but a book on any other shelf (e.g. `to-read`) that already has a matching note is still enriched via `find` (full never-overwrite merge, so it gets its goodreads link and any other blank fields) — it is just never created. `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/goodreads`.
 - `books/kobo_export.py` → `kobo` — reads `KoboReader.sqlite` (opened **read-only** via `file:...?mode=ro`) and exports per-book highlight CSVs into a zip. Has a `--csv` flag (the default output mode) and an `--obsidian` flag that renders highlights (via the shared `books/highlights.py`) into a marker-wrapped `## Highlights` section of an **existing** book note (matched via `VaultIndex.find`; unmatched books are skipped and counted). Note markers follow the `#tag` / `@link` convention (parsed via `highlights.parse_markers`). When no DB path is given, a mounted Kobo (`/Volumes/KOBOeReader/.kobo/KoboReader.sqlite`) is safely snapshotted into `<vault>/.imports/kobo/` via SQLite's read-only backup API (the device file is never modified) and read from there; otherwise the existing copy (or newest `*.sqlite`) in that folder is used.
 - `books/highlighted_obsidian.py` → `highlighted` — reads a Highlighted app CSV export (highlights from physical books, page-located) and renders highlights (via the shared `books/highlights.py`) into a marker-wrapped `## Highlights` section of an **existing** book note (matched via `VaultIndex.find`; unmatched books are skipped and counted). `--csv` accepts a single CSV file or a folder of CSV exports (every top-level `*.csv` is imported in sorted order; a file that fails to parse is skipped and reported), defaulting to `<vault>/.imports/highlighted`. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
 - `books/readwise_obsidian.py` → `readwise` — reads a Readwise CSV export and renders highlights (via `books/highlights.py`) into a marker-wrapped `## Highlights` section of an **existing** book note (matched via `VaultIndex.find` by Amazon id then standardized title/author; unmatched books are skipped and counted). `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/.imports/readwise`. Fills `amazon`/`shelves`/`series`/`series_index` frontmatter, renders type-aware location labels (`p.`/`loc.`). Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
+- `books/audible_obsidian.py` → `audible` — imports **Audible bookmarks & clips** into
+  existing Obsidian book notes (enrich-only via `VaultIndex.find`, matched by ASIN as
+  `amazon` then title/author; unmatched books skipped and counted). Authenticates to
+  the Audible cloud (auto-prompt on first run, auth cached at
+  `~/.config/books/audible-auth.json`), fetches each book's annotations, downloads the
+  audiobook, and uses **ffmpeg** to decrypt (AAXC via `-audible_key`/`-audible_iv`) and
+  cut each clip, then transcribes it with a pluggable backend (`--transcriber
+  local|openai|google`, default `local`). Clips use their own start→end; a point
+  bookmark (no end) uses `--clip-window` seconds ending at the mark. Transcriptions are
+  cached in `<vault>/.imports/audible/cache.json` (keyed by ASIN + annotation id), so
+  re-runs re-render for free and only download books with new clips; downloaded audio
+  is written to a temp dir and deleted. Not part of `sync`.
 - `books/sync.py` → `sync` — master orchestrator that runs the importers in dependency order using each command's default options: `calibre` → `goodreads` → `kobo` → `highlighted` → `readwise` (covers is **not** included). Each step is skipped when its source is absent (calibre: `~/Calibre Library` exists; goodreads/highlighted/readwise: a `*.csv` in the `.imports/<name>` folder; kobo: a mounted device or a `*.sqlite` in `.imports/kobo`). Each step calls the module's core function directly (`convert`/`export_obsidian`) — no shelling out. Failures are reported but never stop the remaining steps (continue-on-error); a colored per-step + summary report is printed via `typer.secho`. `--output` overrides the vault; `--dry-run` prints the detection plan without writing. Creates no notes itself — it delegates note creation to `calibre`/`goodreads`.
 - `books/covers.py` → `covers` — scans an existing vault for `type: book` notes with a blank `cover:` field and fetches a cover image. Sources are tried in order — Apple Books (iTunes Search API, queried by title+author against the GB store), then Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the note already has an `amazon` ASIN, by building the known cover-image URL — no scraping). When a note carries an ISBN it drives the Google/Open Library lookup directly (Google `isbn:` query / Open Library `/b/isbn/` cover) — the most reliable path, unaffected by Google's title-search rate limiting (Apple is always queried by title+author, since its ISBN-term search is unreliable). Stdlib-only (`urllib`); all network I/O is injected for testing. HTTP fetches retry transient failures (429/5xx) with exponential backoff (`fetch_with_retry`), and a source that errors outright (rate-limited/unreachable) is counted and reported separately from one that merely found no match. Author/title queries are normalized before sending (`normalize_author` collapses whitespace and drops translator/co-author tails like "Plato and Benjamin Jowett" → "Plato"). Fetched images are validated by parsing their pixel dimensions (`image_dimensions`, PNG/GIF/JPEG headers, stdlib) and rejecting anything below `MIN_IMAGE_DIM`, falling back to a byte-size check when dimensions are unparseable. An ISBN learned from a source is backfilled into the note's frontmatter (never overwriting an existing one) — an Apple artwork path often embeds the edition ISBN, which is backfilled like any other learned ISBN. Writes `<Title> - <Author>.jpg` into the flat `Covers/` folder and fills the note's `cover:` frontmatter + top embed (at width 150) via the shared `obsidian.py` helpers (never overwriting an existing cover). Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run. `--book PATH` targets a single note under `Books/` (vault inferred from the path) and is interactive by default.
 
@@ -59,7 +71,8 @@ that holds raw import sources; `resolve_imports(name, output)` returns
 `<vault>/<imports>/<name>` (an absolute `imports` value is honored as-is, a relative one
 joins onto the resolved vault). Most importers default their input to a canonical
 subfolder — `.imports/goodreads`, `.imports/highlighted`,
-`.imports/readwise`, `.imports/kobo` — so most commands need no input flag.
+`.imports/readwise`, `.imports/kobo`, and `.imports/audible` (which holds the
+transcription `cache.json`, not raw CSVs) — so most commands need no input flag.
 (`calibre` is the exception: `--library` defaults to `~/Calibre Library`.) For the
 single-file CSV importers (goodreads/readwise), `newest_csv(folder)` picks the
 most-recently-modified top-level `*.csv` and `resolve_csv_arg(csv, name, output)` resolves
@@ -157,6 +170,14 @@ Goodreads importers compose. Read it before changing either importer. It owns:
 
 Both importers are stdlib-only (Typer is the sole runtime dependency); prefer keeping
 new shared logic in `obsidian.py` rather than duplicating it per importer.
+
+> **Exception to stdlib-only:** the `audible` capability needs third-party packages
+> (`audible`, transcriber backends) and system `ffmpeg`. They are an optional
+> `[audible]` extra in `pyproject.toml`, imported lazily inside
+> `books/audible_obsidian.py` / `audible_client.py` / `audible_transcribe.py` so no
+> other command loads them. `cryptography` is an optional-but-recommended accelerator
+> for the `audible` package's decryption. Downloading/decrypting owned audiobooks is
+> for personal archival use only.
 
 ### Path handling
 
