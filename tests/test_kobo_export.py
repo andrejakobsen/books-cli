@@ -109,6 +109,18 @@ def test_export_obsidian_regenerates_highlights_wholesale(tmp_path):
     assert note_path.read_text().count("## Highlights") == 1
 
 
+def test_export_obsidian_idempotent(tmp_path):
+    db = tmp_path / "KoboReader.sqlite"
+    _make_db(db)
+    vault = tmp_path / "Obsidian"
+    _seed_gatsby(vault)
+    ke.export_obsidian(db, vault)
+    before = {p: p.read_text() for p in vault.rglob("*.md")}
+    ke.export_obsidian(db, vault)  # second run
+    after = {p: p.read_text() for p in vault.rglob("*.md")}
+    assert before == after
+
+
 class _R(dict):
     """Row stub matching kobo_export's row access (missing keys -> None)."""
     def __getitem__(self, k):

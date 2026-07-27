@@ -146,6 +146,56 @@ def test_dry_run_does_not_execute(tmp_path, monkeypatch):
                              "highlighted", "readwise"} and r.status != "skipped")
 
 
+# --- Real (non-mocked) double run -------------------------------------------
+
+def _seed_real_create_and_enrich(vault: Path, monkeypatch):
+    """Seed real goodreads (creates) + highlighted (enriches) sources.
+
+    calibre/kobo/readwise are left without a source so they skip; goodreads
+    creates the Stalin note and highlighted enriches it — exercising the real
+    create-then-enrich composition end to end.
+    """
+    monkeypatch.setattr(sync, "_calibre_library", lambda: vault / "nolib")
+    monkeypatch.setattr(sync.kobo_export, "KOBO_DEVICE_DB", vault / "nodev.sqlite")
+
+    gr_folder = sync._imports_folder("goodreads", vault)
+    gr_folder.mkdir(parents=True, exist_ok=True)
+    (gr_folder / "export.csv").write_text(
+        "Book Id,Title,Author,ISBN,ISBN13,Exclusive Shelf\n"
+        "3,Stalin,Stephen Kotkin,,9781594203794,currently-reading\n",
+        encoding="utf-8")
+
+    hi_folder = sync._imports_folder("highlighted", vault)
+    hi_folder.mkdir(parents=True, exist_ok=True)
+    (hi_folder / "Highlights for Stalin.csv").write_text(
+        "Highlight,Title,Author,ISBN,Collections,Reading Status,"
+        "Book Added Date,Location,Tags,Note,Date,Favorite\n"
+        '"Fear is the mind-killer",Stalin,Stephen Kotkin,9781594203794,,Reading,'
+        '2026-07-24,4,Stalin,That is true,2026-07-24 10:37:51,N\n',
+        encoding="utf-8")
+
+
+def test_sync_real_run_idempotent(tmp_path, monkeypatch):
+    vault = tmp_path / "Vault"
+    vault.mkdir()
+    _seed_real_create_and_enrich(vault, monkeypatch)
+
+    results = sync.run_sync(vault)
+    status = {r.name: r.status for r in results}
+    assert status["goodreads"] == "ran" and status["highlighted"] == "ran"
+
+    note = vault / "Books" / "Stalin - Stephen Kotkin.md"
+    assert note.exists()
+    text = note.read_text()
+    assert 'goodreads: "https://www.goodreads.com/book/show/3"' in text  # created
+    assert "## Highlights" in text                                        # enriched
+
+    before = {p: p.read_text() for p in vault.rglob("*.md")}
+    sync.run_sync(vault)  # second full run must change nothing
+    after = {p: p.read_text() for p in vault.rglob("*.md")}
+    assert before == after
+
+
 # --- CLI wiring -------------------------------------------------------------
 
 def test_sync_registered():

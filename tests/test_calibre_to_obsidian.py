@@ -112,6 +112,16 @@ def test_book_note_has_goodreads_placeholders(tmp_path):
         assert key in note
 
 
+def test_convert_idempotent(tmp_path):
+    lib = make_library(tmp_path)
+    out = tmp_path / "Obsidian"
+    c2o.convert(lib, out)
+    before = {p: p.read_text() for p in out.rglob("*.md")}
+    c2o.convert(lib, out)  # second run
+    after = {p: p.read_text() for p in out.rglob("*.md")}
+    assert before == after
+
+
 def test_rerun_preserves_book_note_edits(tmp_path):
     lib = make_library(tmp_path)
     out = tmp_path / "Obsidian"

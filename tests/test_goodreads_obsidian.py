@@ -270,6 +270,27 @@ def test_convert_idempotent(tmp_path):
     assert before == after
 
 
+def test_convert_idempotent_with_shelf_excluded_note(tmp_path):
+    out = tmp_path / "Obsidian"
+    book_dir = out / "Books"
+    book_dir.mkdir(parents=True)
+    # Existing note for the to-read "Cold War" (Book Id 2): enriched, not created.
+    (book_dir / "The Cold War.md").write_text(
+        '---\ntype: book\ntitle: "The Cold War: A New History"\n'
+        'isbn: "9780143038276"\n---\n\nBody.\n',
+        encoding="utf-8",
+    )
+    gr.convert(write_csv(tmp_path), out)  # enriches the excluded note + creates 2
+    before = {p: p.read_text() for p in out.rglob("*.md")}
+    gr.convert(write_csv(tmp_path), out)  # second run must be a no-op
+    after = {p: p.read_text() for p in out.rglob("*.md")}
+    assert before == after
+    # Sanity: the excluded note really was enriched, not created anew.
+    enriched = (book_dir / "The Cold War.md").read_text()
+    assert 'goodreads: "https://www.goodreads.com/book/show/2"' in enriched
+    assert not (book_dir / "The Cold War - John Lewis Gaddis.md").exists()
+
+
 def _minimal_goodreads_csv(path):
     path.write_text(
         "Title,Author,ISBN,ISBN13,My Rating,Average Rating,Number of Pages,"
