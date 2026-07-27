@@ -166,6 +166,8 @@ def _goodreads_updates(book: GoodreadsBook) -> dict[str, str]:
     if book.date_read:
         u["date_read"] = book.date_read
     u["source"] = "goodreads"
+    u["highlighted"] = "false"
+    u["reviewed"] = "false"
     return u
 
 

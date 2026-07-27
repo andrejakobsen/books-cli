@@ -257,3 +257,10 @@ def test_goodreads_folder_arg_picks_newest(monkeypatch, tmp_path):
 
     assert result.exit_code == 0, result.output
     assert (vault / "Books" / "The Deluge - Adam Tooze.md").exists()
+
+
+def test_goodreads_updates_emit_flag_defaults():
+    book = gr.GoodreadsBook(title="Test Book", authors=["Test Author"])
+    u = gr._goodreads_updates(book)
+    assert u["highlighted"] == "false"
+    assert u["reviewed"] == "false"
