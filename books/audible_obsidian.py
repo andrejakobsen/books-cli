@@ -22,7 +22,75 @@ audiobooks is for personal archival use only.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+from pathlib import Path
+
 import typer
+
+
+@dataclass
+class LibraryBook:
+    """A book in the Audible library."""
+    asin: str
+    title: str
+    authors: list[str] = field(default_factory=list)
+
+
+@dataclass
+class Annotation:
+    """A single Audible bookmark, clip, or note.
+
+    `end_ms` is None for a point bookmark (the plain "bookmark" button has no
+    duration); a clip carries both start and end. `note` is the user's typed text
+    (may be None).
+    """
+    id: str
+    start_ms: int
+    end_ms: int | None = None
+    note: str | None = None
+    date: str | None = None
+
+
+@dataclass
+class Chapter:
+    """A chapter with its position range (end exclusive), in reading order."""
+    index: int
+    title: str
+    start_ms: int
+    end_ms: int
+
+
+@dataclass
+class DownloadedAudio:
+    """A downloaded (still-encrypted) audiobook plus its AAXC decryption key/iv.
+
+    `key`/`iv` are None for a non-DRM source; when set, ffmpeg decrypts on the fly
+    via -audible_key/-audible_iv while cutting each clip.
+    """
+    path: "Path"
+    key: str | None = None
+    iv: str | None = None
+
+
+def format_timestamp(ms: int) -> str:
+    """Format a millisecond offset as ``H:MM:SS`` (hours always present).
+
+    Hours are always the leading component, so the string's leading integer equals
+    the hour count -- keeping reading order correct under Highlight.sort_key, which
+    reads the first integer of the locator. Negative inputs clamp to zero.
+    """
+    total = max(0, int(ms)) // 1000
+    hours, rem = divmod(total, 3600)
+    minutes, seconds = divmod(rem, 60)
+    return f"{hours}:{minutes:02d}:{seconds:02d}"
+
+
+def chapter_for(start_ms: int, chapters: list[Chapter]) -> Chapter | None:
+    """Return the chapter whose [start, end) range contains *start_ms*, else None."""
+    for ch in chapters:
+        if ch.start_ms <= start_ms < ch.end_ms:
+            return ch
+    return None
 
 
 def audible_command() -> None:
