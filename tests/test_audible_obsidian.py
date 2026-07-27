@@ -244,6 +244,42 @@ def test_run_no_highlights_leaves_note_untouched(tmp_path):
     assert "highlighted: true" not in note.read_text()
 
 
+def test_run_continues_when_one_book_fails(tmp_path):
+    # One book blows up mid-processing (e.g. a download/license/transcribe
+    # error). It must be counted as failed and skipped, and the *next* book
+    # must still be enriched -- one bad book never aborts the whole run.
+    out = tmp_path / "V"
+    _seed_note(out, "Stalin - Stephen Kotkin",
+               '---\ntype: book\ntitle: "Stalin"\n'
+               'authors: ["[[Stephen Kotkin]]"]\namazon:\n---\n')
+    _seed_note(out, "Peace - Leo Tolstoy",
+               '---\ntype: book\ntitle: "Peace"\n'
+               'authors: ["[[Leo Tolstoy]]"]\namazon:\n---\n')
+    bad = ao.LibraryBook(asin="B0BAD", title="Stalin",
+                         authors=["Stephen Kotkin"])
+    good = ao.LibraryBook(asin="B0GOOD", title="Peace",
+                          authors=["Leo Tolstoy"])
+    anns = {
+        "B0BAD": [ao.Annotation(id="a1", start_ms=1000, end_ms=2000)],
+        "B0GOOD": [ao.Annotation(id="a2", start_ms=1000, end_ms=2000)],
+    }
+
+    class BoomDownloader(FakeDownloader):
+        def download(self, asin, dest_dir):
+            if asin == "B0BAD":
+                raise RuntimeError("boom")
+            return super().download(asin, dest_dir)
+
+    stats = ao.run(out, client=FakeClient([bad, good], anns),
+                   downloader=BoomDownloader(), cutter=FakeCutter(),
+                   transcriber=_fake_transcriber, cache_path=out / "c.json",
+                   clip_window=30)
+    assert stats["failed"] == 1
+    assert stats["books"] == 1 and stats["entries"] == 1
+    assert "transcribed text" in (
+        out / "Books" / "Peace - Leo Tolstoy.md").read_text()
+
+
 def test_run_skips_unmatched_without_download(tmp_path):
     out = tmp_path / "V"
     (out / "Books").mkdir(parents=True)            # no matching note

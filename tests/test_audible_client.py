@@ -22,6 +22,38 @@ def test_chapters_from_metadata_parses_ranges():
     assert chapters[1].start_ms == 60_000 and chapters[1].end_ms == 150_000
 
 
+def test_annotations_returns_empty_on_404(monkeypatch):
+    # A book with no bookmarks/clips returns 404 from the sidecar endpoint;
+    # that must be treated as "no annotations", not a fatal error.
+    import httpx
+
+    class FakeResp:
+        status_code = 404
+
+        def raise_for_status(self):
+            raise AssertionError("must not raise on 404")
+
+        def json(self):
+            raise AssertionError("must not read body on 404")
+
+    class FakeClientCtx:
+        def __init__(self, *a, **k):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def get(self, url, auth=None):
+            return FakeResp()
+
+    monkeypatch.setattr(httpx, "Client", FakeClientCtx)
+    client = ac.AudibleClient(auth=object())
+    assert client.annotations("B0MISSING") == []
+
+
 def test_annotations_from_sidecar_maps_clips_and_bookmarks():
     payload = {"payload": {"records": [
         {"annotationId": "c1", "type": "audible.Clip",

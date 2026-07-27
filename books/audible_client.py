@@ -33,6 +33,26 @@ _MISSING = (
 SIDECAR_URL = ("https://cde-ta-g7g.amazon.com/FionaCDEServiceEngine/"
                "sidecar?type=AUDI&key={asin}")
 
+# Response groups requested when fetching the library. This mirrors the set
+# audible-cli's own `library` command asks for, and it must stay broad because
+# `LibraryItem`'s predicates read fields lazily: `is_published()` needs
+# `publication_datetime` (from `product_attrs`) and `is_downloadable()` needs
+# `customer_rights`. Omitting either makes those return None, and audible-cli's
+# `get_aaxc_url()` then raises `ItemNotPublished(asin, None)` -> a
+# `strptime(None)` crash (or a spurious "not downloadable"). Keeping the full
+# set matches the real client and guards against other predicates too.
+LIBRARY_RESPONSE_GROUPS = (
+    "contributors, customer_rights, media, price, product_attrs, "
+    "product_desc, product_extended_attrs, product_plan_details, "
+    "product_plans, rating, sample, sku, series, reviews, ws4v, "
+    "origin, relationships, review_attrs, categories, "
+    "badge_types, category_ladders, claim_code_url, in_wishlist, "
+    "is_archived, is_downloaded, is_finished, is_playable, "
+    "is_removable, is_returnable, is_visible, listening_status, "
+    "order_details, origin_asin, pdf_url, percent_complete, "
+    "periodicals, provided_review, product_details"
+)
+
 
 def default_auth_path() -> Path:
     """Where the cached Audible auth file lives (beside the CLI config)."""
@@ -180,7 +200,7 @@ class AudibleClient:
             resp = await client.get(
                 "library",
                 response_callback=full_response_callback,
-                response_groups="product_desc,contributors,relationships")
+                response_groups=LIBRARY_RESPONSE_GROUPS)
             self._catalog = convert_response_content(resp)
         library = Library(self._catalog, api_client=client)
         return {item.asin: item for item in library}
@@ -216,12 +236,16 @@ class AudibleClient:
         """Fetch bookmarks/clips from the CDE sidecar (no audible-cli helper).
 
         `audible.Authenticator` is an `httpx.Auth` flow, so it signs the bare GET
-        when passed as `auth=` (the old `sign_request(method=…)` API is gone).
+        when passed as `auth=` (the old `sign_request(method=…)` API is gone). A
+        book with no bookmarks/clips has no sidecar and answers 404, which is
+        treated as "no annotations" rather than a fatal error.
         """
         import httpx
         url = SIDECAR_URL.format(asin=asin)
         with httpx.Client(timeout=30) as hx:
             resp = hx.get(url, auth=self._auth)
+            if resp.status_code == 404:
+                return []
             resp.raise_for_status()
             payload = resp.json()
         return annotations_from_sidecar(payload)
@@ -240,11 +264,15 @@ class AudibleClient:
             item = (await self._fetch_items(client))[asin]
             url, codec, license_response = await item.get_aaxc_url(self.quality)
             voucher = decrypt_voucher_from_licenserequest(
-                self._auth, license_response)
+                self._auth, license_response) or {}
+            key, iv = voucher.get("key"), voucher.get("iv")
+            if not key or not iv:
+                raise RuntimeError(
+                    f"Could not recover the AAXC key/iv for {asin} "
+                    "(license voucher had no key/iv).")
             dest = Path(dest_dir) / f"{asin}.aaxc"
             with urlopen(str(url)) as resp, open(dest, "wb") as fh:
                 fh.write(resp.read())
-            return DownloadedAudio(
-                path=dest, key=voucher["key"], iv=voucher["iv"])
+            return DownloadedAudio(path=dest, key=key, iv=iv)
 
         return self._run(op)
