@@ -22,6 +22,22 @@ def test_chapters_from_metadata_parses_ranges():
     assert chapters[1].start_ms == 60_000 and chapters[1].end_ms == 150_000
 
 
+def test_voucher_key_iv_reads_decrypted_voucher():
+    # audible-cli's get_license() decrypts the voucher in place, so the license
+    # response carries the {key, iv} dict -- read it, don't decrypt again.
+    lr = {"content_license": {"license_response": {"key": "K", "iv": "V"}}}
+    assert ac.voucher_key_iv(lr) == ("K", "V")
+
+
+def test_voucher_key_iv_raises_when_not_decrypted():
+    import pytest
+    # Upstream decryption failed: still the raw encrypted string.
+    with pytest.raises(RuntimeError):
+        ac.voucher_key_iv({"content_license": {"license_response": "ENCSTR"}})
+    with pytest.raises(RuntimeError):
+        ac.voucher_key_iv({})
+
+
 def test_annotations_returns_empty_on_404(monkeypatch):
     # A book with no bookmarks/clips returns 404 from the sidecar endpoint;
     # that must be treated as "no annotations", not a fatal error.

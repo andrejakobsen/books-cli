@@ -107,6 +107,28 @@ def annotations_from_sidecar(payload: dict) -> list[Annotation]:
     return out
 
 
+def voucher_key_iv(license_response: dict) -> tuple[str, str]:
+    """Return the AAXC ``(key, iv)`` from a ``get_aaxc_url`` license response.
+
+    audible-cli's ``get_license()`` already decrypts the voucher in place,
+    storing the decrypted ``{key, iv, ...}`` dict at
+    ``license_response["content_license"]["license_response"]`` -- so it is read
+    here, not decrypted again (decrypting the already-decrypted dict raises
+    "argument should be a bytes-like object ... not dict"). Raises RuntimeError
+    when the voucher (or its key/iv) is absent -- e.g. upstream decryption
+    failed and left the encrypted string in place.
+    """
+    voucher = (((license_response or {}).get("content_license") or {})
+               .get("license_response"))
+    key = voucher.get("key") if isinstance(voucher, dict) else None
+    iv = voucher.get("iv") if isinstance(voucher, dict) else None
+    if not key or not iv:
+        raise RuntimeError(
+            "Could not recover the AAXC key/iv from the license response "
+            "(voucher missing or not decrypted).")
+    return key, iv
+
+
 class AudibleClient:
     """Thin wrapper over the `audible` package (integration seam)."""
 
@@ -253,23 +275,17 @@ class AudibleClient:
     def download(self, asin: str, dest_dir: Path) -> DownloadedAudio:
         """Download the AAXC via audible-cli and return it plus its key/iv.
 
-        `get_aaxc_url` returns (url, codec, license_response); the AAXC key/iv
-        live inside the (encrypted) license response and are recovered with
-        `decrypt_voucher_from_licenserequest`. `url` is an `httpx.URL`, so it is
-        stringified for `urlopen` (the offline URL is presigned — no auth).
+        `get_aaxc_url` returns (url, codec, license_response). audible-cli's
+        `get_license` has already decrypted the AAXC voucher into
+        `license_response["content_license"]["license_response"]`, so the key/iv
+        are read from there (see `voucher_key_iv`) — decrypting it again would
+        fail. `url` is an `httpx.URL`, stringified for `urlopen` (the offline
+        URL is presigned — no auth).
         """
-        from audible.aescipher import decrypt_voucher_from_licenserequest
-
         async def op(client):
             item = (await self._fetch_items(client))[asin]
             url, codec, license_response = await item.get_aaxc_url(self.quality)
-            voucher = decrypt_voucher_from_licenserequest(
-                self._auth, license_response) or {}
-            key, iv = voucher.get("key"), voucher.get("iv")
-            if not key or not iv:
-                raise RuntimeError(
-                    f"Could not recover the AAXC key/iv for {asin} "
-                    "(license voucher had no key/iv).")
+            key, iv = voucher_key_iv(license_response)
             dest = Path(dest_dir) / f"{asin}.aaxc"
             with urlopen(str(url)) as resp, open(dest, "wb") as fh:
                 fh.write(resp.read())
