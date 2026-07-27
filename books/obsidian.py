@@ -35,6 +35,8 @@ BOOK_PROPERTY_ORDER = (
     "format",
     "pages",
     "status",
+    "highlighted",
+    "reviewed",
     "shelves",
     "rating",
     "isbn",
@@ -47,6 +49,15 @@ BOOK_PROPERTY_ORDER = (
     "source",
     "cover",
 )
+
+# Book-note flags that record whether derived content (highlights, a review) has
+# been imported. They are monotonic: an update of "true" always wins, but the
+# "false" default follows the normal never-overwrite path so a flag never
+# regresses true -> false regardless of import order.
+OVERWRITE_KEYS = frozenset({"highlighted", "reviewed"})
+
+# Default values every book note carries so two-way filtering works in Obsidian.
+BOOK_FLAG_DEFAULTS = {"highlighted": "false", "reviewed": "false"}
 
 
 # --- Vault layout -----------------------------------------------------------
@@ -283,7 +294,8 @@ def update_frontmatter(note_text: str, updates: dict[str, str]) -> str:
     - *updates* maps a property key to a pre-formatted YAML scalar (e.g. the
       output of ``yaml_quote`` / ``link_list``). ``""`` means "emit an empty
       ``key:`` placeholder".
-    - A key already present with a non-empty value is left untouched.
+    - A key already present with a non-empty value is left untouched, except
+      keys in ``OVERWRITE_KEYS``, where a ``"true"`` update always overwrites.
     - A key present but blank is filled from *updates* when that update is
       non-empty.
     - Absent keys are appended in ``BOOK_PROPERTY_ORDER`` order.
@@ -299,9 +311,12 @@ def update_frontmatter(note_text: str, updates: dict[str, str]) -> str:
 
     new_lines = list(fm_lines)
 
-    # 1. Fill blanks in place.
+    # 1. Fill blanks in place; OVERWRITE_KEYS with a "true" update always win.
     for key, formatted in updates.items():
-        if key in existing and formatted != "" and _is_blank_value(new_lines[existing[key]]):
+        if key not in existing or formatted == "":
+            continue
+        overwrite = key in OVERWRITE_KEYS and formatted == "true"
+        if overwrite or _is_blank_value(new_lines[existing[key]]):
             new_lines[existing[key]] = f"{key}: {formatted}"
 
     # 2. Append absent keys (canonical order first, then any extras).
