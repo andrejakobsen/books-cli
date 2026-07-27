@@ -238,6 +238,7 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
             "authors": link_list(authors) if authors else "",
             "isbn": yaml_quote(isbn) if isbn else "",
             "source": "kobo",
+            "highlighted": "true",
         }
         base = dest.note_path.read_text(encoding="utf-8")
         dest.note_path.write_text(update_frontmatter(base, updates), encoding="utf-8")

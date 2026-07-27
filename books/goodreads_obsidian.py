@@ -166,6 +166,8 @@ def _goodreads_updates(book: GoodreadsBook) -> dict[str, str]:
     if book.date_read:
         u["date_read"] = book.date_read
     u["source"] = "goodreads"
+    u["highlighted"] = "false"
+    u["reviewed"] = "false"
     return u
 
 
@@ -228,6 +230,7 @@ def convert(csv_path: Path, output: Path, shelf: str = DEFAULT_SHELVES) -> dict:
             text = dest.note_path.read_text(encoding="utf-8")
             updated = ensure_section(text, "Review", review)
             if updated != text:
+                updated = update_frontmatter(updated, {"reviewed": "true"})
                 dest.note_path.write_text(updated, encoding="utf-8")
                 stats["reviews"] += 1
 

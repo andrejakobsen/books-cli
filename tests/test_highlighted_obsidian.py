@@ -268,3 +268,10 @@ def test_highlighted_defaults_csv_to_imports(monkeypatch, tmp_path):
     note = vault / "Books" / "The Deluge - Adam Tooze.md"
     assert note.exists()
     assert "## Highlights" in note.read_text()
+
+
+def test_highlighted_sets_highlighted_true(tmp_path):
+    out = tmp_path / "Obsidian"
+    note_path = seed_stalin(out)
+    hi.convert(write_csv(tmp_path), out)
+    assert "highlighted: true" in note_path.read_text(encoding="utf-8")

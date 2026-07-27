@@ -312,3 +312,12 @@ def test_kobo_default_missing_everything_errors(monkeypatch, tmp_path):
     result = CliRunner().invoke(app, [])
 
     assert result.exit_code != 0
+
+
+def test_kobo_sets_highlighted_true(tmp_path):
+    db = tmp_path / "KoboReader.sqlite"
+    _make_db(db)
+    vault = tmp_path / "Obsidian"
+    note_path = _seed_gatsby(vault)
+    ke.export_obsidian(db, vault)
+    assert "highlighted: true" in note_path.read_text(encoding="utf-8")

@@ -281,3 +281,45 @@ def test_vaultindex_matches_existing_note_by_amazon(tmp_path):
                    amazon="b00inixpye"))
     assert dest.created is False
     assert dest.note_path.name == "Stalin.md"
+
+
+def test_property_order_includes_flags_after_status():
+    order = ob.BOOK_PROPERTY_ORDER
+    assert "highlighted" in order
+    assert "reviewed" in order
+    assert order.index("highlighted") == order.index("status") + 1
+    assert order.index("reviewed") == order.index("status") + 2
+
+
+def test_overwrite_key_true_flips_existing_false():
+    note = "---\ntype: book\nhighlighted: false\n---\n"
+    out = ob.update_frontmatter(note, {"highlighted": "true"})
+    assert "highlighted: true" in out
+    assert "highlighted: false" not in out
+
+
+def test_overwrite_key_false_default_does_not_downgrade_true():
+    note = "---\ntype: book\nhighlighted: true\n---\n"
+    out = ob.update_frontmatter(note, {"highlighted": "false"})
+    assert "highlighted: true" in out
+    assert "highlighted: false" not in out
+
+
+def test_overwrite_key_false_default_appends_when_absent():
+    note = "---\ntype: book\n---\n"
+    out = ob.update_frontmatter(note, {"reviewed": "false"})
+    assert "reviewed: false" in out
+
+
+def test_non_overwrite_key_still_never_overwrites():
+    note = '---\ntype: book\ntitle: "Keep"\n---\n'
+    out = ob.update_frontmatter(note, {"title": ob.yaml_quote("New")})
+    assert 'title: "Keep"' in out
+
+
+def test_new_stub_carries_flag_defaults(tmp_path):
+    idx = ob.VaultIndex(tmp_path)
+    bn = idx.find_or_create(ob.BookRef(title="A Book", authors=["An Author"]))
+    text = bn.note_path.read_text(encoding="utf-8")
+    assert "highlighted: false" in text
+    assert "reviewed: false" in text

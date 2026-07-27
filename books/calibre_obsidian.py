@@ -195,6 +195,8 @@ def _calibre_updates(meta: BookMetadata, cover_fm: str) -> dict[str, str]:
     u["date_read"] = ""
     u["source"] = "calibre"
     u["cover"] = cover_fm
+    u["highlighted"] = "false"
+    u["reviewed"] = "false"
     return u
 
 

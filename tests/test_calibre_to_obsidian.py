@@ -198,3 +198,12 @@ def test_html_to_markdown_list():
     assert "Intro" in md
     assert "- one" in md
     assert "- two" in md
+
+
+def test_calibre_updates_emit_flag_defaults():
+    meta = c2o.BookMetadata()
+    meta.title = "Test Book"
+    meta.authors = ["Test Author"]
+    u = c2o._calibre_updates(meta, "")
+    assert u["highlighted"] == "false"
+    assert u["reviewed"] == "false"
