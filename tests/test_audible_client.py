@@ -1,0 +1,37 @@
+"""Tests for the Audible cloud adapter's pure helpers."""
+
+from books import audible_client as ac
+
+
+def test_default_auth_path_is_in_config_dir(monkeypatch, tmp_path):
+    from books import config
+    monkeypatch.setattr(config, "config_path",
+                        lambda: tmp_path / "books" / "config.toml")
+    assert ac.default_auth_path() == tmp_path / "books" / "audible-auth.json"
+
+
+def test_chapters_from_metadata_parses_ranges():
+    meta = {"content_metadata": {"chapter_info": {"chapters": [
+        {"title": "Intro", "start_offset_ms": 0, "length_ms": 60_000},
+        {"title": "Rise", "start_offset_ms": 60_000, "length_ms": 90_000},
+    ]}}}
+    chapters = ac.chapters_from_metadata(meta)
+    assert [c.index for c in chapters] == [1, 2]
+    assert chapters[0].title == "Intro"
+    assert chapters[0].start_ms == 0 and chapters[0].end_ms == 60_000
+    assert chapters[1].start_ms == 60_000 and chapters[1].end_ms == 150_000
+
+
+def test_annotations_from_sidecar_maps_clips_and_bookmarks():
+    payload = {"payload": {"records": [
+        {"annotationId": "c1", "type": "audible.Clip",
+         "startPosition": "10000", "endPosition": "20000",
+         "creationTime": "2026-07-01", "text": "my note"},
+        {"annotationId": "b1", "type": "audible.Bookmark",
+         "startPosition": "30000", "creationTime": "2026-07-02"},
+    ]}}
+    anns = ac.annotations_from_sidecar(payload)
+    assert anns[0].id == "c1" and anns[0].start_ms == 10000
+    assert anns[0].end_ms == 20000 and anns[0].note == "my note"
+    assert anns[1].id == "b1" and anns[1].start_ms == 30000
+    assert anns[1].end_ms is None            # bookmark has no duration
