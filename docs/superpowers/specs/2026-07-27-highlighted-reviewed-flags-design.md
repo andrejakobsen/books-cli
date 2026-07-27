@@ -32,18 +32,23 @@ symmetrically; an absent value would break `... is false` filters.
 
 ## `update_frontmatter` behavior change
 
-Current rule: only blank/absent keys are filled. New rule:
+Current rule: only blank/absent keys are filled. New rule (flags are monotonic —
+they flip on, never off):
 
-- For a key in `OVERWRITE_KEYS`, a **non-empty** update replaces the existing
-  value even when it is already set (so `false` → `true`).
+- For a key in `OVERWRITE_KEYS`, an update whose value is `"true"` replaces the
+  existing value even when it is already set (so `false` → `true`).
+- Any other update value for an `OVERWRITE_KEYS` key (notably the `"false"`
+  default) follows the normal never-overwrite path: it fills a blank or appends
+  when absent, but never downgrades an existing value.
 - All other keys keep the existing never-overwrite behavior, unchanged.
-- Importers only ever pass `true` for these keys, so a flag never regresses
-  `true` → `false`. A `false` default only ever lands via the append-absent
-  path, which cannot downgrade an already-present `true`.
+
+This is what makes the `false` defaults emitted by the calibre/goodreads writers
+safe: a `"false"` default can never clobber a `true` a highlight importer
+already set, regardless of import order. Only an explicit `"true"` overwrites.
 
 Implementation: in the "fill blanks in place" loop, treat an `OVERWRITE_KEYS`
-key with a non-empty update as always-writable (set it regardless of whether the
-existing value is blank).
+key whose update value is `"true"` as always-writable (set it regardless of
+whether the existing value is blank).
 
 ## Where the flags are written
 
