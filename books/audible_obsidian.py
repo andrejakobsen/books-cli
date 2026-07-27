@@ -23,6 +23,7 @@ audiobooks is for personal archival use only.
 from __future__ import annotations
 
 import json
+import tempfile
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,9 +31,13 @@ import typer
 
 from books.highlights import Highlight, parse_markers, render_highlights
 from books.obsidian import (
+    AUTHORS_DIRNAME,
+    BookRef,
+    VaultIndex,
     link_list,
     render_marked_section,
     update_frontmatter,
+    write_stub,
     yaml_quote,
 )
 
@@ -195,6 +200,87 @@ def render_note(note_path: Path, book: LibraryBook, clips: dict) -> int:
         render_highlights(highlights, chapter_label="Audible ch."))
     note_path.write_text(text, encoding="utf-8")
     return len(highlights)
+
+
+def _clip_bounds(ann: Annotation, clip_window: int) -> tuple[int, int]:
+    """Resolve the (start_ms, end_ms) audio range to cut for an annotation.
+
+    A clip uses its own recorded start/end. A point bookmark (no end position) has
+    no duration, so a *clip_window*-second window ending at the mark is used
+    (people bookmark just after hearing something)."""
+    if ann.end_ms is not None:
+        return int(ann.start_ms), int(ann.end_ms)
+    end = int(ann.start_ms)
+    return max(0, end - clip_window * 1000), end
+
+
+def run(vault, *, client, downloader, cutter, transcriber, cache_path,
+        clip_window, limit=None, asin=None, dry_run=False,
+        echo=lambda *_: None) -> dict:
+    """Import Audible clips into matching notes. All heavy I/O is injected.
+
+    Returns a stats dict: books/entries/skipped/downloaded/transcribed. In
+    *dry_run* mode nothing is downloaded, transcribed, cached, or written; the plan
+    is emitted via *echo*.
+    """
+    vault.mkdir(parents=True, exist_ok=True)
+    index = VaultIndex(vault)
+    authors_dir = vault / AUTHORS_DIRNAME
+    cache = load_cache(cache_path)
+    stats = {"books": 0, "entries": 0, "skipped": 0,
+             "downloaded": 0, "transcribed": 0}
+
+    library = client.library()
+    if asin:
+        library = [b for b in library if b.asin == asin]
+
+    matched = 0
+    for book in library:
+        ref = BookRef(title=book.title, authors=book.authors, amazon=book.asin)
+        dest = index.find(ref)
+        if dest is None:
+            stats["skipped"] += 1
+            continue
+        if limit is not None and matched >= limit:
+            break
+        matched += 1
+
+        annotations = client.annotations(book.asin)
+        if not annotations:
+            continue
+
+        book_cache = cache.setdefault(book.asin,
+                                      {"title": book.title, "clips": {}})
+        clips = book_cache.setdefault("clips", {})
+        new = uncached(annotations, clips)
+
+        if dry_run:
+            echo(f"[dry-run] {book.title}: {len(annotations)} annotations, "
+                 f"{len(new)} new to transcribe")
+            continue
+
+        if new:
+            chapters = client.chapters(book.asin)
+            with tempfile.TemporaryDirectory() as td:
+                tmp = Path(td)
+                audio = downloader.download(book.asin, tmp)
+                stats["downloaded"] += 1
+                for ann in new:
+                    start, end = _clip_bounds(ann, clip_window)
+                    clip_path = cutter.cut(audio, start, end,
+                                           tmp / f"{ann.id}.wav")
+                    text = transcriber(clip_path)
+                    clips[ann.id] = annotation_to_record(ann, text, chapters)
+                    stats["transcribed"] += 1
+            save_cache(cache_path, cache)
+
+        n = render_note(dest.note_path, book, clips)
+        for author in book.authors:
+            write_stub(authors_dir, author, "author")
+        stats["books"] += 1
+        stats["entries"] += n
+
+    return stats
 
 
 def audible_command() -> None:

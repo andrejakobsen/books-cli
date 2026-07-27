@@ -143,3 +143,135 @@ def test_render_note_skips_empty_text_highlights(tmp_path):
     clips = {"a1": {"text": "", "start_ms": 0, "end_ms": None, "note": None,
                     "date": None, "chapter": None, "chapter_index": None}}
     assert ao.render_note(note, book, clips) == 0
+
+
+class FakeClient:
+    def __init__(self, library, annotations, chapters=None):
+        self._library = library
+        self._annotations = annotations          # {asin: [Annotation]}
+        self._chapters = chapters or {}          # {asin: [Chapter]}
+        self.annotation_calls = []
+
+    def library(self):
+        return list(self._library)
+
+    def annotations(self, asin):
+        self.annotation_calls.append(asin)
+        return list(self._annotations.get(asin, []))
+
+    def chapters(self, asin):
+        return list(self._chapters.get(asin, []))
+
+
+class FakeDownloader:
+    def __init__(self):
+        self.calls = []
+
+    def download(self, asin, dest_dir):
+        self.calls.append(asin)
+        p = Path(dest_dir) / f"{asin}.aaxc"
+        p.write_bytes(b"fake-audio")
+        return ao.DownloadedAudio(path=p, key=None, iv=None)
+
+
+class FakeCutter:
+    def __init__(self):
+        self.calls = []
+
+    def cut(self, audio, start_ms, end_ms, dest):
+        self.calls.append((audio.path.name, start_ms, end_ms))
+        Path(dest).write_bytes(b"clip")
+        return Path(dest)
+
+
+def _fake_transcriber(path):
+    return "transcribed text"
+
+
+def _library_and_notes(tmp_path):
+    out = tmp_path / "V"
+    _seed_note(out, "Stalin - Stephen Kotkin",
+               '---\ntype: book\ntitle: "Stalin"\n'
+               'authors: ["[[Stephen Kotkin]]"]\namazon:\n---\n')
+    book = ao.LibraryBook(asin="B0STALIN", title="Stalin",
+                          authors=["Stephen Kotkin"])
+    anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=120_000,
+                                       end_ms=150_000, note="Nice")]}
+    return out, book, anns
+
+
+def test_run_enriches_matched_and_writes_cache(tmp_path):
+    out, book, anns = _library_and_notes(tmp_path)
+    client = FakeClient([book], anns)
+    cache_path = out / ".imports" / "audible" / "cache.json"
+    down, cut = FakeDownloader(), FakeCutter()
+    stats = ao.run(out, client=client, downloader=down, cutter=cut,
+                   transcriber=_fake_transcriber, cache_path=cache_path,
+                   clip_window=30)
+    assert stats["books"] == 1 and stats["entries"] == 1
+    assert stats["downloaded"] == 1 and stats["transcribed"] == 1
+    note = out / "Books" / "Stalin - Stephen Kotkin.md"
+    assert "transcribed text" in note.read_text()
+    cache = ao.load_cache(cache_path)
+    assert cache["B0STALIN"]["clips"]["a1"]["text"] == "transcribed text"
+
+
+def test_run_skips_unmatched_without_download(tmp_path):
+    out = tmp_path / "V"
+    (out / "Books").mkdir(parents=True)            # no matching note
+    book = ao.LibraryBook(asin="B0X", title="Unknown", authors=["Nobody"])
+    client = FakeClient([book], {"B0X": [ao.Annotation(id="a1", start_ms=0,
+                                                       end_ms=10)]})
+    down = FakeDownloader()
+    stats = ao.run(out, client=client, downloader=down, cutter=FakeCutter(),
+                   transcriber=_fake_transcriber,
+                   cache_path=out / "c.json", clip_window=30)
+    assert stats["skipped"] == 1 and stats["books"] == 0
+    assert down.calls == []                          # never downloaded
+
+
+def test_run_idempotent_uses_cache_no_redownload(tmp_path):
+    out, book, anns = _library_and_notes(tmp_path)
+    cache_path = out / ".imports" / "audible" / "cache.json"
+    down1 = FakeDownloader()
+    ao.run(out, client=FakeClient([book], anns), downloader=down1,
+           cutter=FakeCutter(), transcriber=_fake_transcriber,
+           cache_path=cache_path, clip_window=30)
+    before = (out / "Books" / "Stalin - Stephen Kotkin.md").read_text()
+    down2 = FakeDownloader()
+    ao.run(out, client=FakeClient([book], anns), downloader=down2,
+           cutter=FakeCutter(), transcriber=_fake_transcriber,
+           cache_path=cache_path, clip_window=30)
+    after = (out / "Books" / "Stalin - Stephen Kotkin.md").read_text()
+    assert down2.calls == []                          # no new clips -> no download
+    assert before == after                            # note unchanged
+
+
+def test_run_point_bookmark_uses_window_before_mark(tmp_path):
+    out = tmp_path / "V"
+    _seed_note(out, "Stalin - Stephen Kotkin",
+               '---\ntype: book\ntitle: "Stalin"\n'
+               'authors: ["[[Stephen Kotkin]]"]\n---\n')
+    book = ao.LibraryBook(asin="B0STALIN", title="Stalin",
+                          authors=["Stephen Kotkin"])
+    anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=90_000, end_ms=None)]}
+    cut = FakeCutter()
+    ao.run(out, client=FakeClient([book], anns), downloader=FakeDownloader(),
+           cutter=cut, transcriber=_fake_transcriber,
+           cache_path=out / "c.json", clip_window=30)
+    # point bookmark: window ends at the mark, starts clip_window seconds earlier
+    assert cut.calls == [("B0STALIN.aaxc", 60_000, 90_000)]
+
+
+def test_run_dry_run_writes_nothing(tmp_path):
+    out, book, anns = _library_and_notes(tmp_path)
+    note = out / "Books" / "Stalin - Stephen Kotkin.md"
+    before = note.read_text()
+    down = FakeDownloader()
+    stats = ao.run(out, client=FakeClient([book], anns), downloader=down,
+                   cutter=FakeCutter(), transcriber=_fake_transcriber,
+                   cache_path=out / "c.json", clip_window=30, dry_run=True)
+    assert down.calls == []
+    assert note.read_text() == before
+    assert not (out / "c.json").exists()
+    assert stats["books"] == 0
