@@ -445,3 +445,18 @@ def test_no_hr_divider_between_highlights():
     out = hl.render_highlights(hs, chapter_label="Kobo ch.")
     assert "\n---\n" not in out
     assert "\n***\n" not in out
+
+
+def test_empty_location_label_renders_bare_timestamp():
+    from books.highlights import Highlight, render_highlights
+    h = Highlight(text="A passage.", page="3:24:15", location_label="")
+    out = render_highlights([h])
+    assert "> [!quote]+ 3:24:15" in out
+    assert "p. 3:24:15" not in out
+
+
+def test_none_location_label_still_defaults_to_p():
+    from books.highlights import Highlight, render_highlights
+    h = Highlight(text="A passage.", page="42")
+    out = render_highlights([h])
+    assert "> [!quote]+ p. 42" in out

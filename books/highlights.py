@@ -209,8 +209,11 @@ def _label(h: Highlight, chapter_prefix: str = "ch.") -> str:
     if h.chapter_index is not None:
         parts.append(f"{chapter_prefix} {h.chapter_index}")
     if h.page:
-        prefix = h.location_label or "p."
-        parts.append(f"{prefix} {h.page.replace('-', '–')}")
+        label = h.page.replace('-', '–')
+        # location_label is "p." by default; an explicit "" suppresses the prefix
+        # (used for audio timestamps like "3:24:15" that carry no unit).
+        prefix = h.location_label if h.location_label is not None else "p."
+        parts.append(f"{prefix} {label}" if prefix else label)
     if h.progress is not None:
         parts.append(f"{round(h.progress * 100)}%")
     return " · ".join(parts)
