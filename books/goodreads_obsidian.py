@@ -212,16 +212,22 @@ def convert(csv_path: Path, output: Path, shelf: str = DEFAULT_SHELVES) -> dict:
     wanted = _parse_shelves(shelf)
 
     for book in parse_csv(csv_path):
-        if wanted is not None and (book.exclusive_shelf or "") not in wanted:
-            stats["skipped"] += 1
-            continue
         if not book.title or not book.authors:
             stats["skipped"] += 1
             continue
 
         ref = BookRef(title=book.title, authors=book.authors,
                       isbn=book.isbn13 or book.isbn)
-        dest = index.find_or_create(ref)
+        in_shelf = wanted is None or (book.exclusive_shelf or "") in wanted
+        if in_shelf:
+            dest = index.find_or_create(ref)
+        else:
+            # Shelf-excluded (e.g. to-read): enrich an existing note if one is
+            # already there, but never create a note for it.
+            dest = index.find(ref)
+            if dest is None:
+                stats["skipped"] += 1
+                continue
         stats["created" if dest.created else "merged"] += 1
 
         base = dest.note_path.read_text(encoding="utf-8")
@@ -261,13 +267,16 @@ def goodreads_to_obsidian(
     shelf: str = typer.Option(
         DEFAULT_SHELVES,
         "--shelf",
-        help="Comma-separated Goodreads exclusive shelves to import (read/currently-reading/to-read). Defaults to 'read,currently-reading'. Use 'all' for every book.",
+        help="Comma-separated Goodreads exclusive shelves to import (read/currently-reading/to-read). Defaults to 'read,currently-reading'. Use 'all' for every book. Books on other shelves that already have a note are still enriched (but never created).",
     ),
 ) -> None:
     """Convert a Goodreads CSV export into Obsidian book notes.
 
-    By default books on the 'read' and 'currently-reading' shelves are imported
-    (pass --shelf to narrow, e.g. '--shelf read', or 'all' for everything).
+    By default new notes are created only for books on the 'read' and
+    'currently-reading' shelves (pass --shelf to narrow, e.g. '--shelf read',
+    or 'all' for everything). A book on any other shelf (e.g. 'to-read') that
+    already has a matching note is still enriched — so it gets its goodreads
+    link and any other blank fields — but no note is created for it.
     Existing notes are
     never overwritten: only empty/absent properties are filled, and a review is
     written once into a '## Review' section of the book note (never clobbered on

@@ -173,6 +173,33 @@ def test_goodreads_url_not_clobbered_on_merge(tmp_path):
     assert "book/show/1" not in note.read_text()
 
 
+def test_shelf_excluded_book_enriches_existing_note(tmp_path):
+    out = tmp_path / "Obsidian"
+    book_dir = out / "Books"
+    book_dir.mkdir(parents=True)
+    # An existing note for the to-read "Cold War" book (Book Id 2), blank fields.
+    note = book_dir / "The Cold War.md"
+    note.write_text(
+        '---\ntype: book\ntitle: "The Cold War: A New History"\n'
+        'isbn: "9780143038276"\nstatus:\ngoodreads:\n---\n\nBody.\n',
+        encoding="utf-8",
+    )
+    # Default shelf filter excludes to-read; the note must still be enriched.
+    stats = gr.convert(write_csv(tmp_path), out)
+    updated = note.read_text()
+    assert 'goodreads: "https://www.goodreads.com/book/show/2"' in updated
+    assert "status: to-read" in updated       # blank field filled by full merge
+    assert stats["created"] == 2              # only read/currently-reading created
+
+
+def test_shelf_excluded_book_without_note_is_not_created(tmp_path):
+    out = tmp_path / "Obsidian"
+    # No pre-existing note for the to-read "Cold War"; default shelf filter.
+    stats = gr.convert(write_csv(tmp_path), out)
+    assert not (out / "Books" / "The Cold War - John Lewis Gaddis.md").exists()
+    assert stats["created"] == 2 and stats["skipped"] == 1
+
+
 def test_convert_writes_review_section(tmp_path):
     out = tmp_path / "Obsidian"
     gr.convert(write_csv(tmp_path), out)
