@@ -42,6 +42,7 @@ BOOK_PROPERTY_ORDER = (
     "isbn",
     "amazon",
     "google",
+    "goodreads",
     "uuid",
     "calibre_id",
     "date_added",

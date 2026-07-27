@@ -38,6 +38,7 @@ def test_parse_csv_fields(tmp_path):
     assert len(books) == 3
     nap = books[0]
     assert nap.title == "Napoleon: A Life"
+    assert nap.book_id == "1"
     assert nap.authors == ["Andrew Roberts"]
     assert nap.isbn13 == "9780141032016"
     assert nap.isbn == "0141032014"
@@ -133,6 +134,43 @@ def test_convert_shelf_all_imports_everything(tmp_path):
     out = tmp_path / "Obsidian"
     stats = gr.convert(write_csv(tmp_path), out, shelf="all")
     assert stats["created"] == 3
+
+
+def test_convert_writes_goodreads_url(tmp_path):
+    out = tmp_path / "Obsidian"
+    gr.convert(write_csv(tmp_path), out)  # Napoleon is Book Id 1
+    note = (out / "Books" / "Napoleon - Andrew Roberts.md").read_text()
+    assert 'goodreads: "https://www.goodreads.com/book/show/1"' in note
+
+
+def test_convert_fills_goodreads_url_on_calibre_note(tmp_path):
+    out = tmp_path / "Obsidian"
+    book_dir = out / "Books"
+    book_dir.mkdir(parents=True)
+    note = book_dir / "Napoleon_ A Life.md"
+    # Pre-existing note (e.g. from Calibre) with a blank goodreads placeholder.
+    note.write_text(
+        '---\ntype: book\ntitle: "Napoleon: A Life"\nisbn: "9780141032016"\n'
+        'goodreads:\n---\n\nBody.\n',
+        encoding="utf-8",
+    )
+    gr.convert(write_csv(tmp_path), out, shelf="read")
+    assert 'goodreads: "https://www.goodreads.com/book/show/1"' in note.read_text()
+
+
+def test_goodreads_url_not_clobbered_on_merge(tmp_path):
+    out = tmp_path / "Obsidian"
+    book_dir = out / "Books"
+    book_dir.mkdir(parents=True)
+    note = book_dir / "Napoleon_ A Life.md"
+    note.write_text(
+        '---\ntype: book\ntitle: "Napoleon: A Life"\nisbn: "9780141032016"\n'
+        'goodreads: "https://www.goodreads.com/book/show/999"\n---\n\nBody.\n',
+        encoding="utf-8",
+    )
+    gr.convert(write_csv(tmp_path), out, shelf="read")
+    assert "book/show/999" in note.read_text()      # existing value preserved
+    assert "book/show/1" not in note.read_text()
 
 
 def test_convert_writes_review_section(tmp_path):

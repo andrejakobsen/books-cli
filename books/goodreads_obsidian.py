@@ -36,9 +36,13 @@ from books.obsidian import (
 )
 
 
+GOODREADS_BOOK_URL = "https://www.goodreads.com/book/show/"
+
+
 @dataclass
 class GoodreadsBook:
     title: str
+    book_id: str | None = None
     authors: list[str] = field(default_factory=list)
     isbn: str | None = None
     isbn13: str | None = None
@@ -115,6 +119,7 @@ def parse_csv(path: Path) -> list[GoodreadsBook]:
             shelves = [s.strip() for s in (row.get("Bookshelves") or "").split(",") if s.strip()]
             books.append(GoodreadsBook(
                 title=(row.get("Title") or "").strip(),
+                book_id=(row.get("Book Id") or "").strip() or None,
                 authors=_split_authors(row.get("Author", ""), row.get("Additional Authors", "")),
                 isbn=_strip_isbn(row.get("ISBN", "")),
                 isbn13=_strip_isbn(row.get("ISBN13", "")),
@@ -165,6 +170,8 @@ def _goodreads_updates(book: GoodreadsBook) -> dict[str, str]:
         u["date_added"] = book.date_added
     if book.date_read:
         u["date_read"] = book.date_read
+    if book.book_id:
+        u["goodreads"] = yaml_quote(f"{GOODREADS_BOOK_URL}{book.book_id}")
     u["source"] = "goodreads"
     u["highlighted"] = "false"
     u["reviewed"] = "false"
