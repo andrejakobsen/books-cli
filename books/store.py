@@ -27,6 +27,7 @@ from books.obsidian import (
     norm_amazon,
     norm_isbn,
     norm_title,
+    safe_filename,
     strip_subtitle,
 )
 
@@ -304,13 +305,40 @@ def read_books_csv(vault: Path) -> list[BookRow]:
 
 
 def merge(vault: Path) -> list[BookRow]:
-    """Cluster all layers, coalesce by precedence, assign book_id, write books.csv."""
+    """Cluster all layers, coalesce by precedence, assign book_id, write books.csv.
+
+    book_id assignment is deterministic: clusters are sorted by coalesced content
+    before id assignment, ensuring the same book gets the same id regardless of
+    layer row order (preventing highlight-file orphaning on re-export).
+    """
     layers = read_all_layers(vault)
     tagged = [(source, row) for source, rows in layers.items() for row in rows]
+
+    # First coalesce all clusters to get stable content for sorting
+    clusters = _cluster(tagged)
+    coalesced_clusters = [(coalesce(cluster), cluster) for cluster in clusters]
+
+    # Sort by stable content key: clean_stem, full_title, isbn, amazon, series_index
+    # Ensures two same-clean-stem books always sort the same way regardless of row order
+    def sort_key(merged_and_cluster: tuple[BookRow, list]) -> tuple:
+        merged, _raw_cluster = merged_and_cluster
+        author = merged.authors[0] if merged.authors else ""
+        clean = strip_subtitle(merged.title).strip()
+        clean_stem = safe_filename(f"{clean} - {author}" if author else clean).lower()
+        return (
+            clean_stem,
+            merged.title.casefold(),
+            canonical_isbn(merged.isbn) or "",
+            norm_amazon(merged.amazon) or "",
+            merged.series_index or "",
+        )
+
+    sorted_clusters = sorted(coalesced_clusters, key=sort_key)
+
+    # Now assign book_ids in deterministic order
     used: set[str] = set()
     catalog: list[BookRow] = []
-    for cluster in _cluster(tagged):
-        merged = coalesce(cluster)
+    for merged, _raw_cluster in sorted_clusters:
         author = merged.authors[0] if merged.authors else ""
         merged.book_id = assign_book_id(merged.title, author, used)
         catalog.append(merged)

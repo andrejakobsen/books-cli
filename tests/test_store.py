@@ -274,6 +274,44 @@ def test_merge_read_books_csv_roundtrip(tmp_path):
     assert rows[0].shelves == ["read"]
 
 
+def test_merge_book_id_assignment_is_stable_across_row_order(tmp_path):
+    """book_id assignment must be deterministic regardless of layer row order.
+
+    Two distinct same-clean-stem books (no ISBN/Amazon) should get the same
+    book_ids in both runs, preventing highlight-file orphaning on re-export.
+    """
+    # Two distinct Stalin volumes, same clean stem, no ISBN/Amazon
+    paradoxes = store.BookRow(
+        title="Stalin: Paradoxes of Power",
+        authors=["Stephen Kotkin"],
+        format="ebook",
+    )
+    waiting = store.BookRow(
+        title="Stalin: Waiting for Hitler",
+        authors=["Stephen Kotkin"],
+        format="ebook",
+    )
+
+    # First run: paradoxes before waiting
+    vault1 = tmp_path / "v1"
+    store.write_layer(vault1, "calibre", [paradoxes, waiting])
+    cat1 = store.merge(vault1)
+    by_title1 = {b.title: b.book_id for b in cat1}
+
+    # Second run: waiting before paradoxes (OPPOSITE order)
+    vault2 = tmp_path / "v2"
+    store.write_layer(vault2, "calibre", [waiting, paradoxes])
+    cat2 = store.merge(vault2)
+    by_title2 = {b.title: b.book_id for b in cat2}
+
+    # CRITICAL: same title -> same book_id in both runs
+    assert by_title1["Stalin: Paradoxes of Power"] == by_title2["Stalin: Paradoxes of Power"]
+    assert by_title1["Stalin: Waiting for Hitler"] == by_title2["Stalin: Waiting for Hitler"]
+
+    # The two book_ids must be distinct (one bare stem, one disambiguated)
+    assert by_title1["Stalin: Paradoxes of Power"] != by_title1["Stalin: Waiting for Hitler"]
+
+
 def test_catalog_find_by_isbn_amazon_and_title_author(tmp_path):
     vault = tmp_path / "vault"
     store.write_layer(vault, "calibre", [
