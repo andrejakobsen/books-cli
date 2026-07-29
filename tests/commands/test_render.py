@@ -252,6 +252,31 @@ def test_book_frontmatter_omits_absent_aliases_cssclasses(tmp_path):
     assert "cssclasses" not in meta
 
 
+def test_render_materializes_staged_cover(tmp_path):
+    vault = tmp_path / "vault"
+    staged = store.sources_dir(vault) / "_covers" / "calibre" / "0.jpg"
+    staged.parent.mkdir(parents=True)
+    staged.write_bytes(b"\xff\xd8\xff\xe0IMG")
+    row = store.BookRow(
+        book_id="The Deluge - Adam Tooze", title="The Deluge",
+        authors=["Adam Tooze"], format="ebook",
+        cover="Data/Sources/_covers/calibre/0.jpg",
+    )
+    R.render_note(vault, row, [])
+
+    dest = vault / "Data" / "Covers" / "The Deluge - Adam Tooze.jpg"
+    assert dest.is_file()
+    assert dest.read_bytes() == b"\xff\xd8\xff\xe0IMG"
+
+    note_text = (vault / "Books" / "The Deluge - Adam Tooze.md").read_text(
+        encoding="utf-8")
+    assert "![[Data/Covers/The Deluge - Adam Tooze.jpg|150]]" in note_text
+
+    # Idempotent: a second render doesn't error and leaves the cover unchanged.
+    R.render_note(vault, row, [])
+    assert dest.read_bytes() == b"\xff\xd8\xff\xe0IMG"
+
+
 def test_render_note_preserves_aliases_across_rerender(tmp_path):
     vault = tmp_path / "vault"
     note = vault / "Books" / "X - A.md"

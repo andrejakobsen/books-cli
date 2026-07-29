@@ -19,6 +19,7 @@ ruamel.yaml (write).
 from __future__ import annotations
 
 import io
+import shutil
 from pathlib import Path
 
 import frontmatter
@@ -184,6 +185,25 @@ def render_body(existing_body: str, row: BookRow, note_path: Path,
     return body
 
 
+def _materialize_cover(row: BookRow, note_path: Path) -> None:
+    """Copy a staged cover (row.cover = vault-relative path) into Data/Covers/.
+
+    Calibre stages local covers before ``book_id`` exists; here—after merge—we
+    copy the winning row's staged image to ``Data/Covers/<book_id>.jpg`` so the
+    existing embed/frontmatter logic resolves it. No-op when the row carries no
+    cover, the source is missing, or the destination already exists (idempotent).
+    """
+    src_rel = (row.cover or "").strip()
+    if not src_rel:
+        return
+    vault = note_path.parents[1]
+    src = vault / src_rel
+    dest = vault / COVERS_DIRNAME / f"{note_path.stem}.jpg"
+    if src.is_file() and not dest.is_file():
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(src, dest)
+
+
 def render_note(vault: Path, row: BookRow, highlights: list) -> Path:
     """Write/update the flat book note for *row* under ``Books/<book_id>.md``.
 
@@ -192,6 +212,7 @@ def render_note(vault: Path, row: BookRow, highlights: list) -> Path:
     idempotent: rendering the same row + highlights twice yields identical bytes.
     """
     note_path = vault / BOOKS_DIRNAME / f"{row.book_id}.md"
+    _materialize_cover(row, note_path)
     existing_meta, existing_body = load_note(note_path)
     meta = book_frontmatter(row, note_path, existing_meta, bool(highlights))
     body = render_body(existing_body, row, note_path, highlights).strip("\n")
