@@ -25,8 +25,8 @@ import frontmatter
 import typer
 from ruamel.yaml import YAML
 
-from books import store
-from books.core import config
+from books.core import config, store
+from books.core.store import BookRow, row_to_highlight
 from books.renderers.obsidian import (
     BOOK_PROPERTY_ORDER,
     BOOKS_DIRNAME,
@@ -39,7 +39,6 @@ from books.renderers.obsidian import (
     render_marked_section,
     wikilink,
 )
-from books.store import BookRow, row_to_highlight
 
 # The note frontmatter schema: the canonical order minus the retired ``source``
 # key (a merged book has many contributing sources; a single value is meaningless).

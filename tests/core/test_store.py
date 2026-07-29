@@ -1,5 +1,5 @@
 
-from books import store
+from books.core import store
 from books.core.highlights import Highlight
 from books.renderers.obsidian import BookRef
 

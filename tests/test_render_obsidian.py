@@ -2,8 +2,8 @@ import frontmatter
 from typer.testing import CliRunner
 
 from books import render_obsidian as R
-from books import store
 from books.cli import app
+from books.core import store
 
 
 def test_render_rating_numeric_and_passthrough():
