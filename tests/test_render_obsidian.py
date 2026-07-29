@@ -121,3 +121,42 @@ def test_render_body_preserves_existing_content(tmp_path):
     row = store.BookRow(book_id="X - A", title="X", authors=["A"])
     body = R.render_body("My own paragraph.", row, note, [])
     assert "My own paragraph." in body
+
+
+def test_render_note_creates_note_at_book_id_path(tmp_path):
+    vault = tmp_path / "vault"
+    row = store.BookRow(book_id="The Deluge - Adam Tooze", title="The Deluge",
+                        authors=["Adam Tooze"], format="ebook")
+    path = R.render_note(vault, row, [])
+    assert path == vault / "Books" / "The Deluge - Adam Tooze.md"
+    post = frontmatter.loads(path.read_text(encoding="utf-8"))
+    assert post["title"] == "The Deluge"
+    assert post["format"] == "ebook"
+    assert post["highlighted"] is False
+
+
+def test_render_note_is_idempotent(tmp_path):
+    vault = tmp_path / "vault"
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"], format="ebook",
+                        review="A review")
+    hls = [store.HighlightRow(source="kobo", annotation_id="1", text="hi",
+                              location="10", location_kind="percent")]
+    path = R.render_note(vault, row, hls)
+    first = path.read_text(encoding="utf-8")
+    R.render_note(vault, row, hls)
+    assert path.read_text(encoding="utf-8") == first   # render twice == identical
+
+
+def test_render_note_preserves_topics_and_manual_body(tmp_path):
+    vault = tmp_path / "vault"
+    note = vault / "Books" / "X - A.md"
+    note.parent.mkdir(parents=True)
+    note.write_text(
+        '---\ntype: book\ntitle: X\ntopics:\n- "[[History]]"\n---\n\n'
+        'My own paragraph.\n', encoding="utf-8")
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"], format="ebook")
+    R.render_note(vault, row, [])
+    post = frontmatter.loads(note.read_text(encoding="utf-8"))
+    assert post["topics"] == ["[[History]]"]     # user-owned, preserved
+    assert post["format"] == "ebook"             # refreshed from the row
+    assert "My own paragraph." in post.content   # manual body preserved

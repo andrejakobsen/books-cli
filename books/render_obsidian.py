@@ -27,6 +27,7 @@ from ruamel.yaml import YAML
 from books.highlights import render_highlights
 from books.obsidian import (
     BOOK_PROPERTY_ORDER,
+    BOOKS_DIRNAME,
     COVER_WIDTH,
     COVERS_DIRNAME,
     ensure_section,
@@ -154,3 +155,21 @@ def render_body(existing_body: str, row: BookRow, note_path: Path,
         rendered = render_highlights([row_to_highlight(h) for h in highlights])
         body = render_marked_section(body, "Highlights", "highlights", rendered)
     return body
+
+
+def render_note(vault: Path, row: BookRow, highlights: list) -> Path:
+    """Write/update the flat book note for *row* under ``Books/<book_id>.md``.
+
+    Frontmatter is rebuilt authoritatively (topics preserved from the existing
+    note); the body preserves manual content and managed sections. The result is
+    idempotent: rendering the same row + highlights twice yields identical bytes.
+    """
+    note_path = vault / BOOKS_DIRNAME / f"{row.book_id}.md"
+    existing_meta, existing_body = load_note(note_path)
+    meta = book_frontmatter(row, note_path, existing_meta, bool(highlights))
+    body = render_body(existing_body, row, note_path, highlights).strip("\n")
+    front = "---\n" + dump_frontmatter(meta) + "---\n"
+    content = f"{front}\n{body}\n" if body else f"{front}\n"
+    note_path.parent.mkdir(parents=True, exist_ok=True)
+    note_path.write_text(content, encoding="utf-8")
+    return note_path
