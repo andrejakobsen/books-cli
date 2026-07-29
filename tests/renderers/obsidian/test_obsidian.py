@@ -124,14 +124,14 @@ def test_ensure_top_embed_noop_when_present():
 
 def test_cover_path_is_flat_keyed_to_note_stem(tmp_path):
     note_path = tmp_path / "Books" / "Napoleon - Andrew Roberts.md"
-    assert ob.cover_path(note_path) == tmp_path / "Covers" / "Napoleon - Andrew Roberts.jpg"
+    assert ob.cover_path(note_path) == tmp_path / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg"
 
 
 def test_cover_refs_builds_vault_relative_wikilinks_with_width(tmp_path):
     note_path = tmp_path / "Books" / "Napoleon - Andrew Roberts.md"
     fm, embed = ob.cover_refs(note_path)
-    assert fm == '"[[Covers/Napoleon - Andrew Roberts.jpg]]"'
-    assert embed == "![[Covers/Napoleon - Andrew Roberts.jpg|150]]"
+    assert fm == '"[[Data/Covers/Napoleon - Andrew Roberts.jpg]]"'
+    assert embed == "![[Data/Covers/Napoleon - Andrew Roberts.jpg|150]]"
 
 
 def test_property_order_uses_topics_not_genres():

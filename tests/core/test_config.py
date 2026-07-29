@@ -112,7 +112,7 @@ def test_load_config_defaults_imports_on_non_string(tmp_path):
 def test_default_file_includes_imports(tmp_path):
     cfg_file = tmp_path / "books" / "config.toml"
     config.load_config(cfg_file)
-    assert 'imports = ".imports"' in cfg_file.read_text()
+    assert 'imports = "Data/Imports"' in cfg_file.read_text()
 
 
 def test_resolve_imports_joins_onto_vault(tmp_path, monkeypatch):

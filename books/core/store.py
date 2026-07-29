@@ -2,7 +2,7 @@
 
 On-disk source of truth under ``<vault>/Data/``:
 
-- ``Data/sources/<source>.csv``  -- raw per-source metadata layers.
+- ``Data/Sources/<source>.csv``  -- raw per-source metadata layers.
 - ``Data/books.csv``             -- derived merged catalog (one row per book).
 - ``Data/Highlights/<book-id>.csv`` -- per-book union of highlights (``source`` column).
 
@@ -129,7 +129,7 @@ class HighlightRow(BaseModel):
 
 
 DATA_DIRNAME = "Data"
-SOURCES_DIRNAME = "sources"
+SOURCES_DIRNAME = "Sources"
 HIGHLIGHTS_DIRNAME = "Highlights"
 BOOKS_CSV = "books.csv"
 

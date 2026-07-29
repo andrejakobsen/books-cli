@@ -75,8 +75,8 @@ def _assert_composed(out: Path) -> None:
     assert notes == [out / "Books" / "Napoleon - Andrew Roberts.md"]
     note = notes[0].read_text()
 
-    cover_rel = "Covers/Napoleon - Andrew Roberts.jpg"
-    # Cover embed from the flat Covers/ folder.
+    cover_rel = "Data/Covers/Napoleon - Andrew Roberts.jpg"
+    # Cover embed from the flat Data/Covers/ folder.
     assert f'cover: "[[{cover_rel}]]"' in note
     assert f"![[{cover_rel}|150]]" in note
     # Review and highlights are inline sections in the note itself.
@@ -87,8 +87,8 @@ def _assert_composed(out: Path) -> None:
     # Calibre description survives inline.
     assert "A great book." in note
 
-    # The cover image exists on disk under Covers/.
-    assert (out / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
+    # The cover image exists on disk under Data/Covers/.
+    assert (out / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
 
 
 def test_compose_calibre_then_goodreads_then_highlighted(tmp_path):

@@ -16,13 +16,13 @@ from books.core.paths import resolve_path
 
 DEFAULT_OBSIDIAN_PATH = "~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian"
 DEFAULT_VAULT = "History"
-DEFAULT_IMPORTS = ".imports"
+DEFAULT_IMPORTS = "Data/Imports"
 
 _DEFAULT_FILE = (
     "# books configuration\n"
     f'obsidian_path = "{DEFAULT_OBSIDIAN_PATH}"\n'
     f'vault = "{DEFAULT_VAULT}"\n'
-    "# Folder (inside the vault) holding raw import sources, hidden from Obsidian.\n"
+    "# Folder (inside the vault) holding raw import sources.\n"
     f'imports = "{DEFAULT_IMPORTS}"\n'
 )
 

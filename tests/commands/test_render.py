@@ -78,19 +78,19 @@ def test_book_frontmatter_new_note_gets_empty_topics(tmp_path):
 def test_book_frontmatter_cover_when_row_has_cover(tmp_path):
     note = tmp_path / "Books" / "X - A.md"
     row = store.BookRow(book_id="X - A", title="X", authors=["A"],
-                        cover="[[Covers/X - A.jpg]]")
+                        cover="[[Data/Covers/X - A.jpg]]")
     meta = R.book_frontmatter(row, note, existing={}, has_highlights=False)
-    assert meta["cover"] == "[[Covers/X - A.jpg]]"
+    assert meta["cover"] == "[[Data/Covers/X - A.jpg]]"
 
 
 def test_render_body_cover_review_and_highlights(tmp_path):
     note = tmp_path / "Books" / "X - A.md"
     row = store.BookRow(book_id="X - A", title="X", authors=["A"],
-                        review="My review", cover="[[Covers/X - A.jpg]]")
+                        review="My review", cover="[[Data/Covers/X - A.jpg]]")
     hls = [store.HighlightRow(source="kobo", annotation_id="1", text="quote one",
                               location="42", location_kind="percent")]
     body = R.render_body("", row, note, hls)
-    assert "![[Covers/X - A.jpg|150]]" in body
+    assert "![[Data/Covers/X - A.jpg|150]]" in body
     assert "## Review" in body and "My review" in body
     assert "## Highlights" in body and "quote one" in body
     assert "%% books:highlights:start %%" in body

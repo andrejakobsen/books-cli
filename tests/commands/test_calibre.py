@@ -66,7 +66,7 @@ def test_full_conversion(tmp_path):
     assert stats["covers"] == 1
 
     note = (out / "Books" / "Napoleon - Andrew Roberts.md").read_text()
-    cover_rel = "Covers/Napoleon - Andrew Roberts.jpg"
+    cover_rel = "Data/Covers/Napoleon - Andrew Roberts.jpg"
     # Frontmatter values
     assert "type: book" in note
     assert 'title: "Napoleon: A Life"' in note
@@ -87,8 +87,8 @@ def test_full_conversion(tmp_path):
     assert f"![[{cover_rel}|150]]" in note
     assert "**great**" in note
 
-    # Cover copied into the flat Covers/ folder
-    assert (out / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
+    # Cover copied into the flat Data/Covers/ folder
+    assert (out / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
 
 
 def test_missing_cover(tmp_path):
@@ -100,7 +100,7 @@ def test_missing_cover(tmp_path):
     assert "cover:\n" in note or note.rstrip().endswith("cover:")  # empty placeholder
     assert "cover.jpg" not in note                                 # no body embed / ref
     assert "rating:" in note  # empty rating still present
-    assert not (out / "Covers" / "No Cover Book - Jane Doe.jpg").exists()
+    assert not (out / "Data" / "Covers" / "No Cover Book - Jane Doe.jpg").exists()
 
 
 def test_book_note_has_goodreads_placeholders(tmp_path):

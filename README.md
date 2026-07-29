@@ -51,9 +51,9 @@ uv run books --help          # or just run it via uv without installing
 
 ## Quickstart
 
-1. Drop your export files into hidden subfolders of your vault:
-   `.imports/goodreads`, `.imports/readwise`, `.imports/highlighted`,
-   `.imports/kobo`. (Calibre is read from `~/Calibre Library`; a mounted Kobo is
+1. Drop your export files into the import subfolders of your vault:
+   `Data/Imports/goodreads`, `Data/Imports/readwise`, `Data/Imports/highlighted`,
+   `Data/Imports/kobo`. (Calibre is read from `~/Calibre Library`; a mounted Kobo is
    copied in automatically.)
 2. Refresh everything with one command:
 
@@ -72,7 +72,7 @@ On first run `books` creates `~/.config/books/config.toml`:
 ```toml
 obsidian_path = "~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian"
 vault = "History"
-imports = ".imports"
+imports = "Data/Imports"
 ```
 
 Commands write to `obsidian_path/vault`; pass `--output` to override per run.
@@ -83,13 +83,13 @@ commands above just work: drop a file in the right subfolder and it's found.
 ## Commands
 
 Run any importer on its own, or `books sync` to run them all. With sources in
-`.imports/` and a configured vault, none of these need arguments:
+`Data/Imports/` and a configured vault, none of these need arguments:
 
 ```bash
 books calibre        # imports ~/Calibre Library
-books goodreads      # newest CSV in .imports/goodreads
-books readwise       # newest CSV in .imports/readwise
-books highlighted    # every CSV in .imports/highlighted
+books goodreads      # newest CSV in Data/Imports/goodreads
+books readwise       # newest CSV in Data/Imports/readwise
+books highlighted    # every CSV in Data/Imports/highlighted
 books kobo           # copies a mounted Kobo's DB in, then exports
 books covers         # fetch missing cover images
 ```
@@ -149,7 +149,7 @@ On first run you're prompted for your Audible email, password, and marketplace
   no key), `openai` (needs `OPENAI_API_KEY`), or `google` (free, lower quality).
   `--model` picks the Whisper model size (default `small`) for the local/openai
   backends.
-- **Caching** — transcriptions are cached in `<vault>/.imports/audible/cache.json`
+- **Caching** — transcriptions are cached in `<vault>/Data/Imports/audible/cache.json`
   (keyed by ASIN + annotation id). Re-runs re-render for free and only download
   books that have new clips; the downloaded audio goes to a temp dir and is
   deleted after cutting.
@@ -158,13 +158,16 @@ On first run you're prompted for your Audible email, password, and marketplace
 
 ## The vault layout
 
-Everything lives in flat, top-level folders:
+Your notes live in flat, top-level folders; everything the tooling manages
+lives under `Data/`:
 
 - **`Books/`** — one note per book (`<Title> - <Author>.md`): frontmatter, a
   cover embed, an optional `## Review`, and a `## Highlights` section.
-- **`Covers/`** — cover images named to match their note.
 - **`Notes/`** — your own free-form notes; never touched by importers.
 - **`Authors/`** and **`Topics/`** — stub notes for the graph.
+- **`Data/`** — tool-managed data: `Data/Imports/` (raw export files you drop
+  in), `Data/Covers/` (cover images named to match their note), and the CSV
+  store (`Data/Sources/`, `Data/Highlights/`, `Data/books.csv`).
 
 Re-running is safe. Highlights live between `%% books:highlights:start %%` /
 `:end %%` markers and are regenerated wholesale; everything else you write —

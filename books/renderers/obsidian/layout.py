@@ -12,11 +12,11 @@ from books.renderers.obsidian.format import wikilink, yaml_quote
 
 # Book notes live flat in vault/Books/ and are the single indexed file per book:
 # frontmatter + a cover embed + inline highlights (+ an optional review). Covers
-# live flat in vault/Covers/ (a visible folder, so the embed renders; the user
-# hides it in Obsidian). Personal notes are hand-made in vault/Notes/ and never
-# touched by the tooling — the book note only links to them.
+# live flat in vault/Data/Covers/ (tool-managed data; the embed still resolves,
+# and the user hides Data/ in Obsidian). Personal notes are hand-made in
+# vault/Notes/ and never touched by the tooling — the book note only links to them.
 BOOKS_DIRNAME = "Books"
-COVERS_DIRNAME = "Covers"
+COVERS_DIRNAME = "Data/Covers"
 NOTES_DIRNAME = "Notes"
 AUTHORS_DIRNAME = "Authors"
 TOPICS_DIRNAME = "Topics"
