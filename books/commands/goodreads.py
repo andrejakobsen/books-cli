@@ -41,7 +41,6 @@ class GoodreadsBook:
     shelves: list[str] = field(default_factory=list)
     review: str | None = None
     private_notes: str | None = None
-    exclusive_shelf: str | None = None
 
 
 def _strip_isbn(raw: str) -> str | None:
@@ -118,7 +117,6 @@ def parse_csv(path: Path) -> list[GoodreadsBook]:
                 shelves=shelves,
                 review=(row.get("My Review") or "").strip() or None,
                 private_notes=(row.get("Private Notes") or "").strip() or None,
-                exclusive_shelf=(row.get("Exclusive Shelf") or "").strip() or None,
             ))
     return books
 
@@ -183,7 +181,7 @@ def goodreads_to_obsidian(
         None,
         "--csv", "-c",
         help="Path to a Goodreads CSV export, or a folder of exports (the newest "
-             "*.csv is used). Defaults to <vault>/.imports/goodreads. Relative "
+             "*.csv is used). Defaults to <vault>/Data/Imports/goodreads. Relative "
              "paths resolve against the current directory.",
     ),
     output: Path | None = typer.Option(

@@ -132,6 +132,17 @@ def test_goodreads_unrated_book_has_empty_rating(tmp_path):
     assert row.shelves == ["wishlist"]
 
 
+def test_goodreads_review_concatenates_private_notes(tmp_path):
+    vault = tmp_path / "vault"
+    (tmp_path / "pn.csv").write_text(
+        "Title,Author,My Review,Private Notes,Book Id\n"
+        "The Deluge,Adam Tooze,Great book,secret thoughts,1\n",
+        encoding="utf-8")
+    gr.convert(tmp_path / "pn.csv", vault)
+    row = store.read_layer(vault, "goodreads")[0]
+    assert row.review == "Great book\n\n### Private Notes\n\nsecret thoughts"
+
+
 def test_goodreads_skips_titleless_or_authorless(tmp_path):
     vault = tmp_path / "vault"
     (tmp_path / "g.csv").write_text(
