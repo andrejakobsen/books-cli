@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from books import store
+from books.obsidian import BookRef
 
 
 def test_bookrow_csv_roundtrip_joins_list_fields():
@@ -222,3 +223,28 @@ def test_merge_read_books_csv_roundtrip(tmp_path):
     rows = store.read_books_csv(vault)
     assert rows[0].book_id == "X - A"
     assert rows[0].shelves == ["read"]
+
+
+def test_catalog_find_by_isbn_amazon_and_title_author(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_layer(vault, "calibre", [
+        store.BookRow(title="The Deluge", authors=["Adam Tooze"],
+                      isbn="9780141032184", amazon="B00DELUGE"),
+    ])
+    store.merge(vault)
+    cat = store.Catalog(vault)
+
+    assert cat.find(BookRef(title="whatever", isbn="0-14-103218-9")) == "The Deluge - Adam Tooze"
+    assert cat.find(BookRef(title="whatever", amazon="b00deluge")) == "The Deluge - Adam Tooze"
+    assert cat.find(BookRef(title="The Deluge", authors=["Tooze, Adam"])) == "The Deluge - Adam Tooze"
+    assert cat.find(BookRef(title="Nonexistent", authors=["Nobody"])) is None
+
+
+def test_catalog_find_fuzzy_title(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_layer(vault, "calibre",
+                      [store.BookRow(title="The Deluge: The Great War", authors=["Adam Tooze"])])
+    store.merge(vault)
+    cat = store.Catalog(vault)
+    assert cat.find(BookRef(title="The Deluge", authors=["Adam Tooze"])) == \
+        "The Deluge - Adam Tooze"

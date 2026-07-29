@@ -19,7 +19,7 @@ import isbnlib
 from pydantic import BaseModel, Field
 from rapidfuzz import fuzz
 
-from books.obsidian import author_key, norm_amazon, norm_isbn, norm_title, safe_filename, strip_subtitle
+from books.obsidian import BookRef, author_key, norm_amazon, norm_isbn, norm_title, safe_filename, strip_subtitle
 
 LIST_SEP = ";"
 
@@ -307,3 +307,48 @@ def merge(vault: Path) -> list[BookRow]:
         catalog.append(merged)
     write_books_csv(vault, catalog)
     return catalog
+
+
+class Catalog:
+    """Identity lookup over ``books.csv`` for the highlight importers.
+
+    ``find(ref)`` returns the ``book_id`` of the matching book or None; it never
+    creates anything. Matches by canonical ISBN, then Amazon id, then exact
+    normalized (title, author), then a conservative fuzzy title fallback.
+    """
+
+    def __init__(self, vault: Path) -> None:
+        self.rows = read_books_csv(vault)
+        self._by_isbn: dict[str, str] = {}
+        self._by_amazon: dict[str, str] = {}
+        self._by_ta: dict[tuple[str, tuple[str, str]], str] = {}
+        for r in self.rows:
+            ci = canonical_isbn(r.isbn)
+            if ci:
+                self._by_isbn.setdefault(ci, r.book_id)
+            na = norm_amazon(r.amazon)
+            if na:
+                self._by_amazon.setdefault(na, r.book_id)
+            if r.authors:
+                key = (norm_title(r.title), author_key(r.authors[0]))
+                self._by_ta.setdefault(key, r.book_id)
+
+    def find(self, ref: BookRef) -> str | None:
+        ci = canonical_isbn(ref.isbn)
+        if ci and ci in self._by_isbn:
+            return self._by_isbn[ci]
+        na = norm_amazon(ref.amazon)
+        if na and na in self._by_amazon:
+            return self._by_amazon[na]
+        if ref.authors:
+            key = (norm_title(ref.title), author_key(ref.authors[0]))
+            if key in self._by_ta:
+                return self._by_ta[key]
+            akey = author_key(ref.authors[0])
+            nt = norm_title(ref.title)
+            for r in self.rows:
+                if not r.authors or author_key(r.authors[0]) != akey:
+                    continue
+                if fuzz.partial_ratio(nt, norm_title(r.title)) >= TITLE_MATCH_THRESHOLD:
+                    return r.book_id
+        return None
