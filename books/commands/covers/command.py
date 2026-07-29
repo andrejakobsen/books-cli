@@ -17,19 +17,6 @@ from books.commands.covers.sources import (
     iter_candidates,
 )
 from books.core import config, store
-from books.core.paths import resolve_path
-from books.renderers.obsidian import (
-    BOOKS_DIRNAME,
-    VaultIndex,
-    cover_path,
-    cover_refs,
-    ensure_top_embed,
-    extract_wikilinks,
-    frontmatter_values,
-    unquote,
-    update_frontmatter,
-    yaml_quote,
-)
 
 
 def books_missing_cover(vault: Path) -> list[MissingBook]:
@@ -200,20 +187,18 @@ def run(vault, *, interactive, dry_run, limit,
 
 def covers_command(
     output: Path | None = typer.Option(
-        None,
-        "--output", "-o",
-        help="Obsidian vault to scan. Defaults to the vault from your config file "
+        None, "--output", "-o",
+        help="Obsidian vault. Defaults to the vault from your config file "
              "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
-    book: Path | None = typer.Option(
+    book: str | None = typer.Option(
         None, "--book", "-b",
-        help="Fetch a cover for a single book note (path to a file under Books/). "
-             "Interactive by default; the vault is inferred from the path, so --output is ignored.",
-    ),
+        help="Fetch a cover for a single catalog book by its book_id (the "
+             "'<Title> - <Author>' stem in Data/books.csv). Interactive by default."),
     interactive: bool | None = typer.Option(
         None, "--interactive/--no-interactive",
         help="Confirm each candidate: accept / next / skip book / quit. "
-             "Defaults on for a single --book, off for a full-vault scan.",
+             "Defaults on for a single --book, off for a full scan.",
     ),
     dry_run: bool = typer.Option(
         False, "--dry-run",
@@ -224,46 +209,35 @@ def covers_command(
         help="Process at most this many books missing a cover (ignored with --book).",
     ),
 ) -> None:
-    """Find book notes missing a cover and fetch one.
+    """Fetch covers for catalog books missing one, into the ``covers`` layer.
 
-    Scans OUTPUT (an Obsidian vault) for 'type: book' notes whose 'cover:'
-    frontmatter is blank and fetches a cover from Apple Books, then Google Books,
-    then Open Library (paperback editions preferred where known), then Amazon
-    (only when the note already carries an 'amazon' ASIN). By default the best
-    match is written automatically; use --interactive to approve each candidate,
-    or --dry-run to preview. Pass --book PATH to fetch a cover for a single note under Books/
-    (interactive by default). Existing covers, note bodies, and filenames are
-    never changed.
+    Reads Data/books.csv for 'type: book' rows whose 'cover' is blank (and which
+    have no Data/Covers/<book_id>.jpg yet) and fetches a cover from Apple Books,
+    then Google Books, then Open Library, then Amazon (only when the row has an
+    'amazon' ASIN). The image is staged under Data/Sources/_covers/covers/ and a
+    'covers' layer row is written (with any learned ISBN); run 'merge' then
+    'render' to fold it in and materialize Data/Covers/<book_id>.jpg. By default
+    the best match is written automatically; use --interactive to approve each,
+    or --dry-run to preview. Pass --book <book_id> for a single book.
     """
-    if book is not None:
-        note = resolve_path(book, Path.cwd())
-        if not note.is_file():
-            raise typer.BadParameter(f"book note not found: {note}", param_hint="--book")
-        if note.parent.name != BOOKS_DIRNAME:
-            raise typer.BadParameter(
-                f"book note must live under a '{BOOKS_DIRNAME}/' folder: {note}",
-                param_hint="--book")
-        vault = note.parents[1]
-    else:
-        note = None
-        vault = config.resolve_vault(output)
-        if not (vault / BOOKS_DIRNAME).is_dir():
-            raise typer.BadParameter(
-                f"no Books/ folder in vault: {vault}", param_hint="--output")
+    vault = config.resolve_vault(output)
+    if not store.books_csv_path(vault).is_file():
+        raise typer.BadParameter(
+            f"no books.csv under {store.data_dir(vault)} — run the importers + merge first",
+            param_hint="--output",
+        )
 
-    # Interactive is on by default for a single book, off for a full scan,
-    # unless the user set it explicitly with --interactive/--no-interactive.
     if interactive is None:
         interactive = book is not None
 
     stats = run(
         vault, interactive=interactive, dry_run=dry_run, limit=limit,
         fetch_json=default_fetch_json, fetch_bytes=default_fetch_bytes,
-        prompt=_terminal_prompt, book_path=note,
+        prompt=_terminal_prompt, book_id=book,
     )
     bs = stats["by_source"]
     typer.echo(
-        f"Scanned {stats['scanned']} notes, {stats['missing']} missing covers → "
+        f"Scanned {stats['scanned']} books, {stats['missing']} missing covers → "
         f"{stats['fetched']} fetched "
         f"(apple {bs['apple']}, google {bs['google']}, "
         f"openlibrary {bs['openlibrary']}, amazon {bs['amazon']}), "

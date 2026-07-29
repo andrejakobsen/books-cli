@@ -38,12 +38,13 @@ def test_books_missing_cover_no_catalog_returns_empty(tmp_path):
 
 def test_dataclasses_exist():
     mb = covers.MissingBook(
-        note_path=Path("/x/Books/A.md"),
+        book_id="A - Ann",
         title="A Title",
         authors=["An Author"],
         isbn="123",
         amazon="B00XYZ",
     )
+    assert mb.book_id == "A - Ann"
     assert mb.title == "A Title"
     assert mb.authors == ["An Author"]
 
@@ -53,14 +54,6 @@ def test_dataclasses_exist():
     )
     assert c.source == "google"
     assert c.fmt is None
-
-
-def _write_note(vault: Path, name: str, body: str) -> Path:
-    books = vault / "Books"
-    books.mkdir(parents=True, exist_ok=True)
-    p = books / name
-    p.write_text(body, encoding="utf-8")
-    return p
 
 
 GOOGLE_VOLUME = {
@@ -692,82 +685,49 @@ def test_cli_covers_dry_run(tmp_path, monkeypatch):
     from typer.testing import CliRunner
     from books.cli import app
 
-    _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
-        '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
-
-    # stub the network so the CLI test stays offline
+    _seed_catalog(tmp_path, [store.BookRow(book_id="A - Ann", title="A", authors=["Ann"])])
     monkeypatch.setattr(covers.command, "default_fetch_json", lambda url: GOOGLE_VOLUME)
-    monkeypatch.setattr(
-        covers.command, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
-
-    result = CliRunner().invoke(
-        app, ["covers", "-o", str(tmp_path), "--dry-run"])
-    assert result.exit_code == 0, result.output
-    assert "missing" in result.output.lower()
-    assert not (tmp_path / "Data" / "Covers").exists()
-
-
-def test_cli_covers_reports_errored_sources(tmp_path, monkeypatch):
-    from typer.testing import CliRunner
-    from books.cli import app
-
-    _write_note(tmp_path, "X - Y.md",
-        '---\ntype: book\ntitle: "X"\nauthors: ["[[Y]]"]\namazon: "B00ABCDEFG"\ncover:\n---\n')
-
-    def fetch_json(url):
-        if "googleapis" in url:
-            raise _http_error(429)
-        return {"docs": []}
-
-    monkeypatch.setattr(covers.command, "default_fetch_json", fetch_json)
     monkeypatch.setattr(
         covers.command, "default_fetch_bytes", lambda url: (_png(200, 300), "image/jpeg"))
 
     result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0, result.output
-    # the summary distinguishes a source that errored from one that found nothing
-    assert "google" in result.output.lower()
-    assert "error" in result.output.lower()
+    assert "missing" in result.output.lower()
+    assert store.read_layer(tmp_path, "covers") == []
+
+
+def test_cli_covers_errors_without_catalog(tmp_path):
+    from typer.testing import CliRunner
+    from books.cli import app
+    result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path)])
+    assert result.exit_code != 0
+    assert "books.csv" in result.output.lower()
+
+
+def test_cli_covers_single_book_by_id(tmp_path, monkeypatch):
+    from typer.testing import CliRunner
+    from books.cli import app
+
+    _seed_catalog(tmp_path, [
+        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
+        store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
+    ])
+    monkeypatch.setattr(covers.command, "default_fetch_json",
+                        lambda url: GOOGLE_VOLUME if "googleapis" in url else {"docs": []})
+    monkeypatch.setattr(
+        covers.command, "default_fetch_bytes", lambda url: (_png(200, 300), "image/jpeg"))
+    monkeypatch.setattr(covers.command, "_terminal_prompt", lambda c: "accept")
+
+    result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path), "-b", "A - Ann"])
+    assert result.exit_code == 0, result.output
+    stems = [Path(r.cover).stem for r in store.read_layer(tmp_path, "covers")]
+    assert stems == ["A - Ann"]
 
 
 def test_cli_covers_registered():
     from books.cli import app
     names = {c.name for c in app.registered_commands}
     assert "covers" in names
-
-
-def test_cli_covers_single_book_interactive_by_default(tmp_path, monkeypatch):
-    from typer.testing import CliRunner
-    from books.cli import app
-
-    note = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
-        '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
-    # another missing-cover book that must NOT be touched
-    _write_note(tmp_path, "Other - X.md",
-        '---\ntype: book\ntitle: "Other"\nauthors: ["[[X]]"]\ncover:\n---\n')
-
-    monkeypatch.setattr(covers.command, "default_fetch_json", lambda url: GOOGLE_VOLUME)
-    monkeypatch.setattr(
-        covers.command, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
-    # single-book mode is interactive by default -> the prompt is used; accept it.
-    monkeypatch.setattr(covers.command, "_terminal_prompt", lambda c: "accept")
-
-    result = CliRunner().invoke(app, ["covers", "-b", str(note)])
-    assert result.exit_code == 0, result.output
-    assert (tmp_path / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
-    assert not (tmp_path / "Data" / "Covers" / "Other - X.jpg").exists()
-
-
-def test_cli_covers_single_book_rejects_note_outside_books(tmp_path):
-    from typer.testing import CliRunner
-    from books.cli import app
-
-    stray = tmp_path / "stray.md"
-    stray.write_text('---\ntype: book\ntitle: "S"\ncover:\n---\n', encoding="utf-8")
-    result = CliRunner().invoke(app, ["covers", "-b", str(stray)])
-    assert result.exit_code != 0
 
 
 def test_apple_books_query_uses_title_and_author_not_isbn():
