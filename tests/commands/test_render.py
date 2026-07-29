@@ -198,12 +198,13 @@ def test_render_writes_notes_from_store(tmp_path):
     assert post["title"] == "The Deluge"
     assert post["highlighted"] is True
     assert "an insight" in post.content
-    assert stats == {"notes": 1, "highlights": 1, "reviews": 0, "failed": 0}
+    assert stats == {"notes": 1, "highlights": 1, "reviews": 0, "failed": 0,
+                     "authors": 1}
 
 
 def test_render_empty_catalog_is_noop(tmp_path):
     assert R.render(tmp_path / "vault") == {
-        "notes": 0, "highlights": 0, "reviews": 0, "failed": 0}
+        "notes": 0, "highlights": 0, "reviews": 0, "failed": 0, "authors": 0}
 
 
 def test_render_continues_past_a_corrupted_note(tmp_path):
@@ -308,3 +309,16 @@ def test_render_note_preserves_aliases_across_rerender(tmp_path):
     assert post["cssclasses"] == ["book"]
     R.render_note(vault, row, [])            # idempotent with preserved keys
     assert note.read_text(encoding="utf-8") == first
+
+
+def test_render_creates_author_stubs(tmp_path):
+    from books.commands import render as R
+    vault = tmp_path / "vault"
+    store.write_books_csv(vault, [
+        store.BookRow(book_id="X - A", title="X", authors=["Ada Lovelace"]),
+    ])
+    R.render(vault)
+    stub = vault / "Authors" / "Ada Lovelace.md"
+    assert stub.is_file()
+    assert "type: author" in stub.read_text(encoding="utf-8")
+    assert not (vault / "Topics").exists()  # topics stubs are never created

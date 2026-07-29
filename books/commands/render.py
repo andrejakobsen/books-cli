@@ -29,6 +29,7 @@ from ruamel.yaml import YAML
 from books.core import config, store
 from books.core.store import BookRow, row_to_highlight
 from books.renderers.obsidian import (
+    AUTHORS_DIRNAME,
     BOOK_PROPERTY_ORDER,
     BOOKS_DIRNAME,
     COVER_WIDTH,
@@ -39,6 +40,7 @@ from books.renderers.obsidian import (
     render_highlights,
     render_marked_section,
     wikilink,
+    write_stub,
 )
 
 # The note frontmatter schema: the canonical order minus the retired ``source``
@@ -233,11 +235,15 @@ def render_note(vault: Path, row: BookRow, highlights: list) -> Path:
 def render(vault: Path) -> dict:
     """Render every book in ``books.csv`` (+ its highlights) into ``Books/``.
 
+    Also creates an ``Authors/<name>.md`` stub for each distinct author (the
+    graph hubs calibre/goodreads used to create); topics are never stubbed.
     Continue-on-error: a book whose note cannot be rendered (e.g. an existing
     note with hand-corrupted frontmatter) is counted under ``failed`` and
     reported; the remaining books still render.
     """
-    stats = {"notes": 0, "highlights": 0, "reviews": 0, "failed": 0}
+    stats = {"notes": 0, "highlights": 0, "reviews": 0, "failed": 0, "authors": 0}
+    authors_dir = vault / AUTHORS_DIRNAME
+    seen_authors: set[str] = set()
     for row in store.read_books_csv(vault):
         if not row.book_id:
             continue
@@ -252,6 +258,11 @@ def render(vault: Path) -> dict:
         stats["highlights"] += len(highlights)
         if (row.review or "").strip():
             stats["reviews"] += 1
+        for author in row.authors:
+            if author and author not in seen_authors:
+                write_stub(authors_dir, author, "author")
+                seen_authors.add(author)
+    stats["authors"] = len(seen_authors)
     return stats
 
 
@@ -294,7 +305,8 @@ def render_command(
     suffix = f" ({stats['failed']} failed)" if stats.get("failed") else ""
     typer.echo(
         f"Done. {stats['notes']} notes, {stats['highlights']} highlights, "
-        f"{stats['reviews']} reviews{suffix}.\nOutput: {vault}"
+        f"{stats['reviews']} reviews, {stats['authors']} authors{suffix}.\n"
+        f"Output: {vault}"
     )
 
 
