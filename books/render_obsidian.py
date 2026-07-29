@@ -25,7 +25,7 @@ import frontmatter
 import typer
 from ruamel.yaml import YAML
 
-from books import store
+from books import config, store
 from books.highlights import render_highlights
 from books.obsidian import (
     BOOK_PROPERTY_ORDER,
@@ -203,3 +203,48 @@ def render(vault: Path) -> dict:
         if (row.review or "").strip():
             stats["reviews"] += 1
     return stats
+
+
+def render_command(
+    output: Path | None = typer.Option(
+        None, "--output", "-o",
+        help="Obsidian vault. Defaults to the vault from your config file "
+             "(~/.config/books/config.toml). Relative paths resolve against the "
+             "current directory.",
+    ),
+) -> None:
+    """Render the CSV store into Obsidian book notes under Books/.
+
+    Reads <vault>/Data/books.csv and <vault>/Data/Highlights/<book-id>.csv (built
+    by the importers + merge) and writes one flat note per book. Frontmatter is
+    written authoritatively from the store; your hand-edited `topics` and any
+    `## Review` section are preserved, as is note body outside the managed
+    Highlights markers.
+    """
+    vault = config.resolve_vault(output)
+    if not store.books_csv_path(vault).is_file():
+        raise typer.BadParameter(
+            f"no books.csv under {store.data_dir(vault)} — run the importers + merge first",
+            param_hint="--output",
+        )
+    vault.mkdir(parents=True, exist_ok=True)
+    stats = render(vault)
+    suffix = f" ({stats['failed']} failed)" if stats.get("failed") else ""
+    typer.echo(
+        f"Done. {stats['notes']} notes, {stats['highlights']} highlights, "
+        f"{stats['reviews']} reviews{suffix}.\nOutput: {vault}"
+    )
+
+
+def register(app: typer.Typer) -> None:
+    """Register this capability's command(s) on the shared Typer app."""
+    app.command("render")(render_command)
+
+
+def main() -> None:
+    """Standalone entry point so a shim script keeps working on its own."""
+    typer.run(render_command)
+
+
+if __name__ == "__main__":
+    main()

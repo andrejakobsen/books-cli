@@ -1,7 +1,9 @@
 import frontmatter
+from typer.testing import CliRunner
 
 from books import render_obsidian as R
 from books import store
+from books.cli import app
 
 
 def test_render_rating_numeric_and_passthrough():
@@ -204,3 +206,18 @@ def test_render_continues_past_a_corrupted_note(tmp_path):
     assert stats["failed"] == 1
     assert stats["notes"] == 1
     assert (vault / "Books" / "Good - A.md").is_file()
+
+
+def test_render_command_renders_vault(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_layer(vault, "calibre",
+                      [store.BookRow(title="X", authors=["A"], format="ebook")])
+    store.merge(vault)
+    result = CliRunner().invoke(app, ["render", "--output", str(vault)])
+    assert result.exit_code == 0, result.output
+    assert (vault / "Books" / "X - A.md").is_file()
+
+
+def test_render_command_errors_without_books_csv(tmp_path):
+    result = CliRunner().invoke(app, ["render", "--output", str(tmp_path / "vault")])
+    assert result.exit_code != 0

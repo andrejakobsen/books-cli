@@ -21,6 +21,7 @@ from books import (
     highlighted_obsidian,
     kobo_export,
     readwise_obsidian,
+    render_obsidian,
     sync,
 )
 
@@ -33,6 +34,7 @@ CAPABILITIES = (
     highlighted_obsidian,
     kobo_export,
     readwise_obsidian,
+    render_obsidian,
     sync,
 )
 
