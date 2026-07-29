@@ -93,27 +93,6 @@ def pick_cover(candidates, fetch_bytes, *, interactive, prompt):
     return None
 
 
-def apply_cover(index: VaultIndex, book: MissingBook, image: bytes,
-                isbn: str | None = None) -> None:
-    """Write the cover image and fill the note's cover frontmatter + embed.
-
-    When *isbn* is supplied (learned from a source), it is backfilled into the
-    note's frontmatter; the never-overwrite merge leaves any existing ISBN alone.
-    """
-    dst = cover_path(book.note_path)
-    dst.parent.mkdir(parents=True, exist_ok=True)
-    dst.write_bytes(image)
-
-    cover_fm, cover_embed = cover_refs(book.note_path)
-    updates = {"cover": cover_fm}
-    if isbn:
-        updates["isbn"] = yaml_quote(isbn)
-    text = book.note_path.read_text(encoding="utf-8")
-    text = update_frontmatter(text, updates)
-    text = ensure_top_embed(text, cover_embed)
-    book.note_path.write_text(text, encoding="utf-8")
-
-
 def _terminal_prompt(cand: Candidate) -> str:
     """Ask the user about one candidate; map keys to an action string."""
     fmt = f" [{cand.fmt}]" if cand.fmt else ""
@@ -122,23 +101,51 @@ def _terminal_prompt(cand: Candidate) -> str:
     return {"y": "accept", "n": "next", "s": "skip", "q": "quit"}.get(ans, "next")
 
 
-def run(vault, *, interactive, dry_run, limit,
-        fetch_json, fetch_bytes, prompt, book_path=None):
-    """Fetch a cover for books missing one.
+def _covers_staging(vault: Path) -> Path:
+    return store.sources_dir(vault) / "_covers" / "covers"
 
-    When *book_path* is given, only that single note is processed (the rest of the
-    vault is left alone); otherwise the whole vault is scanned. Returns a stats
-    dict: scanned/missing/processed/fetched/not_found/by_source.
+
+def _stage_image(vault: Path, book_id: str, image: bytes) -> str:
+    """Write *image* to the covers staging dir; return its vault-relative path."""
+    staging = _covers_staging(vault)
+    staging.mkdir(parents=True, exist_ok=True)
+    dest = staging / f"{book_id}.jpg"
+    dest.write_bytes(image)
+    return dest.relative_to(vault).as_posix()
+
+
+def _existing_covers_layer(vault: Path) -> dict[str, store.BookRow]:
+    """Prior covers-layer rows keyed by the book_id embedded in their staged path.
+
+    Lets a partial run (``--limit``/``--book``) preserve covers fetched earlier
+    instead of overwriting the layer with only this run's rows.
     """
-    if book_path is not None:
-        one = note_to_missing(book_path)
-        missing = [one] if one is not None else []
+    out: dict[str, store.BookRow] = {}
+    for row in store.read_layer(vault, "covers"):
+        if row.cover:
+            out[Path(row.cover).stem] = row
+    return out
+
+
+def run(vault, *, interactive, dry_run, limit,
+        fetch_json, fetch_bytes, prompt, book_id=None):
+    """Fetch covers for catalog books missing one, into the ``covers`` layer.
+
+    Reads books.csv for cover-less books (:func:`books_missing_cover`), fetches an
+    image per book (network unchanged), stages it under
+    ``Data/Sources/_covers/covers/<book_id>.jpg`` and records a ``covers`` layer
+    row (identity + learned isbn + staged path). ``merge`` folds it in and
+    ``render`` materializes it. When *book_id* is given, only that catalog book is
+    processed. Returns a stats dict.
+    """
+    all_missing = books_missing_cover(vault)
+    if book_id is not None:
+        missing = [m for m in all_missing if m.book_id == book_id]
         scanned = 1
     else:
-        missing = find_missing(vault)
-        scanned = (len(list((vault / BOOKS_DIRNAME).glob("*.md")))
-                   if (vault / BOOKS_DIRNAME).is_dir() else 0)
-    index = VaultIndex(vault)
+        missing = all_missing
+        scanned = len(store.read_books_csv(vault))
+
     stats = {
         "scanned": scanned,
         "missing": len(missing),
@@ -148,7 +155,9 @@ def run(vault, *, interactive, dry_run, limit,
         "by_source": {"apple": 0, "google": 0, "openlibrary": 0, "amazon": 0},
         "errored": {"apple": 0, "google": 0, "openlibrary": 0, "amazon": 0},
     }
-    todo = missing if (book_path is not None or limit is None) else missing[:limit]
+
+    layer = _existing_covers_layer(vault) if not dry_run else {}
+    todo = missing if (book_id is not None or limit is None) else missing[:limit]
     for book in todo:
         stats["processed"] += 1
         if interactive:
@@ -162,8 +171,6 @@ def run(vault, *, interactive, dry_run, limit,
             print("Quit.")
             break
         finally:
-            # `errored` is populated lazily as pick_cover consumes candidates, so
-            # it only holds sources actually reached before a cover was found.
             for src in errored:
                 stats["errored"][src] = stats["errored"].get(src, 0) + 1
         if picked is None:
@@ -175,9 +182,19 @@ def run(vault, *, interactive, dry_run, limit,
         stats["by_source"][cand.source] = stats["by_source"].get(cand.source, 0) + 1
         if dry_run:
             print(f"  [dry-run] {cand.source}: {cand.image_url}")
-        else:
-            apply_cover(index, book, data, isbn=cand.isbn)
-            print(f"  ✓ {cand.source}: {book.title}")
+            continue
+        cover_rel = _stage_image(vault, book.book_id, data)
+        layer[book.book_id] = store.BookRow(
+            title=book.title,
+            authors=list(book.authors),
+            isbn=(cand.isbn or book.isbn or ""),
+            amazon=(book.amazon or ""),
+            cover=cover_rel,
+        )
+        print(f"  ✓ {cand.source}: {book.title}")
+
+    if not dry_run:
+        store.write_layer(vault, "covers", list(layer.values()))
     return stats
 
 

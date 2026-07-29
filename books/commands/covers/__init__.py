@@ -3,7 +3,6 @@
 from books.commands.covers.command import (
     QuitRequested,
     _terminal_prompt,
-    apply_cover,
     books_missing_cover,
     pick_cover,
     register,
@@ -32,7 +31,7 @@ from books.commands.covers.sources import (
 
 __all__ = [
     "Candidate", "MissingBook", "QuitRequested", "_itunes_artwork", "_itunes_isbn",
-    "_terminal_prompt", "amazon_candidates", "apple_books_candidates", "apply_cover",
+    "_terminal_prompt", "amazon_candidates", "apple_books_candidates",
     "books_missing_cover", "default_fetch_bytes", "default_fetch_json",
     "fetch_with_retry", "gather_candidates", "gather_with_errors",
     "google_books_candidates", "image_dimensions", "is_valid_image",

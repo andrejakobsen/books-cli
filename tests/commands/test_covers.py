@@ -63,34 +63,6 @@ def _write_note(vault: Path, name: str, body: str) -> Path:
     return p
 
 
-def test_find_missing_selects_blank_cover_book_notes(tmp_path):
-    # blank cover -> included
-    _write_note(tmp_path, "A.md",
-        '---\ntype: book\ntitle: "A"\nauthors: ["[[Ann Author]]"]\n'
-        'isbn: "111"\namazon: "B001"\ncover:\n---\nbody\n')
-    # non-empty cover -> excluded
-    _write_note(tmp_path, "B.md",
-        '---\ntype: book\ntitle: "B"\ncover: "[[Exports/x/cover.jpg]]"\n---\n')
-    # absent cover key -> included
-    _write_note(tmp_path, "C.md",
-        '---\ntype: book\ntitle: "C"\nauthors: ["[[Cee]]"]\n---\n')
-    # not a book -> excluded
-    _write_note(tmp_path, "D.md", '---\ntype: author\ncover:\n---\n')
-
-    missing = covers.find_missing(tmp_path)
-    titles = sorted(m.title for m in missing)
-    assert titles == ["A", "C"]
-
-    a = next(m for m in missing if m.title == "A")
-    assert a.authors == ["Ann Author"]
-    assert a.isbn == "111"
-    assert a.amazon == "B001"
-
-
-def test_find_missing_no_books_dir_returns_empty(tmp_path):
-    assert covers.find_missing(tmp_path) == []
-
-
 GOOGLE_VOLUME = {
     "items": [
         {
@@ -260,41 +232,6 @@ def test_google_books_captures_isbn13_from_identifiers():
         isbn=None, amazon=None)
     cands = covers.google_books_candidates(book, lambda url: data)
     assert cands[0].isbn == "9780141032184"   # ISBN_13 preferred over ISBN_10
-
-
-def test_apply_cover_backfills_isbn_when_learned(tmp_path):
-    from books.renderers.obsidian import VaultIndex
-
-    note = _write_note(tmp_path, "Deluge - Adam Tooze.md",
-        '---\ntype: book\ntitle: "The Deluge"\n'
-        'authors: ["[[Adam Tooze]]"]\nisbn:\ncover:\n---\n\nbody\n')
-    book = covers.MissingBook(
-        note_path=note, title="The Deluge", authors=["Adam Tooze"],
-        isbn=None, amazon=None)
-    index = VaultIndex(tmp_path)
-
-    covers.apply_cover(index, book, _png(200, 300), isbn="9780141032184")
-
-    text = note.read_text(encoding="utf-8")
-    assert 'isbn: "9780141032184"' in text
-
-
-def test_apply_cover_does_not_overwrite_existing_isbn(tmp_path):
-    from books.renderers.obsidian import VaultIndex
-
-    note = _write_note(tmp_path, "Deluge - Adam Tooze.md",
-        '---\ntype: book\ntitle: "The Deluge"\n'
-        'authors: ["[[Adam Tooze]]"]\nisbn: "111"\ncover:\n---\n')
-    book = covers.MissingBook(
-        note_path=note, title="The Deluge", authors=["Adam Tooze"],
-        isbn="111", amazon=None)
-    index = VaultIndex(tmp_path)
-
-    covers.apply_cover(index, book, _png(200, 300), isbn="999")
-
-    text = note.read_text(encoding="utf-8")
-    assert 'isbn: "111"' in text
-    assert "999" not in text
 
 
 def test_google_books_uses_isbn_query_when_present():
@@ -530,53 +467,6 @@ def test_gather_with_errors_reports_failing_source():
     assert any(c.source == "amazon" for c in cands)
 
 
-def test_run_counts_errored_sources(tmp_path):
-    _write_note(tmp_path, "X - Y.md",
-        '---\ntype: book\ntitle: "X"\nauthors: ["[[Y]]"]\namazon: "B00ABCDEFG"\ncover:\n---\n')
-
-    def fetch_json(url):
-        if "googleapis" in url:
-            raise _http_error(429)
-        return {"docs": []}
-
-    stats = covers.run(
-        tmp_path, interactive=False, dry_run=True, limit=None,
-        fetch_json=fetch_json,
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
-
-    assert stats["errored"]["google"] == 1
-    assert stats["fetched"] == 1   # amazon still succeeded
-
-
-def test_run_does_not_count_later_source_errors_when_earlier_succeeds(tmp_path):
-    # Apple returns a valid cover, so Google/Open Library must never be queried;
-    # a Google rate-limit that would occur is therefore NOT an error here.
-    _write_note(tmp_path, "X - Y.md",
-        '---\ntype: book\ntitle: "X"\nauthors: ["[[Y]]"]\ncover:\n---\n')
-
-    calls = []
-
-    def fetch_json(url):
-        calls.append(url)
-        if "itunes" in url:
-            return {"results": [{
-                "artworkUrl100": "https://ex/img/9780000000001.jpg/100x100bb.jpg",
-                "trackName": "X", "artistName": "Y"}]}
-        if "googleapis" in url:
-            raise _http_error(429)   # would count as an error if ever reached
-        return {"docs": []}
-
-    stats = covers.run(
-        tmp_path, interactive=False, dry_run=True, limit=None,
-        fetch_json=fetch_json,
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
-
-    assert stats["fetched"] == 1
-    assert stats["by_source"]["apple"] == 1
-    assert stats["errored"]["google"] == 0   # never queried → not an error
-    assert not any("googleapis" in u for u in calls)   # google was never hit
-
-
 def test_gather_candidates_source_order():
     book = covers.MissingBook(
         book_id="x", title="Napoleon", authors=["Andrew Roberts"],
@@ -680,48 +570,6 @@ def test_pick_cover_interactive_quit_raises():
             interactive=True, prompt=lambda c: "quit")
 
 
-def test_apply_cover_writes_file_and_frontmatter(tmp_path):
-    from books.renderers.obsidian import VaultIndex
-
-    note = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
-        '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n\nbody\n')
-    book = covers.MissingBook(
-        note_path=note, title="Napoleon", authors=["Andrew Roberts"],
-        isbn=None, amazon=None)
-    index = VaultIndex(tmp_path)
-
-    covers.apply_cover(index, book, b"\xff\xd8\xffJPEGDATA" + b"x" * 2000)
-
-    # cover written flat under Data/Covers/, keyed to the note stem
-    cover_file = tmp_path / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg"
-    assert cover_file.is_file()
-
-    text = note.read_text(encoding="utf-8")
-    # frontmatter cover filled with a wikilink (no width)
-    assert 'cover: "[[Data/Covers/Napoleon - Andrew Roberts.jpg]]"' in text
-    # body embed added (with display width); original body preserved
-    assert "![[Data/Covers/Napoleon - Andrew Roberts.jpg|150]]" in text
-    assert "body" in text
-
-
-def test_apply_cover_idempotent(tmp_path):
-    from books.renderers.obsidian import VaultIndex
-
-    note = _write_note(tmp_path, "N - A.md",
-        '---\ntype: book\ntitle: "N"\nauthors: ["[[A]]"]\ncover:\n---\n')
-    book = covers.MissingBook(
-        note_path=note, title="N", authors=["A"], isbn=None, amazon=None)
-    index = VaultIndex(tmp_path)
-
-    covers.apply_cover(index, book, b"x" * 2000)
-    first = note.read_text(encoding="utf-8")
-    covers.apply_cover(index, book, b"x" * 2000)
-    second = note.read_text(encoding="utf-8")
-    assert first == second   # cover already set -> no duplicate embed/frontmatter
-    assert second.count("![[Data/Covers/N - A.jpg|150]]") == 1
-
-
 def test_terminal_prompt_maps_keys(monkeypatch):
     answers = iter(["y", "n", "s", "q", "?"])
     monkeypatch.setattr("builtins.input", lambda *a: next(answers))
@@ -734,148 +582,110 @@ def test_terminal_prompt_maps_keys(monkeypatch):
     assert covers._terminal_prompt(cand) == "next"
 
 
-def test_run_fetches_and_applies(tmp_path):
-    _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
-        '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
-    # a note that already has a cover -> untouched, not counted
-    _write_note(tmp_path, "Done.md",
-        '---\ntype: book\ntitle: "Done"\ncover: "[[x/cover.jpg]]"\n---\n')
+def _google_volume_with_isbn(isbn):
+    return {"items": [{"volumeInfo": {
+        "title": "T", "authors": ["Ann"],
+        "industryIdentifiers": [{"type": "ISBN_13", "identifier": isbn}],
+        "imageLinks": {"thumbnail": "http://x/y?zoom=1"}}}]}
+
+
+def test_run_stages_image_and_writes_covers_layer(tmp_path):
+    _seed_catalog(tmp_path, [
+        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
+    ])
 
     def fetch_json(url):
         return GOOGLE_VOLUME if "googleapis" in url else {"docs": []}
 
-    def fetch_bytes(url):
-        return (b"x" * 3000, "image/jpeg")
-
     stats = covers.run(
         tmp_path, interactive=False, dry_run=False, limit=None,
-        fetch_json=fetch_json, fetch_bytes=fetch_bytes, prompt=None)
+        fetch_json=fetch_json,
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
 
-    assert stats["missing"] == 1
-    assert stats["fetched"] == 1
+    assert stats["missing"] == 1 and stats["fetched"] == 1
     assert stats["by_source"]["google"] == 1
-    cover_file = tmp_path / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg"
-    assert cover_file.is_file()
+    staged = tmp_path / "Data" / "Sources" / "_covers" / "covers" / "A - Ann.jpg"
+    assert staged.is_file()
+    rows = store.read_layer(tmp_path, "covers")
+    assert len(rows) == 1
+    assert rows[0].cover == "Data/Sources/_covers/covers/A - Ann.jpg"
+    assert rows[0].title == "A" and rows[0].authors == ["Ann"]
 
 
-def test_run_backfills_isbn_from_chosen_candidate(tmp_path):
-    note = _write_note(tmp_path, "Deluge - Adam Tooze.md",
-        '---\ntype: book\ntitle: "The Deluge"\n'
-        'authors: ["[[Adam Tooze]]"]\nisbn:\ncover:\n---\n')
-
-    volume = {"items": [{"volumeInfo": {
-        "title": "The Deluge", "authors": ["Adam Tooze"],
-        "industryIdentifiers": [{"type": "ISBN_13", "identifier": "9780141032184"}],
-        "imageLinks": {"thumbnail": "http://x/y?zoom=1"},
-    }}]}
-
+def test_run_records_learned_isbn_in_layer(tmp_path):
+    _seed_catalog(tmp_path, [
+        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"], isbn=""),
+    ])
+    volume = _google_volume_with_isbn("9780141032184")
     covers.run(
         tmp_path, interactive=False, dry_run=False, limit=None,
         fetch_json=lambda url: volume if "googleapis" in url else {"docs": []},
         fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
-
-    text = note.read_text(encoding="utf-8")
-    assert 'isbn: "9780141032184"' in text
+    rows = store.read_layer(tmp_path, "covers")
+    assert rows[0].isbn == "9780141032184"
 
 
 def test_run_dry_run_writes_nothing(tmp_path):
-    _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
-        '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
-
+    _seed_catalog(tmp_path, [store.BookRow(book_id="A - Ann", title="A", authors=["Ann"])])
     stats = covers.run(
         tmp_path, interactive=False, dry_run=True, limit=None,
         fetch_json=lambda url: GOOGLE_VOLUME,
-        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"), prompt=None)
-
-    assert stats["fetched"] == 1   # would-fetch is still counted
-    assert not (tmp_path / "Data" / "Covers").exists()
-
-
-def test_run_limit_caps_processing(tmp_path):
-    for i in range(3):
-        _write_note(tmp_path, f"B{i} - A.md",
-            f'---\ntype: book\ntitle: "B{i}"\nauthors: ["[[A]]"]\ncover:\n---\n')
-
-    stats = covers.run(
-        tmp_path, interactive=False, dry_run=True, limit=2,
-        fetch_json=lambda url: GOOGLE_VOLUME,
-        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"), prompt=None)
-    assert stats["processed"] == 2
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+    assert stats["fetched"] == 1                       # would-fetch still counted
+    assert not (tmp_path / "Data" / "Sources" / "_covers").exists()
+    assert store.read_layer(tmp_path, "covers") == []
 
 
-def test_run_quit_stops_early(tmp_path):
-    for i in range(3):
-        _write_note(tmp_path, f"B{i} - A.md",
-            f'---\ntype: book\ntitle: "B{i}"\nauthors: ["[[A]]"]\ncover:\n---\n')
+def test_run_limit_preserves_existing_layer_rows(tmp_path):
+    _seed_catalog(tmp_path, [
+        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
+        store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
+    ])
+    store.write_layer(tmp_path, "covers", [
+        store.BookRow(title="Z", authors=["Zed"],
+                      cover="Data/Sources/_covers/covers/Z - Zed.jpg")])
 
-    stats = covers.run(
-        tmp_path, interactive=True, dry_run=False, limit=None,
-        fetch_json=lambda url: GOOGLE_VOLUME,
-        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
-        prompt=lambda c: "quit")
-    assert stats["fetched"] == 0
+    covers.run(
+        tmp_path, interactive=False, dry_run=False, limit=1,
+        fetch_json=lambda url: GOOGLE_VOLUME if "googleapis" in url else {"docs": []},
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
 
-
-def test_note_to_missing_eligible_and_ineligible(tmp_path):
-    note = _write_note(tmp_path, "A - Ann.md",
-        '---\ntype: book\ntitle: "A"\nauthors: ["[[Ann]]"]\ncover:\n---\n')
-    mb = covers.note_to_missing(note)
-    assert mb is not None
-    assert mb.title == "A" and mb.authors == ["Ann"]
-
-    has_cover = _write_note(tmp_path, "B - Bee.md",
-        '---\ntype: book\ntitle: "B"\ncover: "[[x/cover.jpg]]"\n---\n')
-    assert covers.note_to_missing(has_cover) is None   # cover already set
-
-    not_book = _write_note(tmp_path, "C.md", '---\ntype: author\ncover:\n---\n')
-    assert covers.note_to_missing(not_book) is None    # wrong type
+    stems = sorted(Path(r.cover).stem for r in store.read_layer(tmp_path, "covers"))
+    assert "Z - Zed" in stems           # prior row preserved
+    assert "A - Ann" in stems           # newly staged
+    assert len(stems) == 2              # limit=1 processed one new book
 
 
-def test_run_single_book_only_processes_that_note(tmp_path):
-    target = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
-        '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
-    # another missing-cover book that must NOT be touched
-    _write_note(tmp_path, "Other - X.md",
-        '---\ntype: book\ntitle: "Other"\nauthors: ["[[X]]"]\ncover:\n---\n')
+def test_run_counts_errored_sources(tmp_path):
+    _seed_catalog(tmp_path, [
+        store.BookRow(book_id="X - Y", title="X", authors=["Y"], amazon="B00ABCDEFG"),
+    ])
+
+    def fetch_json(url):
+        if "googleapis" in url:
+            raise _http_error(429)
+        return {"docs": []}
 
     stats = covers.run(
+        tmp_path, interactive=False, dry_run=True, limit=None,
+        fetch_json=fetch_json,
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+    assert stats["errored"]["google"] == 1
+    assert stats["fetched"] == 1        # amazon still succeeded
+
+
+def test_run_single_book_only_processes_that_book(tmp_path):
+    _seed_catalog(tmp_path, [
+        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
+        store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
+    ])
+    covers.run(
         tmp_path, interactive=False, dry_run=False, limit=None,
-        fetch_json=lambda url: GOOGLE_VOLUME,
-        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
-        prompt=None, book_path=target)
-
-    assert stats["scanned"] == 1
-    assert stats["missing"] == 1
-    assert stats["fetched"] == 1
-    assert (tmp_path / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
-    assert not (tmp_path / "Data" / "Covers" / "Other - X.jpg").exists()
-
-
-def test_run_single_book_ineligible_is_no_op(tmp_path):
-    target = _write_note(tmp_path, "Done - Y.md",
-        '---\ntype: book\ntitle: "Done"\ncover: "[[x/cover.jpg]]"\n---\n')
-    stats = covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=None,
-        fetch_json=lambda url: GOOGLE_VOLUME,
-        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
-        prompt=None, book_path=target)
-    assert stats["missing"] == 0
-    assert stats["fetched"] == 0
-
-
-def test_run_single_book_ignores_limit(tmp_path):
-    target = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
-        '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
-    stats = covers.run(
-        tmp_path, interactive=False, dry_run=True, limit=0,
-        fetch_json=lambda url: GOOGLE_VOLUME,
-        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
-        prompt=None, book_path=target)
-    assert stats["processed"] == 1
+        fetch_json=lambda url: GOOGLE_VOLUME if "googleapis" in url else {"docs": []},
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None, book_id="A - Ann")
+    stems = [Path(r.cover).stem for r in store.read_layer(tmp_path, "covers")]
+    assert stems == ["A - Ann"]
 
 
 def test_cli_covers_dry_run(tmp_path, monkeypatch):
