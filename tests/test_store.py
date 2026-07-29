@@ -287,3 +287,36 @@ def test_row_to_highlight_reverses_each_kind():
         h = store.row_to_highlight(row)
         attr, value = want
         assert getattr(h, attr) == value
+
+
+def test_write_and_read_highlights_roundtrip(tmp_path):
+    vault = tmp_path / "vault"
+    bid = "The Deluge - Adam Tooze"
+    rows = [
+        store.HighlightRow(source="kobo", annotation_id="1", text="a",
+                           location="10", location_kind="percent"),
+        store.HighlightRow(source="kobo", annotation_id="2", text="b",
+                           location="20", location_kind="percent"),
+    ]
+    store.write_highlights(vault, bid, "kobo", rows)
+    back = store.read_highlights(vault, bid)
+    assert [r.text for r in back] == ["a", "b"]
+
+
+def test_write_highlights_replaces_only_its_own_source(tmp_path):
+    vault = tmp_path / "vault"
+    bid = "X - A"
+    store.write_highlights(vault, bid, "kobo",
+                           [store.HighlightRow(source="kobo", annotation_id="1", text="kobo1")])
+    store.write_highlights(vault, bid, "readwise",
+                           [store.HighlightRow(source="readwise", annotation_id="1", text="rw1")])
+    # re-run kobo with new content: only kobo rows replaced, readwise preserved
+    store.write_highlights(vault, bid, "kobo",
+                           [store.HighlightRow(source="kobo", annotation_id="1", text="kobo2")])
+    back = store.read_highlights(vault, bid)
+    texts = {(r.source, r.text) for r in back}
+    assert texts == {("kobo", "kobo2"), ("readwise", "rw1")}
+
+
+def test_read_highlights_missing_returns_empty(tmp_path):
+    assert store.read_highlights(tmp_path / "vault", "Nope - Nobody") == []

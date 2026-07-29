@@ -420,3 +420,17 @@ def row_to_highlight(row: HighlightRow) -> Highlight:
         tags=list(row.tags),
         links=list(row.links),
     )
+
+
+def read_highlights(vault: Path, book_id: str) -> list[HighlightRow]:
+    return [HighlightRow.from_csv_dict(r)
+            for r in _read_csv(highlight_path(vault, book_id))]
+
+
+def write_highlights(vault: Path, book_id: str, source: str,
+                     rows: list[HighlightRow]) -> None:
+    """Replace this source's rows in the per-book file, preserving other sources."""
+    existing = [r for r in read_highlights(vault, book_id) if r.source != source]
+    combined = existing + list(rows)
+    _write_csv(highlight_path(vault, book_id), HIGHLIGHT_COLUMNS,
+               (r.to_csv_dict() for r in combined))
