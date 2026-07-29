@@ -75,18 +75,33 @@ def test_book_frontmatter_new_note_gets_empty_topics(tmp_path):
     assert meta["topics"] == []
 
 
-def test_book_frontmatter_cover_when_row_has_cover(tmp_path):
+def test_book_frontmatter_cover_when_cover_file_exists(tmp_path):
     note = tmp_path / "Books" / "X - A.md"
-    row = store.BookRow(book_id="X - A", title="X", authors=["A"],
-                        cover="[[Data/Covers/X - A.jpg]]")
+    cover = tmp_path / "Data" / "Covers" / "X - A.jpg"
+    cover.parent.mkdir(parents=True)
+    cover.write_bytes(b"\xff\xd8\xff\xe0IMG")
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"])
     meta = R.book_frontmatter(row, note, existing={}, has_highlights=False)
     assert meta["cover"] == "[[Data/Covers/X - A.jpg]]"
 
 
-def test_render_body_cover_review_and_highlights(tmp_path):
+def test_book_frontmatter_no_cover_when_file_missing(tmp_path):
+    # A row that records a staged cover path whose materialized file is absent
+    # must NOT emit a dangling cover reference.
     note = tmp_path / "Books" / "X - A.md"
     row = store.BookRow(book_id="X - A", title="X", authors=["A"],
-                        review="My review", cover="[[Data/Covers/X - A.jpg]]")
+                        cover="Data/Sources/_covers/calibre/0.jpg")
+    meta = R.book_frontmatter(row, note, existing={}, has_highlights=False)
+    assert meta["cover"] is None
+
+
+def test_render_body_cover_review_and_highlights(tmp_path):
+    note = tmp_path / "Books" / "X - A.md"
+    cover = tmp_path / "Data" / "Covers" / "X - A.jpg"
+    cover.parent.mkdir(parents=True)
+    cover.write_bytes(b"\xff\xd8\xff\xe0IMG")
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"],
+                        review="My review")
     hls = [store.HighlightRow(source="kobo", annotation_id="1", text="quote one",
                               location="42", location_kind="percent")]
     body = R.render_body("", row, note, hls)

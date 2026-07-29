@@ -109,15 +109,19 @@ def _scalar(value):
 def _cover_value(row: BookRow, note_path: Path):
     """The ``cover:`` frontmatter wikilink for a note, or None when no cover.
 
-    Present when the row records a cover OR the flat ``Covers/<stem>.jpg`` file
-    already exists (kept in lockstep with the note stem = book_id).
+    Keyed solely off the materialized on-disk ``Covers/<stem>.jpg`` file (kept in
+    lockstep with the note stem = book_id). ``render_note`` runs
+    :func:`_materialize_cover` first, so by the time this is called the file
+    exists iff a staged cover copied successfully (or one already existed on
+    disk) -- this avoids emitting a dangling reference for a row whose staged
+    source is missing.
 
     Assumes *note_path* is ``<vault>/Books/<stem>.md`` so ``note_path.parents[1]``
     is the vault root.
     """
     stem = note_path.stem
     cover_file = note_path.parents[1] / COVERS_DIRNAME / f"{stem}.jpg"
-    if (row.cover or "").strip() or cover_file.is_file():
+    if cover_file.is_file():
         return f"[[{COVERS_DIRNAME}/{stem}.jpg]]"
     return None
 
@@ -192,6 +196,9 @@ def _materialize_cover(row: BookRow, note_path: Path) -> None:
     copy the winning row's staged image to ``Data/Covers/<book_id>.jpg`` so the
     existing embed/frontmatter logic resolves it. No-op when the row carries no
     cover, the source is missing, or the destination already exists (idempotent).
+
+    Assumes *note_path* is ``<vault>/Books/<stem>.md`` so ``note_path.parents[1]``
+    is the vault root.
     """
     src_rel = (row.cover or "").strip()
     if not src_rel:
