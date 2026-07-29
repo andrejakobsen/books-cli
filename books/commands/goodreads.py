@@ -1,12 +1,10 @@
 #!/usr/bin/env python3
-"""Convert a Goodreads library CSV export into an Obsidian book vault.
+"""Write a Goodreads library CSV export into the CSV metadata store.
 
-Reads the CSV Goodreads produces from "My Books -> Import and export", and for
-each *read* or *currently-reading* book (by default) creates or merges an
-Obsidian note in the same
-shape as the Calibre importer. Existing information is never overwritten: only
-absent/empty properties are filled. A review is written once into a "## Review"
-section of the book note and never clobbered on re-runs.
+Reads the CSV Goodreads produces from "My Books -> Import and export" and dumps
+every row (all shelves) into the ``goodreads`` metadata layer
+(``Data/Sources/goodreads.csv``). The ``render`` command later turns each merged
+row into a note; this importer owns no notes, reviews, or stubs.
 
 Standard library only.
 """
@@ -19,21 +17,7 @@ from pathlib import Path
 
 import typer
 
-from books.core import config
-from books.renderers.obsidian import (
-    AUTHORS_DIRNAME,
-    BOOK_PROPERTY_ORDER,
-    BookRef,
-    VaultIndex,
-    ensure_section,
-    format_rating,
-    html_to_markdown,
-    link_list,
-    plain_list,
-    update_frontmatter,
-    write_stub,
-    yaml_quote,
-)
+from books.core import config, store
 
 
 GOODREADS_BOOK_URL = "https://www.goodreads.com/book/show/"
@@ -139,114 +123,58 @@ def parse_csv(path: Path) -> list[GoodreadsBook]:
     return books
 
 
-# --- Note construction ------------------------------------------------------
-
-def _goodreads_updates(book: GoodreadsBook) -> dict[str, str]:
-    """Canonical property -> formatted value; empty for fields Goodreads lacks."""
-    u = {k: "" for k in BOOK_PROPERTY_ORDER if k != "type"}
-    if book.title:
-        u["title"] = yaml_quote(book.title)
-    if book.authors:
-        u["authors"] = link_list(book.authors)
-    if book.publisher:
-        u["publisher"] = yaml_quote(book.publisher)
-    if book.published:
-        u["published"] = book.published
-    # Derived from Goodreads' Binding; the "never overwrite" merge rule keeps an
-    # existing value (e.g. a Calibre-set "ebook") intact when merging.
-    u["format"] = _norm_format(book.binding)
-    if book.pages:
-        u["pages"] = book.pages
-    if book.status:
-        u["status"] = book.status  # safe plain scalar (read / reading / to-read)
-    if book.shelves:
-        u["shelves"] = plain_list(book.shelves)
-    if book.rating is not None:
-        u["rating"] = format_rating(book.rating)
-    isbn = book.isbn13 or book.isbn
-    if isbn:
-        u["isbn"] = yaml_quote(isbn)
-    if book.date_added:
-        u["date_added"] = book.date_added
-    if book.date_read:
-        u["date_read"] = book.date_read
-    if book.book_id:
-        u["goodreads"] = yaml_quote(f"{GOODREADS_BOOK_URL}{book.book_id}")
-    u["source"] = "goodreads"
-    u["highlighted"] = "false"
-    u["reviewed"] = "false"
-    return u
-
-
-def _review_markdown(book: GoodreadsBook) -> str | None:
-    """Body for the note's write-once ``## Review`` section (no leading H1)."""
-    if not book.review and not book.private_notes:
-        return None
-    parts: list[str] = []
-    if book.date_read:
-        parts += [f"*Read: {book.date_read}*", ""]
-    if book.review:
-        parts += [html_to_markdown(book.review), ""]
-    if book.private_notes:
-        parts += ["### Private Notes", "", html_to_markdown(book.private_notes), ""]
-    return "\n".join(parts).rstrip("\n") + "\n"
-
+# --- Store row construction -------------------------------------------------
 
 DEFAULT_SHELVES = "read,currently-reading"
 
 
-def _parse_shelves(shelf: str) -> set[str] | None:
-    """Parse the ``--shelf`` value into a set of shelves, or None for "all".
-
-    Accepts a comma-separated list (e.g. ``read,currently-reading``). The special
-    value ``all`` (alone or within the list) means "import every book".
-    """
-    wanted = {s.strip() for s in (shelf or "").split(",") if s.strip()}
-    return None if "all" in wanted else wanted
+def _row_from_book(book: GoodreadsBook) -> store.BookRow:
+    """Map a parsed Goodreads row to a store ``BookRow`` (all fields verbatim)."""
+    isbn = book.isbn13 or book.isbn or ""
+    goodreads_url = f"{GOODREADS_BOOK_URL}{book.book_id}" if book.book_id else ""
+    review_parts: list[str] = []
+    if book.review:
+        review_parts.append(book.review)
+    if book.private_notes:
+        review_parts.append(f"### Private Notes\n\n{book.private_notes}")
+    return store.BookRow(
+        title=book.title,
+        authors=list(book.authors),
+        publisher=book.publisher or "",
+        published=book.published or "",
+        format=_norm_format(book.binding),
+        pages=book.pages or "",
+        status=book.status or "",
+        shelves=list(book.shelves),
+        rating=str(book.rating) if book.rating is not None else "",
+        isbn=isbn,
+        goodreads=goodreads_url,
+        date_added=book.date_added or "",
+        date_read=book.date_read or "",
+        review="\n\n".join(review_parts),
+    )
 
 
 def convert(csv_path: Path, output: Path, shelf: str = DEFAULT_SHELVES) -> dict:
-    stats = {"created": 0, "merged": 0, "reviews": 0, "skipped": 0, "authors": set()}
-    index = VaultIndex(output)
-    authors_dir = output / AUTHORS_DIRNAME
-    wanted = _parse_shelves(shelf)
+    """Write every Goodreads row into the ``goodreads`` metadata layer CSV.
 
+    Every shelf is emitted (books.csv becomes the whole library); the renderer
+    turns each row into a note. ``shelf`` is accepted for CLI compatibility but no
+    longer gates output.
+    """
+    stats = {"books": 0, "reviews": 0, "skipped": 0}
+    output.mkdir(parents=True, exist_ok=True)
+    rows: list[store.BookRow] = []
     for book in parse_csv(csv_path):
         if not book.title or not book.authors:
             stats["skipped"] += 1
             continue
-
-        ref = BookRef(title=book.title, authors=book.authors,
-                      isbn=book.isbn13 or book.isbn)
-        in_shelf = wanted is None or (book.exclusive_shelf or "") in wanted
-        if in_shelf:
-            dest = index.find_or_create(ref)
-        else:
-            # Shelf-excluded (e.g. to-read): enrich an existing note if one is
-            # already there, but never create a note for it.
-            dest = index.find(ref)
-            if dest is None:
-                stats["skipped"] += 1
-                continue
-        stats["created" if dest.created else "merged"] += 1
-
-        base = dest.note_path.read_text(encoding="utf-8")
-        dest.note_path.write_text(
-            update_frontmatter(base, _goodreads_updates(book)), encoding="utf-8")
-
-        for author in book.authors:
-            write_stub(authors_dir, author, "author")
-            stats["authors"].add(author)
-
-        review = _review_markdown(book)
-        if review:
-            text = dest.note_path.read_text(encoding="utf-8")
-            updated = ensure_section(text, "Review", review)
-            if updated != text:
-                updated = update_frontmatter(updated, {"reviewed": "true"})
-                dest.note_path.write_text(updated, encoding="utf-8")
-                stats["reviews"] += 1
-
+        row = _row_from_book(book)
+        rows.append(row)
+        stats["books"] += 1
+        if row.review:
+            stats["reviews"] += 1
+    store.write_layer(output, "goodreads", rows)
     return stats
 
 
@@ -267,21 +195,16 @@ def goodreads_to_obsidian(
     shelf: str = typer.Option(
         DEFAULT_SHELVES,
         "--shelf",
-        help="Comma-separated Goodreads exclusive shelves to import (read/currently-reading/to-read). Defaults to 'read,currently-reading'. Use 'all' for every book. Books on other shelves that already have a note are still enriched (but never created).",
+        help="Accepted for compatibility; no longer gates output — every shelf is "
+             "written to the store (books.csv is the whole library).",
     ),
 ) -> None:
-    """Convert a Goodreads CSV export into Obsidian book notes.
+    """Write a Goodreads CSV export into the CSV metadata store.
 
-    By default new notes are created only for books on the 'read' and
-    'currently-reading' shelves (pass --shelf to narrow, e.g. '--shelf read',
-    or 'all' for everything). A book on any other shelf (e.g. 'to-read') that
-    already has a matching note is still enriched — so it gets its goodreads
-    link and any other blank fields — but no note is created for it.
-    Existing notes are
-    never overwritten: only empty/absent properties are filled, and a review is
-    written once into a '## Review' section of the book note (never clobbered on
-    re-runs). Books are matched to existing notes by ISBN, then by a strict
-    Author/Title comparison.
+    Every row (all shelves) is dumped into ``Data/Sources/goodreads.csv``; the
+    ``render`` command later turns each merged row into a note. No notes, reviews,
+    or stubs are written here. ``--shelf`` is accepted for compatibility but no
+    longer gates output.
     """
     try:
         csv = config.resolve_csv_arg(csv, "goodreads", output)
@@ -295,8 +218,7 @@ def goodreads_to_obsidian(
     output.mkdir(parents=True, exist_ok=True)
     stats = convert(csv, output, shelf=shelf)
     typer.echo(
-        f"Done. {stats['created']} created, {stats['merged']} merged, "
-        f"{stats['reviews']} reviews, {len(stats['authors'])} authors, "
+        f"Done. {stats['books']} books, {stats['reviews']} reviews, "
         f"{stats['skipped']} skipped.\nOutput: {output}"
     )
 

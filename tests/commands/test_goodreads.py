@@ -1,8 +1,9 @@
-"""Tests for the Goodreads -> Obsidian importer."""
+"""Tests for the Goodreads -> CSV store writer."""
 
 from pathlib import Path
 
 from books.commands import goodreads as gr
+from books.core import store
 
 
 HEADER = (
@@ -32,6 +33,8 @@ def write_csv(tmp_path: Path) -> Path:
     p.write_text(HEADER + ROWS, encoding="utf-8")
     return p
 
+
+# --- Pure parsing helpers ---------------------------------------------------
 
 def test_parse_csv_fields(tmp_path):
     books = gr.parse_csv(write_csv(tmp_path))
@@ -68,27 +71,6 @@ def test_normalization_helpers():
     assert ob.author_key("Broué, Pierre") == ob.author_key("Pierre Broue")
 
 
-def test_convert_default_imports_read_and_currently_reading(tmp_path):
-    out = tmp_path / "Obsidian"
-    stats = gr.convert(write_csv(tmp_path), out)
-    # By default the "read" (Napoleon) and "currently-reading" (Stalin) books
-    # are created; only the "to-read" book is skipped.
-    assert stats["created"] == 2
-    assert stats["skipped"] == 1
-    # Filenames read "<Title> - <Author>" with the subtitle dropped.
-    assert (out / "Books" / "Napoleon - Andrew Roberts.md").exists()
-    assert (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
-
-
-def test_convert_shelf_read_only_excludes_currently_reading(tmp_path):
-    out = tmp_path / "Obsidian"
-    stats = gr.convert(write_csv(tmp_path), out, shelf="read")
-    assert stats["created"] == 1
-    assert stats["skipped"] == 2
-    assert (out / "Books" / "Napoleon - Andrew Roberts.md").exists()
-    assert not (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
-
-
 def test_norm_format_maps_bindings():
     assert gr._norm_format("Paperback") == "physical"
     assert gr._norm_format("Hardcover") == "physical"
@@ -100,196 +82,73 @@ def test_norm_format_maps_bindings():
     assert gr._norm_format("") == "physical"
 
 
-def test_convert_sets_format_from_binding(tmp_path):
-    out = tmp_path / "Obsidian"
-    gr.convert(write_csv(tmp_path), out)  # Napoleon is a Paperback
-    note = (out / "Books" / "Napoleon - Andrew Roberts.md").read_text()
-    assert "format: physical" in note
+# --- CSV store writer -------------------------------------------------------
+
+_CSV = (
+    "Title,Author,Additional Authors,ISBN,ISBN13,My Rating,Publisher,"
+    "Number of Pages,Year Published,Binding,Date Read,Date Added,Exclusive Shelf,"
+    "Bookshelves,My Review,Private Notes,Book Id\n"
+    'The Deluge,Adam Tooze,,="",="9780141032184",4,Penguin,720,2014,Paperback,'
+    "2020/01/02,2019/12/01,read,history,Great book,,12345\n"
+    'Wanted,Some Author,,="",="",0,,,,,,,to-read,wishlist,,,999\n'
+)
 
 
-def test_convert_writes_rating_as_stars(tmp_path):
-    out = tmp_path / "Obsidian"
-    gr.convert(write_csv(tmp_path), out)  # Napoleon has My Rating 5
-    note = (out / "Books" / "Napoleon - Andrew Roberts.md").read_text()
-    assert "rating: ⭐⭐⭐⭐⭐" in note
+def _write_csv(tmp_path: Path) -> Path:
+    p = tmp_path / "goodreads.csv"
+    p.write_text(_CSV, encoding="utf-8")
+    return p
 
 
-def test_merge_preserves_existing_ebook_format(tmp_path):
-    out = tmp_path / "Obsidian"
-    book_dir = out / "Books"
-    book_dir.mkdir(parents=True)
-    note = book_dir / "Napoleon_ A Life.md"
-    # Pre-existing note (e.g. from Calibre) already marked as an ebook.
-    note.write_text(
-        '---\ntype: book\ntitle: "Napoleon: A Life"\nisbn: "9780141032016"\n'
-        'format: ebook\n---\n\nBody.\n',
-        encoding="utf-8",
-    )
-    gr.convert(write_csv(tmp_path), out)  # Goodreads says Paperback -> physical
-    assert "format: ebook" in note.read_text()      # not overwritten
-    assert "format: physical" not in note.read_text()
+def test_goodreads_writes_layer_for_every_shelf(tmp_path):
+    vault = tmp_path / "vault"
+    stats = gr.convert(_write_csv(tmp_path), vault)
+
+    rows = {r.title: r for r in store.read_layer(vault, "goodreads")}
+    assert set(rows) == {"The Deluge", "Wanted"}  # to-read included
+    assert stats["books"] == 2
 
 
-def test_convert_shelf_all_imports_everything(tmp_path):
-    out = tmp_path / "Obsidian"
-    stats = gr.convert(write_csv(tmp_path), out, shelf="all")
-    assert stats["created"] == 3
+def test_goodreads_row_fields_and_review(tmp_path):
+    vault = tmp_path / "vault"
+    gr.convert(_write_csv(tmp_path), vault)
+
+    row = next(r for r in store.read_layer(vault, "goodreads") if r.title == "The Deluge")
+    assert row.authors == ["Adam Tooze"]
+    assert row.isbn == "9780141032184"
+    assert row.rating == "4"
+    assert row.format == "physical"
+    assert row.shelves == ["history"]
+    assert row.review == "Great book"
+    assert row.goodreads == "https://www.goodreads.com/book/show/12345"
+    assert row.date_read == "2020-01-02"
 
 
-def test_convert_writes_goodreads_url(tmp_path):
-    out = tmp_path / "Obsidian"
-    gr.convert(write_csv(tmp_path), out)  # Napoleon is Book Id 1
-    note = (out / "Books" / "Napoleon - Andrew Roberts.md").read_text()
-    assert 'goodreads: "https://www.goodreads.com/book/show/1"' in note
+def test_goodreads_unrated_book_has_empty_rating(tmp_path):
+    vault = tmp_path / "vault"
+    gr.convert(_write_csv(tmp_path), vault)
+    row = next(r for r in store.read_layer(vault, "goodreads") if r.title == "Wanted")
+    assert row.rating == ""  # My Rating 0 -> unrated -> ""
+    assert row.shelves == ["wishlist"]
 
 
-def test_convert_fills_goodreads_url_on_calibre_note(tmp_path):
-    out = tmp_path / "Obsidian"
-    book_dir = out / "Books"
-    book_dir.mkdir(parents=True)
-    note = book_dir / "Napoleon_ A Life.md"
-    # Pre-existing note (e.g. from Calibre) with a blank goodreads placeholder.
-    note.write_text(
-        '---\ntype: book\ntitle: "Napoleon: A Life"\nisbn: "9780141032016"\n'
-        'goodreads:\n---\n\nBody.\n',
-        encoding="utf-8",
-    )
-    gr.convert(write_csv(tmp_path), out, shelf="read")
-    assert 'goodreads: "https://www.goodreads.com/book/show/1"' in note.read_text()
+def test_goodreads_skips_titleless_or_authorless(tmp_path):
+    vault = tmp_path / "vault"
+    (tmp_path / "g.csv").write_text(
+        "Title,Author,Book Id\n,,1\nOnly Title,,2\n", encoding="utf-8")
+    stats = gr.convert(tmp_path / "g.csv", vault)
+    assert stats["skipped"] == 2
+    assert store.read_layer(vault, "goodreads") == []
 
 
-def test_goodreads_url_not_clobbered_on_merge(tmp_path):
-    out = tmp_path / "Obsidian"
-    book_dir = out / "Books"
-    book_dir.mkdir(parents=True)
-    note = book_dir / "Napoleon_ A Life.md"
-    note.write_text(
-        '---\ntype: book\ntitle: "Napoleon: A Life"\nisbn: "9780141032016"\n'
-        'goodreads: "https://www.goodreads.com/book/show/999"\n---\n\nBody.\n',
-        encoding="utf-8",
-    )
-    gr.convert(write_csv(tmp_path), out, shelf="read")
-    assert "book/show/999" in note.read_text()      # existing value preserved
-    assert "book/show/1" not in note.read_text()
+def test_goodreads_rerun_replaces_layer(tmp_path):
+    vault = tmp_path / "vault"
+    gr.convert(_write_csv(tmp_path), vault)
+    gr.convert(_write_csv(tmp_path), vault)  # re-run
+    assert len(store.read_layer(vault, "goodreads")) == 2  # not duplicated
 
 
-def test_shelf_excluded_book_enriches_existing_note(tmp_path):
-    out = tmp_path / "Obsidian"
-    book_dir = out / "Books"
-    book_dir.mkdir(parents=True)
-    # An existing note for the to-read "Cold War" book (Book Id 2), blank fields.
-    note = book_dir / "The Cold War.md"
-    note.write_text(
-        '---\ntype: book\ntitle: "The Cold War: A New History"\n'
-        'isbn: "9780143038276"\nstatus:\ngoodreads:\n---\n\nBody.\n',
-        encoding="utf-8",
-    )
-    # Default shelf filter excludes to-read; the note must still be enriched.
-    stats = gr.convert(write_csv(tmp_path), out)
-    updated = note.read_text()
-    assert 'goodreads: "https://www.goodreads.com/book/show/2"' in updated
-    assert "status: to-read" in updated       # blank field filled by full merge
-    assert stats["created"] == 2              # only read/currently-reading created
-
-
-def test_shelf_excluded_book_without_note_is_not_created(tmp_path):
-    out = tmp_path / "Obsidian"
-    # No pre-existing note for the to-read "Cold War"; default shelf filter.
-    stats = gr.convert(write_csv(tmp_path), out)
-    assert not (out / "Books" / "The Cold War - John Lewis Gaddis.md").exists()
-    assert stats["created"] == 2 and stats["skipped"] == 1
-
-
-def test_convert_writes_review_section(tmp_path):
-    out = tmp_path / "Obsidian"
-    gr.convert(write_csv(tmp_path), out)
-    # No separate Review.md leaf files any more.
-    assert list(out.rglob("Review.md")) == []
-    note = out / "Books" / "Napoleon - Andrew Roberts.md"
-    note_text = note.read_text()
-    # The review is a write-once '## Review' section inside the book note.
-    assert "## Review" in note_text
-    assert "Great book." in note_text and "Loved it." in note_text
-    assert "source: goodreads" in note_text       # book note stamped
-
-
-def test_convert_review_section_not_clobbered_on_rerun(tmp_path):
-    out = tmp_path / "Obsidian"
-    csv = write_csv(tmp_path)
-    gr.convert(csv, out)
-    note = out / "Books" / "Napoleon - Andrew Roberts.md"
-    edited = note.read_text().replace("Great book.", "Great book. (my edit)")
-    note.write_text(edited, encoding="utf-8")
-
-    gr.convert(csv, out)  # re-run must not clobber the edited review
-    assert "(my edit)" in note.read_text()
-
-
-def test_convert_merges_into_existing_note_by_isbn(tmp_path):
-    out = tmp_path / "Obsidian"
-    # Pre-create a note as if from Calibre: has title, empty status/pages.
-    book_dir = out / "Books"
-    book_dir.mkdir(parents=True)
-    note = book_dir / "Napoleon_ A Life.md"
-    note.write_text(
-        '---\ntype: book\ntitle: "Napoleon: A Life"\nisbn: "9780141032016"\n'
-        'status:\npages:\nrating: 4\n---\n\nMy body.\n',
-        encoding="utf-8",
-    )
-    stats = gr.convert(write_csv(tmp_path), out, shelf="read")
-    assert stats["merged"] == 1 and stats["created"] == 0
-    updated = note.read_text()
-    assert "status: read" in updated       # blank filled
-    assert "pages: 976" in updated         # blank filled
-    assert "rating: 4" in updated          # existing value NOT overwritten (was 4, GR is 5)
-    assert "My body." in updated           # body preserved
-
-
-def test_convert_merges_by_strict_title_author(tmp_path):
-    out = tmp_path / "Obsidian"
-    book_dir = out / "Books"
-    book_dir.mkdir(parents=True)
-    note = book_dir / "Napoleon A Life.md"
-    # No ISBN -> must match on normalized title + author.
-    note.write_text(
-        '---\ntype: book\ntitle: "Napoleon - A Life"\n'
-        'authors: ["[[Andrew Roberts]]"]\nstatus:\n---\n\nBody.\n',
-        encoding="utf-8",
-    )
-    stats = gr.convert(write_csv(tmp_path), out, shelf="read")
-    assert stats["merged"] == 1 and stats["created"] == 0
-    assert "status: read" in note.read_text()
-
-
-def test_convert_idempotent(tmp_path):
-    out = tmp_path / "Obsidian"
-    gr.convert(write_csv(tmp_path), out)
-    before = {p: p.read_text() for p in out.rglob("*.md")}
-    gr.convert(write_csv(tmp_path), out)  # second run
-    after = {p: p.read_text() for p in out.rglob("*.md")}
-    assert before == after
-
-
-def test_convert_idempotent_with_shelf_excluded_note(tmp_path):
-    out = tmp_path / "Obsidian"
-    book_dir = out / "Books"
-    book_dir.mkdir(parents=True)
-    # Existing note for the to-read "Cold War" (Book Id 2): enriched, not created.
-    (book_dir / "The Cold War.md").write_text(
-        '---\ntype: book\ntitle: "The Cold War: A New History"\n'
-        'isbn: "9780143038276"\n---\n\nBody.\n',
-        encoding="utf-8",
-    )
-    gr.convert(write_csv(tmp_path), out)  # enriches the excluded note + creates 2
-    before = {p: p.read_text() for p in out.rglob("*.md")}
-    gr.convert(write_csv(tmp_path), out)  # second run must be a no-op
-    after = {p: p.read_text() for p in out.rglob("*.md")}
-    assert before == after
-    # Sanity: the excluded note really was enriched, not created anew.
-    enriched = (book_dir / "The Cold War.md").read_text()
-    assert 'goodreads: "https://www.goodreads.com/book/show/2"' in enriched
-    assert not (book_dir / "The Cold War - John Lewis Gaddis.md").exists()
-
+# --- CLI wiring -------------------------------------------------------------
 
 def _minimal_goodreads_csv(path):
     path.write_text(
@@ -319,7 +178,8 @@ def test_goodreads_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
     result = CliRunner().invoke(app, [])
 
     assert result.exit_code == 0, result.output
-    assert (vault / "Books" / "The Deluge - Adam Tooze.md").exists()
+    rows = {r.title for r in store.read_layer(vault, "goodreads")}
+    assert "The Deluge" in rows
 
 
 def test_goodreads_folder_arg_picks_newest(monkeypatch, tmp_path):
@@ -344,26 +204,5 @@ def test_goodreads_folder_arg_picks_newest(monkeypatch, tmp_path):
     result = CliRunner().invoke(app, ["--csv", str(folder), "--output", str(vault)])
 
     assert result.exit_code == 0, result.output
-    assert (vault / "Books" / "The Deluge - Adam Tooze.md").exists()
-
-
-def test_goodreads_updates_emit_flag_defaults():
-    book = gr.GoodreadsBook(title="Test Book", authors=["Test Author"])
-    u = gr._goodreads_updates(book)
-    assert u["highlighted"] == "false"
-    assert u["reviewed"] == "false"
-
-
-def test_goodreads_sets_reviewed_true_when_review_written(tmp_path):
-    out = tmp_path / "Obsidian"
-    gr.convert(write_csv(tmp_path), out)
-    # Napoleon has a review; should have both the Review section and reviewed: true.
-    note = out / "Books" / "Napoleon - Andrew Roberts.md"
-    note_text = note.read_text()
-    assert "## Review" in note_text
-    assert "reviewed: true" in note_text
-    # Stalin has no review; should keep reviewed: false.
-    stalin = out / "Books" / "Stalin - Stephen Kotkin.md"
-    stalin_text = stalin.read_text()
-    assert "## Review" not in stalin_text
-    assert "reviewed: false" in stalin_text
+    rows = {r.title for r in store.read_layer(vault, "goodreads")}
+    assert "The Deluge" in rows
