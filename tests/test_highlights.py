@@ -492,6 +492,18 @@ def test_render_highlights_mixed_sources_unique_anchors():
         Highlight(text="a", progress=0.10, source="kobo"),
         Highlight(text="b", progress=0.10, source="readwise"),
     ])
-    assert out.count("^10\n") + out.count("^10 ") == 0 or out.count("^10") >= 1
     anchors = [ln for ln in out.splitlines() if ln.startswith("^")]
     assert len(anchors) == len(set(anchors))  # all anchors unique
+
+
+def test_render_highlights_multi_source_keeps_unsourced_highlights():
+    from books.highlights import Highlight, render_highlights
+    out = render_highlights([
+        Highlight(text="kobo hl", progress=0.10, source="kobo"),
+        Highlight(text="rw hl", progress=0.20, source="readwise"),
+        Highlight(text="orphan hl", progress=0.30, source=None),
+    ])
+    # the unsourced highlight is not dropped in multi-source mode
+    assert "orphan hl" in out
+    # it renders in the headerless leading group, before the first ### header
+    assert out.index("orphan hl") < out.index("### Kobo")

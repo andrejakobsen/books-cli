@@ -289,12 +289,13 @@ def render_highlights(highlights: list[Highlight],
     given (else ``"ch."``). Block anchors are unique across the whole section.
     """
     chapter_prefix = chapter_label or "ch."
-    distinct_sources = sorted({h.source for h in highlights if h.source})
+    sources_in_use = {h.source for h in highlights}
+    distinct_sources = sorted(s for s in sources_in_use if s is not None)
     if len(distinct_sources) > 1:
+        group_keys = ([None] if None in sources_in_use else []) + distinct_sources
         ordered_groups = [
-            (src, sorted([h for h in highlights if (h.source or "") == src],
-                         key=sort_key))
-            for src in distinct_sources
+            (src, sorted([h for h in highlights if h.source == src], key=sort_key))
+            for src in group_keys
         ]
     else:
         ordered_groups = [(None, sorted(highlights, key=sort_key))]
@@ -303,7 +304,7 @@ def render_highlights(highlights: list[Highlight],
     # unique across every source group.
     flat = [h for _src, group in ordered_groups for h in group]
     anchors = build_anchors(flat)
-    anchor_by_id = {id(h): a for h, a in zip(flat, anchors)}
+    anchor_by_id = {id(h): a for h, a in zip(flat, anchors, strict=True)}
 
     blocks: list[str] = []
     for src, group in ordered_groups:
