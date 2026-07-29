@@ -13,9 +13,10 @@ from __future__ import annotations
 
 import typer
 
-from books import audible_obsidian, covers, sync
+from books import audible_obsidian, sync
 from books.commands import (
     calibre,
+    covers,
     goodreads,
     highlighted,
     kobo,

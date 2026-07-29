@@ -1,8 +1,8 @@
-"""Tests for the `books covers` capability (books.covers)."""
+"""Tests for the `books covers` capability (books.commands.covers)."""
 
 from pathlib import Path
 
-from books import covers
+from books.commands import covers
 
 
 def test_dataclasses_exist():
@@ -856,9 +856,9 @@ def test_cli_covers_dry_run(tmp_path, monkeypatch):
         'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
 
     # stub the network so the CLI test stays offline
-    monkeypatch.setattr(covers, "default_fetch_json", lambda url: GOOGLE_VOLUME)
+    monkeypatch.setattr(covers.command, "default_fetch_json", lambda url: GOOGLE_VOLUME)
     monkeypatch.setattr(
-        covers, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
+        covers.command, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
 
     result = CliRunner().invoke(
         app, ["covers", "-o", str(tmp_path), "--dry-run"])
@@ -879,9 +879,9 @@ def test_cli_covers_reports_errored_sources(tmp_path, monkeypatch):
             raise _http_error(429)
         return {"docs": []}
 
-    monkeypatch.setattr(covers, "default_fetch_json", fetch_json)
+    monkeypatch.setattr(covers.command, "default_fetch_json", fetch_json)
     monkeypatch.setattr(
-        covers, "default_fetch_bytes", lambda url: (_png(200, 300), "image/jpeg"))
+        covers.command, "default_fetch_bytes", lambda url: (_png(200, 300), "image/jpeg"))
 
     result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0, result.output
@@ -907,11 +907,11 @@ def test_cli_covers_single_book_interactive_by_default(tmp_path, monkeypatch):
     _write_note(tmp_path, "Other - X.md",
         '---\ntype: book\ntitle: "Other"\nauthors: ["[[X]]"]\ncover:\n---\n')
 
-    monkeypatch.setattr(covers, "default_fetch_json", lambda url: GOOGLE_VOLUME)
+    monkeypatch.setattr(covers.command, "default_fetch_json", lambda url: GOOGLE_VOLUME)
     monkeypatch.setattr(
-        covers, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
+        covers.command, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
     # single-book mode is interactive by default -> the prompt is used; accept it.
-    monkeypatch.setattr(covers, "_terminal_prompt", lambda c: "accept")
+    monkeypatch.setattr(covers.command, "_terminal_prompt", lambda c: "accept")
 
     result = CliRunner().invoke(app, ["covers", "-b", str(note)])
     assert result.exit_code == 0, result.output
