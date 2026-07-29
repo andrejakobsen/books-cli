@@ -23,10 +23,10 @@ from books.highlights import Highlight
 from books.obsidian import (
     BookRef,
     author_key,
+    next_free_stem,
     norm_amazon,
     norm_isbn,
     norm_title,
-    safe_filename,
     strip_subtitle,
 )
 
@@ -247,34 +247,15 @@ def same_book(a: BookRow, b: BookRow) -> bool:
     return title_similar(a.title, b.title)
 
 
-def _stem(title: str, author: str) -> str:
-    clean = strip_subtitle(title).strip()
-    base = f"{clean} - {author}".strip() if author else clean
-    return safe_filename(base)
-
-
-def assign_book_id(title: str, author: str, used: set[str]) -> str:
+def assign_book_id(title: str, author: str, used_lower: set[str]) -> str:
     """Stable, collision-free book id = the note stem ``<Title> - <Author>``.
 
-    Mirrors ``obsidian.VaultIndex._new_note_path``: subtitle dropped; on collision
-    the subtitle is restored (``:`` -> ``,``); a numeric ``(n)`` suffix is last resort.
+    Uses the shared ``next_free_stem`` collision ladder (subtitle dropped ->
+    subtitle restored -> numeric suffix), with case-insensitive tracking to
+    match case-insensitive filesystems. ``used_lower`` holds lowercased stems.
     """
-    clean_stem = _stem(title, author)
-    if clean_stem not in used:
-        used.add(clean_stem)
-        return clean_stem
-
-    full = title.replace(":", ",").strip()
-    full_stem = safe_filename(f"{full} - {author}".strip() if author else full)
-    if full_stem not in used:
-        used.add(full_stem)
-        return full_stem
-
-    n = 2
-    while f"{clean_stem} ({n})" in used:
-        n += 1
-    stem = f"{clean_stem} ({n})"
-    used.add(stem)
+    stem = next_free_stem(title, author, used_lower)
+    used_lower.add(stem.lower())
     return stem
 
 
@@ -425,17 +406,26 @@ def row_to_highlight(row: HighlightRow) -> Highlight:
     page = None
     label = None
     if row.location_kind == "percent" and row.location:
-        progress = round(int(row.location)) / 100
+        try:
+            progress = int(row.location) / 100
+        except ValueError:
+            progress = None
     elif row.location_kind == "kindle_loc":
         page, label = row.location or None, "loc."
     elif row.location_kind == "timestamp":
         page, label = row.location or None, ""
     elif row.location_kind == "page":
         page = row.location or None
+
+    try:
+        chapter_index = int(row.chapter_index) if row.chapter_index else None
+    except ValueError:
+        chapter_index = None
+
     return Highlight(
         text=row.text,
         note=row.note or None,
-        chapter_index=int(row.chapter_index) if row.chapter_index else None,
+        chapter_index=chapter_index,
         chapter_title=row.chapter_title or None,
         progress=progress,
         block=row.block or None,

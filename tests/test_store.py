@@ -166,6 +166,20 @@ def test_assign_book_id_numeric_suffix_last_resort():
     assert b == "Poems - Anon (2)"
 
 
+def test_assign_book_id_case_insensitive_collision_handling():
+    """Stems differing only in case collide on case-insensitive filesystems."""
+    used = set()
+    first = store.assign_book_id("Poems", "Anon", used)
+    # Second book with same stem but different case should get disambiguated
+    second = store.assign_book_id("Poems", "anon", used)
+    # The two book_ids should be different (case-insensitively)
+    assert first.lower() != second.lower()
+    # First gets the clean stem, second should get subtitle-restored or numeric suffix
+    assert first == "Poems - Anon"
+    # Since there's no subtitle, it falls to numeric suffix
+    assert second == "Poems - anon (2)"
+
+
 def test_coalesce_higher_precedence_wins_and_fills_blanks():
     members = [
         ("goodreads", store.BookRow(title="X", format="ebook", rating="4")),
@@ -214,17 +228,40 @@ def test_merge_clusters_across_layers_and_assigns_book_id(tmp_path):
 
 
 def test_merge_is_order_independent(tmp_path):
-    def build(vault, first, second):
-        store.write_layer(vault, first[0], first[1])
-        store.write_layer(vault, second[0], second[1])
-        return {b.book_id: b.format for b in store.merge(vault)}
+    """Clustering and coalesce are deterministic regardless of row order within layers."""
+    # Multiple books, some matching (should cluster), some distinct
+    books = [
+        store.BookRow(title="Dune", authors=["Frank Herbert"], format="ebook", isbn="111"),
+        store.BookRow(title="Dune", authors=["Herbert, Frank"], format="audiobook"),  # matches
+        store.BookRow(title="1984", authors=["George Orwell"], format="ebook"),
+        store.BookRow(title="Foundation", authors=["Isaac Asimov"], format="ebook", isbn="222"),
+    ]
+    # Write in two different orders
+    vault1 = tmp_path / "v1"
+    store.write_layer(vault1, "calibre", [books[0], books[2], books[3]])
+    store.write_layer(vault1, "audible", [books[1]])  # matching Dune row
+    cat1 = store.merge(vault1)
 
-    cal = ("calibre", [store.BookRow(title="X", authors=["A"], format="ebook")])
-    aud = ("audible", [store.BookRow(title="X", authors=["A"], format="audiobook")])
-    r1 = build(tmp_path / "v1", cal, aud)
-    r2 = build(tmp_path / "v2", aud, cal)
-    assert r1 == r2
-    assert list(r1.values()) == ["audiobook"]
+    vault2 = tmp_path / "v2"
+    # Reverse order within calibre layer
+    store.write_layer(vault2, "calibre", [books[3], books[2], books[0]])
+    store.write_layer(vault2, "audible", [books[1]])
+    cat2 = store.merge(vault2)
+
+    # Same clustering: 3 books (Dune merged, 1984, Foundation separate)
+    assert len(cat1) == 3
+    assert len(cat2) == 3
+    # Same book_ids (order may vary, so compare as sets)
+    ids1 = {b.book_id for b in cat1}
+    ids2 = {b.book_id for b in cat2}
+    assert ids1 == ids2
+    # Same coalesced values
+    by_id1 = {b.book_id: b.format for b in cat1}
+    by_id2 = {b.book_id: b.format for b in cat2}
+    assert by_id1 == by_id2
+    # audible wins format for the merged Dune (author form from audible row)
+    dune_id = [bid for bid in ids1 if bid.startswith("Dune -")][0]
+    assert by_id1[dune_id] == "audiobook"
 
 
 def test_merge_read_books_csv_roundtrip(tmp_path):
@@ -301,6 +338,20 @@ def test_row_to_highlight_reverses_each_kind():
         h = store.row_to_highlight(row)
         attr, value = want
         assert getattr(h, attr) == value
+
+
+def test_row_to_highlight_handles_malformed_numeric_fields():
+    """Non-numeric location/chapter_index fall back to None instead of crashing."""
+    row = store.HighlightRow(
+        text="t",
+        location="not-a-number",
+        location_kind="percent",
+        chapter_index="also-not-a-number",
+    )
+    h = store.row_to_highlight(row)
+    assert h.progress is None
+    assert h.chapter_index is None
+    assert h.text == "t"
 
 
 def test_write_and_read_highlights_roundtrip(tmp_path):

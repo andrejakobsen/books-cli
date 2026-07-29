@@ -16,7 +16,6 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 from pathlib import Path
 
-
 # --- Canonical property schema ---------------------------------------------
 
 # Order in which book-note frontmatter keys are emitted. Every book note carries
@@ -142,6 +141,32 @@ def strip_subtitle(title: str) -> str:
     """
     head = (title or "").split(":", 1)[0].strip()
     return head or (title or "").strip()
+
+
+def next_free_stem(title: str, author: str, used_lower: set[str]) -> str:
+    """Return a unique note stem for (title, author) given already-used stems.
+
+    Ladder: clean stem (subtitle dropped) -> restore subtitle (':' -> ',')
+    -> numeric '(n)' suffix. *used_lower* holds already-taken stems lowercased;
+    membership is tested case-insensitively (matching case-insensitive
+    filesystems). The chosen stem is NOT added to used_lower -- the caller does
+    that so it can also map the stem to a path/id.
+    """
+    def stem_for(t: str) -> str:
+        return safe_filename(f"{t} - {author}" if author else t)
+
+    short = stem_for(strip_subtitle(title))
+    if short.lower() not in used_lower:
+        return short
+
+    full = stem_for(title.replace(":", ","))
+    if full.lower() not in used_lower:
+        return full
+
+    n = 2
+    while f"{full} ({n})".lower() in used_lower:
+        n += 1
+    return safe_filename(f"{full} ({n})")
 
 
 def write_if_absent(path: Path, content: str) -> bool:
@@ -429,20 +454,7 @@ class VaultIndex:
         ``(n)`` suffix is the last resort if even that collides.
         """
         author = ref.authors[0] if ref.authors else ""
-
-        def stem_for(title: str) -> str:
-            return safe_filename(f"{title} - {author}" if author else title)
-
-        short = stem_for(strip_subtitle(ref.title))
-        if short.lower() not in self.used_stems:
-            stem = short
-        else:
-            full = stem_for(ref.title.replace(":", ","))
-            stem = full
-            n = 2
-            while stem.lower() in self.used_stems:
-                stem = safe_filename(f"{full} ({n})")
-                n += 1
+        stem = next_free_stem(ref.title, author, self.used_stems)
         self.used_stems.add(stem.lower())
         return self.vault / BOOKS_DIRNAME / f"{stem}.md"
 
