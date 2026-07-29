@@ -1,12 +1,15 @@
 #!/usr/bin/env python3
-"""Convert a Calibre library into an Obsidian-friendly markdown vault.
+"""Parse a Calibre library into the ``calibre`` CSV-store metadata layer.
 
-Reads each book's ``metadata.opf`` (XML), copies ``cover.jpg`` into ``Covers/``,
-and writes a markdown note with YAML frontmatter (Obsidian properties). Authors
-and topics become ``[[wikilinks]]`` so they cluster in Obsidian's graph, and stub
-hub notes are generated for each. Ebook files and Calibre internals are ignored.
+Reads each book's ``metadata.opf`` (XML) into a :class:`store.BookRow` and writes
+them to ``Data/Sources/calibre.csv`` via ``store.write_layer``. Covers are staged
+under ``Data/Sources/_covers/calibre/`` and their vault-relative path recorded in
+each row's ``cover`` field; the ``render`` command materializes them (after merge)
+into ``Data/Covers/<book_id>.jpg`` and creates the notes/stubs. Ebook files and
+Calibre internals are ignored.
 
-Standard library only.
+Standard library only (plus the ``store`` layer's ``html_to_markdown`` for the
+unchanged opf description parsing).
 """
 
 from __future__ import annotations
@@ -17,23 +20,9 @@ from xml.etree import ElementTree as ET
 
 import typer
 
-from books.core import config
+from books.core import config, store
 from books.core.paths import resolve_path
-from books.renderers.obsidian import (
-    AUTHORS_DIRNAME,
-    TOPICS_DIRNAME,
-    BookRef,
-    VaultIndex,
-    cover_path,
-    cover_refs,
-    ensure_top_embed,
-    format_rating,
-    html_to_markdown,
-    link_list,
-    update_frontmatter,
-    write_stub,
-    yaml_quote,
-)
+from books.renderers.obsidian import html_to_markdown
 
 # --- XML namespaces used in Calibre .opf files -----------------------------
 
@@ -163,81 +152,59 @@ def parse_opf(opf_path: Path) -> BookMetadata:
     return meta
 
 
-# --- Frontmatter / note construction ---------------------------------------
+# --- BookMetadata -> store.BookRow mapping ---------------------------------
 
-def _calibre_updates(meta: BookMetadata, cover_fm: str) -> dict[str, str]:
-    """Map a BookMetadata to canonical property -> formatted YAML value.
-
-    *cover_fm* is the pre-formatted ``cover:`` value (a vault-relative wikilink,
-    or "" when there is no cover). Goodreads-only fields (pages/status/shelves/
-    date_read) are emitted empty so the Goodreads importer or manual editing can
-    fill them later.
-    """
-    u: dict[str, str] = {}
-    u["title"] = yaml_quote(meta.title) if meta.title else ""
-    u["authors"] = link_list(meta.authors) if meta.authors else ""
-    u["topics"] = link_list(meta.genres) if meta.genres else ""
-    u["series"] = yaml_quote(meta.series) if meta.series else ""
-    u["series_index"] = meta.series_index or ""
-    u["publisher"] = yaml_quote(meta.publisher) if meta.publisher else ""
-    u["published"] = meta.published or ""
-    u["language"] = meta.language or ""
-    u["format"] = "ebook"  # everything in a Calibre library is an ebook
-    u["pages"] = ""
-    u["status"] = ""
-    u["shelves"] = ""
-    u["rating"] = format_rating(meta.rating)
-    u["isbn"] = yaml_quote(meta.isbn) if meta.isbn else ""
-    u["amazon"] = yaml_quote(meta.amazon) if meta.amazon else ""
-    u["google"] = yaml_quote(meta.google) if meta.google else ""
-    u["uuid"] = yaml_quote(meta.uuid) if meta.uuid else ""
-    u["calibre_id"] = meta.calibre_id or ""
-    u["date_added"] = meta.date_added or ""
-    u["date_read"] = ""
-    u["source"] = "calibre"
-    u["cover"] = cover_fm
-    u["highlighted"] = "false"
-    u["reviewed"] = "false"
-    return u
+def _rating_str(rating: float | None) -> str:
+    """Numeric rating as a compact string ('4', '3.5'), '' when absent."""
+    if rating is None:
+        return ""
+    return str(int(rating)) if float(rating).is_integer() else str(rating)
 
 
-def write_note(note_path: Path, meta: BookMetadata,
-               cover_fm: str, cover_embed: str) -> None:
-    """Merge Calibre metadata into the flat note.
-
-    Frontmatter is always merged (never overwriting existing values). The cover
-    embed and description are placed at the top of the body (cover first), each
-    inserted only when absent so the result is idempotent and independent of
-    import order. Any other existing body content is left untouched.
-    """
-    note = update_frontmatter(note_path.read_text(encoding="utf-8"),
-                              _calibre_updates(meta, cover_fm))
-    # Insert description first, then the cover above it, so the final top-of-body
-    # order is: cover embed, then description.
-    if meta.description:
-        note = ensure_top_embed(note, meta.description)
-    if cover_embed:
-        note = ensure_top_embed(note, cover_embed)
-    note_path.write_text(note, encoding="utf-8")
+def _to_row(meta: BookMetadata, cover_rel: str) -> store.BookRow:
+    """Map parsed Calibre metadata to a store BookRow (cover = staged rel path)."""
+    return store.BookRow(
+        title=meta.title or "",
+        authors=list(meta.authors),
+        series=meta.series or "",
+        series_index=meta.series_index or "",
+        publisher=meta.publisher or "",
+        published=meta.published or "",
+        language=meta.language or "",
+        format="ebook",  # everything in a Calibre library is an ebook
+        rating=_rating_str(meta.rating),
+        isbn=meta.isbn or "",
+        amazon=meta.amazon or "",
+        google=meta.google or "",
+        uuid=meta.uuid or "",
+        calibre_id=meta.calibre_id or "",
+        date_added=meta.date_added or "",
+        cover=cover_rel,
+    )
 
 
 # --- Main conversion -------------------------------------------------------
 
 def convert(library: Path, output: Path) -> dict:
-    stats = {"books": 0, "covers": 0, "skipped": 0, "authors": set(), "topics": set()}
+    """Parse a Calibre library into the ``calibre`` metadata layer CSV.
 
+    Covers are staged under ``Data/Sources/_covers/calibre/<n>.jpg`` and their
+    vault-relative path recorded in the row's ``cover`` field; ``render``
+    materializes them to ``Data/Covers/<book_id>.jpg`` after merge. No notes,
+    stubs, or topics are written (topics are user-owned; the renderer owns notes).
+    """
+    stats = {"books": 0, "covers": 0, "skipped": 0, "authors": set()}
     output.mkdir(parents=True, exist_ok=True)
-    index = VaultIndex(output)
-    authors_dir = output / AUTHORS_DIRNAME
-    topics_dir = output / TOPICS_DIRNAME
 
+    staging = store.sources_dir(output) / "_covers" / "calibre"
+    if staging.exists():
+        shutil.rmtree(staging)  # fresh each run so re-runs don't accumulate
+
+    rows: list[store.BookRow] = []
     for opf_path in sorted(library.rglob("metadata.opf")):
-        # Skip anything inside ignored top-level dirs (.caltrash etc.).
         rel_parts = opf_path.relative_to(library).parts
         if any(part in IGNORED_NAMES for part in rel_parts):
             continue
-
-        book_src = opf_path.parent
         try:
             meta = parse_opf(opf_path)
         except ET.ParseError as exc:
@@ -248,28 +215,20 @@ def convert(library: Path, output: Path) -> dict:
             stats["skipped"] += 1
             continue
 
-        book = index.find_or_create(
-            BookRef(title=meta.title, authors=meta.authors, isbn=meta.isbn))
-
-        cover_src = book_src / "cover.jpg"
-        cover_fm = cover_embed = ""
+        cover_rel = ""
+        cover_src = opf_path.parent / "cover.jpg"
         if cover_src.is_file():
-            cover_dst = cover_path(book.note_path)
-            cover_dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(cover_src, cover_dst)
-            cover_fm, cover_embed = cover_refs(book.note_path)
+            staging.mkdir(parents=True, exist_ok=True)
+            staged = staging / f"{len(rows)}.jpg"
+            shutil.copy2(cover_src, staged)
+            cover_rel = staged.relative_to(output).as_posix()
             stats["covers"] += 1
 
-        write_note(book.note_path, meta, cover_fm, cover_embed)
+        rows.append(_to_row(meta, cover_rel))
         stats["books"] += 1
+        stats["authors"].update(meta.authors)
 
-        for author in meta.authors:
-            write_stub(authors_dir, author, "author")
-            stats["authors"].add(author)
-        for topic in meta.genres:
-            write_stub(topics_dir, topic, "topic")
-            stats["topics"].add(topic)
-
+    store.write_layer(output, "calibre", rows)
     return stats
 
 
@@ -287,7 +246,7 @@ def calibre_to_obsidian(
              "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
 ) -> None:
-    """Convert a Calibre library into an Obsidian markdown vault.
+    """Parse a Calibre library into the CSV-store ``calibre`` metadata layer.
 
     INPUT (--library): a Calibre library folder containing per-book subfolders
     with a metadata.opf (XML) and, usually, a cover.jpg. Ebook files (.epub,
@@ -296,11 +255,11 @@ def calibre_to_obsidian(
     ~/Calibre Library.
 
     OUTPUT (--output): an Obsidian vault folder. Relative paths resolve against
-    the current directory; default: ./Obsidian. For each book it writes a flat
-    markdown note under Books/ (YAML properties from the opf + cover embed +
-    description), copies cover.jpg into Covers/<Title> - <Author>.jpg, and creates
-    linked stub notes under Authors/ and Topics/. Re-running is safe: it never
-    overwrites notes it did not create or existing note bodies.
+    the current directory; default: ./Obsidian. Writes one BookRow per book into
+    Data/Sources/calibre.csv and stages each cover under
+    Data/Sources/_covers/calibre/. Run ``merge`` then ``render`` to turn the
+    layer into notes (which also materializes the staged covers). No notes,
+    stubs, or topics are written here.
     """
     if library is None:
         library = Path.home() / "Calibre Library"
@@ -315,8 +274,8 @@ def calibre_to_obsidian(
     stats = convert(library, output)
     typer.echo(
         f"Done. {stats['books']} books, {stats['covers']} covers, "
-        f"{len(stats['authors'])} authors, {len(stats['topics'])} topics, "
-        f"{stats['skipped']} skipped.\nOutput: {output}"
+        f"{len(stats['authors'])} authors, {stats['skipped']} skipped.\n"
+        f"Output: {output}"
     )
 
 

@@ -1,178 +1,94 @@
-"""Tests for calibre_to_obsidian using a synthetic Calibre library fixture."""
+"""Tests for the calibre CSV-store writer using synthetic Calibre fixtures."""
 
-import textwrap
 from pathlib import Path
 
-from books.commands import calibre as c2o
+from books.commands import calibre
+from books.core import store
 
 
-OPF_WITH_COVER = """<?xml version='1.0' encoding='utf-8'?>
-<package xmlns="http://www.idpf.org/2007/opf" unique-identifier="uuid_id" version="2.0">
-    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
-        <dc:identifier opf:scheme="calibre" id="calibre_id">9</dc:identifier>
-        <dc:identifier opf:scheme="uuid" id="uuid_id">abc-123</dc:identifier>
-        <dc:title>Napoleon: A Life</dc:title>
-        <dc:creator opf:role="aut">Andrew Roberts</dc:creator>
-        <dc:date>2014-11-03T23:00:00+00:00</dc:date>
-        <dc:description>&lt;div&gt;&lt;p&gt;A &lt;b&gt;great&lt;/b&gt; book.&lt;/p&gt;&lt;/div&gt;</dc:description>
-        <dc:publisher>Penguin</dc:publisher>
-        <dc:identifier opf:scheme="ISBN">9780698176287</dc:identifier>
-        <dc:identifier opf:scheme="GOOGLE">rjVBAwAAQBAJ</dc:identifier>
-        <dc:language>eng</dc:language>
-        <dc:subject>Biography &amp; Autobiography</dc:subject>
-        <dc:subject>Military</dc:subject>
-        <meta name="calibre:rating" content="8"/>
-        <meta name="calibre:timestamp" content="2026-06-04T07:48:08+00:00"/>
-    </metadata>
-</package>
-"""
+def _make_calibre_book(root: Path, folder: str, opf: str, cover: bytes | None = None) -> None:
+    book_dir = root / folder
+    book_dir.mkdir(parents=True)
+    (book_dir / "metadata.opf").write_text(opf, encoding="utf-8")
+    if cover is not None:
+        (book_dir / "cover.jpg").write_bytes(cover)
 
-OPF_NO_COVER = """<?xml version='1.0' encoding='utf-8'?>
-<package xmlns="http://www.idpf.org/2007/opf" version="2.0">
-    <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
-        <dc:title>No Cover Book</dc:title>
-        <dc:creator opf:role="aut">Jane Doe</dc:creator>
-        <dc:subject>Fiction</dc:subject>
-    </metadata>
+
+_OPF = """<?xml version='1.0'?>
+<package xmlns="http://www.idpf.org/2007/opf">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
+            xmlns:opf="http://www.idpf.org/2007/opf">
+    <dc:title>The Deluge</dc:title>
+    <dc:creator opf:role="aut">Adam Tooze</dc:creator>
+    <dc:identifier opf:scheme="ISBN">9780141032184</dc:identifier>
+    <dc:subject>History</dc:subject>
+    <meta name="calibre:rating" content="8"/>
+  </metadata>
 </package>
 """
 
 
-def make_library(tmp_path: Path) -> Path:
-    lib = tmp_path / "Calibre Library"
-    b1 = lib / "Andrew Roberts" / "Napoleon_ A Life (9)"
-    b1.mkdir(parents=True)
-    (b1 / "metadata.opf").write_text(OPF_WITH_COVER, encoding="utf-8")
-    (b1 / "cover.jpg").write_bytes(b"\xff\xd8\xff\xe0fakejpeg")
-    (b1 / "Napoleon.epub").write_bytes(b"PK\x03\x04ebook")  # must be ignored
+def test_calibre_writes_layer_csv(tmp_path):
+    lib = tmp_path / "lib"
+    _make_calibre_book(lib, "Adam Tooze/The Deluge (1)", _OPF)
+    vault = tmp_path / "vault"
 
-    b2 = lib / "Jane Doe" / "No Cover Book (5)"
-    b2.mkdir(parents=True)
-    (b2 / "metadata.opf").write_text(OPF_NO_COVER, encoding="utf-8")
+    stats = calibre.convert(lib, vault)
 
-    # Calibre internals that must be ignored.
-    (lib / ".caltrash").mkdir()
-    (lib / ".caltrash" / "metadata.opf").write_text(OPF_NO_COVER, encoding="utf-8")
-    (lib / "metadata.db").write_bytes(b"sqlite")
-    return lib
+    rows = store.read_layer(vault, "calibre")
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.title == "The Deluge"
+    assert row.authors == ["Adam Tooze"]
+    assert row.isbn == "9780141032184"
+    assert row.format == "ebook"
+    assert row.rating == "4"          # calibre 8/2 = 4.0 -> "4"
+    assert stats["books"] == 1
 
 
-def test_full_conversion(tmp_path):
-    lib = make_library(tmp_path)
-    out = tmp_path / "Obsidian"
-    stats = c2o.convert(lib, out)
+def test_calibre_does_not_map_topics_or_write_notes(tmp_path):
+    lib = tmp_path / "lib"
+    _make_calibre_book(lib, "Adam Tooze/The Deluge (1)", _OPF)
+    vault = tmp_path / "vault"
 
-    assert stats["books"] == 2
+    calibre.convert(lib, vault)
+
+    # No book notes are created by calibre anymore.
+    assert not (vault / "Books").exists()
+    # No topics column exists in the store schema, so subjects are dropped.
+    assert "topics" not in store.BookRow.model_fields
+
+
+def test_calibre_stages_cover_and_records_path(tmp_path):
+    lib = tmp_path / "lib"
+    _make_calibre_book(lib, "Adam Tooze/The Deluge (1)", _OPF, cover=b"\xff\xd8\xff\xe0JPEGDATA")
+    vault = tmp_path / "vault"
+
+    stats = calibre.convert(lib, vault)
+
+    row = store.read_layer(vault, "calibre")[0]
+    staged = vault / row.cover
+    assert staged.is_file()
+    assert staged.read_bytes() == b"\xff\xd8\xff\xe0JPEGDATA"
+    assert row.cover.startswith("Data/Sources/_covers/calibre/")
     assert stats["covers"] == 1
 
-    note = (out / "Books" / "Napoleon - Andrew Roberts.md").read_text()
-    cover_rel = "Data/Covers/Napoleon - Andrew Roberts.jpg"
-    # Frontmatter values
-    assert "type: book" in note
-    assert 'title: "Napoleon: A Life"' in note
-    assert 'authors: ["[[Andrew Roberts]]"]' in note
-    assert '"[[Biography & Autobiography]]"' in note
-    assert '"[[Military]]"' in note
-    assert 'publisher: "Penguin"' in note
-    assert "published: 2014-11-03" in note
-    assert "language: eng" in note
-    assert "format: ebook" in note  # Calibre books default to ebook
-    assert "rating: ⭐⭐⭐⭐" in note  # 8/2 -> 4 stars
-    assert 'isbn: "9780698176287"' in note
-    assert 'google: "rjVBAwAAQBAJ"' in note
-    assert "date_added: 2026-06-04" in note
-    assert "source: calibre" in note
-    assert f'cover: "[[{cover_rel}]]"' in note
-    # Body (cover embed carries the fixed display width)
-    assert f"![[{cover_rel}|150]]" in note
-    assert "**great**" in note
 
-    # Cover copied into the flat Data/Covers/ folder
-    assert (out / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
+def test_calibre_rerun_replaces_layer(tmp_path):
+    lib = tmp_path / "lib"
+    _make_calibre_book(lib, "Adam Tooze/The Deluge (1)", _OPF)
+    vault = tmp_path / "vault"
+    calibre.convert(lib, vault)
+    calibre.convert(lib, vault)  # re-run
+    assert len(store.read_layer(vault, "calibre")) == 1  # not duplicated
 
 
-def test_missing_cover(tmp_path):
-    lib = make_library(tmp_path)
-    out = tmp_path / "Obsidian"
-    c2o.convert(lib, out)
-
-    note = (out / "Books" / "No Cover Book - Jane Doe.md").read_text()
-    assert "cover:\n" in note or note.rstrip().endswith("cover:")  # empty placeholder
-    assert "cover.jpg" not in note                                 # no body embed / ref
-    assert "rating:" in note  # empty rating still present
-    assert not (out / "Data" / "Covers" / "No Cover Book - Jane Doe.jpg").exists()
-
-
-def test_book_note_has_goodreads_placeholders(tmp_path):
-    lib = make_library(tmp_path)
-    out = tmp_path / "Obsidian"
-    c2o.convert(lib, out)
-    note = (out / "Books" / "Napoleon - Andrew Roberts.md").read_text()
-    for key in ("pages:", "status:", "shelves:", "date_read:"):
-        assert key in note
-
-
-def test_convert_idempotent(tmp_path):
-    lib = make_library(tmp_path)
-    out = tmp_path / "Obsidian"
-    c2o.convert(lib, out)
-    before = {p: p.read_text() for p in out.rglob("*.md")}
-    c2o.convert(lib, out)  # second run
-    after = {p: p.read_text() for p in out.rglob("*.md")}
-    assert before == after
-
-
-def test_rerun_preserves_book_note_edits(tmp_path):
-    lib = make_library(tmp_path)
-    out = tmp_path / "Obsidian"
-    c2o.convert(lib, out)
-    note = out / "Books" / "Napoleon - Andrew Roberts.md"
-    note.write_text(note.read_text().replace("status:", "status: reading"), encoding="utf-8")
-
-    c2o.convert(lib, out)  # re-run must not clobber the manual edit
-    assert "status: reading" in note.read_text()
-    assert 'title: "Napoleon: A Life"' in note.read_text()
-
-
-def test_ebook_and_internals_ignored(tmp_path):
-    lib = make_library(tmp_path)
-    out = tmp_path / "Obsidian"
-    c2o.convert(lib, out)
-
-    copied = [p.name for p in out.rglob("*")]
-    assert "Napoleon.epub" not in copied
-    assert "metadata.db" not in copied
-    # .caltrash book should not have produced a note
-    assert not (out / ".caltrash").exists()
-
-
-def test_stub_hub_notes(tmp_path):
-    lib = make_library(tmp_path)
-    out = tmp_path / "Obsidian"
-    c2o.convert(lib, out)
-
-    author = (out / "Authors" / "Andrew Roberts.md").read_text()
-    assert "type: author" in author
-    topic = (out / "Topics" / "Biography & Autobiography.md").read_text()
-    assert "type: topic" in topic
-
-
-def test_rerun_preserves_user_files(tmp_path):
-    lib = make_library(tmp_path)
-    out = tmp_path / "Obsidian"
-    c2o.convert(lib, out)
-
-    # User adds a personal note and edits an author stub.
-    note = out / "Notes" / "Napoleon - Andrew Roberts.md"
-    note.parent.mkdir(parents=True, exist_ok=True)
-    note.write_text("# My thoughts\n- a point", encoding="utf-8")
-    author_stub = out / "Authors" / "Andrew Roberts.md"
-    author_stub.write_text("---\ntype: author\n---\nMy notes on Roberts.", encoding="utf-8")
-
-    c2o.convert(lib, out)  # re-run
-
-    assert note.read_text() == "# My thoughts\n- a point"
-    assert "My notes on Roberts." in author_stub.read_text()
+def test_html_to_markdown_list():
+    html = "<p>Intro</p><ul><li>one</li><li>two</li></ul>"
+    md = calibre.html_to_markdown(html)
+    assert "Intro" in md
+    assert "- one" in md
+    assert "- two" in md
 
 
 def test_calibre_defaults_library_to_home_calibre_library(monkeypatch, tmp_path):
@@ -201,20 +117,3 @@ def test_calibre_defaults_library_to_home_calibre_library(monkeypatch, tmp_path)
     # The default library must be ~/Calibre Library, independent of the vault.
     assert result.exit_code == 0, result.output
     assert "0 books" in result.output
-
-
-def test_html_to_markdown_list():
-    html = "<p>Intro</p><ul><li>one</li><li>two</li></ul>"
-    md = c2o.html_to_markdown(html)
-    assert "Intro" in md
-    assert "- one" in md
-    assert "- two" in md
-
-
-def test_calibre_updates_emit_flag_defaults():
-    meta = c2o.BookMetadata()
-    meta.title = "Test Book"
-    meta.authors = ["Test Author"]
-    u = c2o._calibre_updates(meta, "")
-    assert u["highlighted"] == "false"
-    assert u["reviewed"] == "false"
