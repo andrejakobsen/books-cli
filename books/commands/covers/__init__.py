@@ -4,8 +4,7 @@ from books.commands.covers.command import (
     QuitRequested,
     _terminal_prompt,
     apply_cover,
-    find_missing,
-    note_to_missing,
+    books_missing_cover,
     pick_cover,
     register,
     run,
@@ -34,8 +33,8 @@ from books.commands.covers.sources import (
 __all__ = [
     "Candidate", "MissingBook", "QuitRequested", "_itunes_artwork", "_itunes_isbn",
     "_terminal_prompt", "amazon_candidates", "apple_books_candidates", "apply_cover",
-    "default_fetch_bytes", "default_fetch_json", "fetch_with_retry", "find_missing",
-    "gather_candidates", "gather_with_errors", "google_books_candidates",
-    "image_dimensions", "is_valid_image", "normalize_author", "note_to_missing",
-    "openlibrary_candidates", "pick_cover", "register", "run",
+    "books_missing_cover", "default_fetch_bytes", "default_fetch_json",
+    "fetch_with_retry", "gather_candidates", "gather_with_errors",
+    "google_books_candidates", "image_dimensions", "is_valid_image",
+    "normalize_author", "openlibrary_candidates", "pick_cover", "register", "run",
 ]

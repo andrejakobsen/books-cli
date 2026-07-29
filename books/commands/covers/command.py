@@ -16,7 +16,7 @@ from books.commands.covers.sources import (
     MissingBook,
     iter_candidates,
 )
-from books.core import config
+from books.core import config, store
 from books.core.paths import resolve_path
 from books.renderers.obsidian import (
     BOOKS_DIRNAME,
@@ -32,46 +32,30 @@ from books.renderers.obsidian import (
 )
 
 
-def _cover_is_blank(fm: dict[str, str]) -> bool:
-    """True if the note has no usable `cover:` value."""
-    return unquote(fm.get("cover", "")).strip() == ""
+def books_missing_cover(vault: Path) -> list[MissingBook]:
+    """Catalog rows (books.csv) that still need a cover.
 
-
-def note_to_missing(note_path: Path) -> MissingBook | None:
-    """Build a MissingBook for a single note, or None if it is not eligible.
-
-    Eligible means a readable `type: book` note whose `cover:` is blank/absent.
-    Returns None for unreadable files, non-book notes, or notes that already have
-    a cover.
+    A book needs a cover when its stored ``cover`` is blank *and* no materialized
+    ``Data/Covers/<book_id>.jpg`` exists on disk. The on-disk check keeps re-runs
+    idempotent even before a re-merge folds a freshly-fetched cover back into
+    books.csv.
     """
-    try:
-        text = note_path.read_text(encoding="utf-8")
-    except OSError:
-        return None
-    fm = frontmatter_values(text)
-    if unquote(fm.get("type", "")) != "book":
-        return None
-    if not _cover_is_blank(fm):
-        return None
-    return MissingBook(
-        note_path=note_path,
-        title=unquote(fm.get("title", "")),
-        authors=extract_wikilinks(fm.get("authors", "")),
-        isbn=(unquote(fm.get("isbn", "")).strip() or None),
-        amazon=(unquote(fm.get("amazon", "")).strip() or None),
-    )
-
-
-def find_missing(vault: Path) -> list[MissingBook]:
-    """Return `type: book` notes under vault/Books whose cover is blank/absent."""
     out: list[MissingBook] = []
-    books_dir = vault / BOOKS_DIRNAME
-    if not books_dir.is_dir():
-        return out
-    for md in sorted(books_dir.glob("*.md")):
-        book = note_to_missing(md)
-        if book is not None:
-            out.append(book)
+    covers_dir = store.data_dir(vault) / "Covers"
+    for row in store.read_books_csv(vault):
+        if not row.book_id:
+            continue
+        if (row.cover or "").strip():
+            continue
+        if (covers_dir / f"{row.book_id}.jpg").is_file():
+            continue
+        out.append(MissingBook(
+            book_id=row.book_id,
+            title=row.title,
+            authors=list(row.authors),
+            isbn=(row.isbn or "").strip() or None,
+            amazon=(row.amazon or "").strip() or None,
+        ))
     return out
 
 

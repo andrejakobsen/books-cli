@@ -3,6 +3,37 @@
 from pathlib import Path
 
 from books.commands import covers
+from books.core import store
+
+
+def _seed_catalog(vault, rows):
+    """Write books.csv with the given BookRows (each needs a book_id)."""
+    store.write_books_csv(vault, rows)
+
+
+def test_books_missing_cover_selects_blank_and_no_disk_file(tmp_path):
+    _seed_catalog(tmp_path, [
+        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"],
+                      isbn="111", amazon="B001", cover=""),          # blank -> included
+        store.BookRow(book_id="B - Bee", title="B", authors=["Bee"],
+                      cover="Data/Sources/_covers/x.jpg"),            # has cover -> excluded
+        store.BookRow(book_id="C - Cee", title="C", authors=["Cee"]),# blank -> included
+    ])
+    # C already has a materialized on-disk cover -> excluded despite blank field
+    disk = tmp_path / "Data" / "Covers"
+    disk.mkdir(parents=True)
+    (disk / "C - Cee.jpg").write_bytes(b"img")
+
+    missing = covers.books_missing_cover(tmp_path)
+    ids = sorted(m.book_id for m in missing)
+    assert ids == ["A - Ann"]
+    a = next(m for m in missing if m.book_id == "A - Ann")
+    assert a.title == "A" and a.authors == ["Ann"]
+    assert a.isbn == "111" and a.amazon == "B001"
+
+
+def test_books_missing_cover_no_catalog_returns_empty(tmp_path):
+    assert covers.books_missing_cover(tmp_path) == []
 
 
 def test_dataclasses_exist():
