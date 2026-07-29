@@ -1,16 +1,19 @@
 #!/usr/bin/env python3
-"""Import Audible bookmarks & clips into existing Obsidian book notes.
+"""Import Audible bookmarks & clips into the CSV store.
 
 Audible bookmarks/clips live in your Audible cloud account. This importer
 authenticates (via the optional `audible` package), fetches your library and each
 book's annotations, downloads the audiobook, and uses ffmpeg to decrypt + cut each
-clip's audio, which is transcribed into text and embedded under a marker-wrapped
-"## Highlights" heading of the *matching* book note. Like kobo/highlighted, it only
-enriches notes created by calibre/goodreads -- it never creates book notes; a book
-with no matching note is skipped and counted. Books match by ASIN (the `amazon`
-frontmatter id), then by standardized title/author.
+clip's audio, which is transcribed into text. Each library book is resolved to a
+book_id against the merged catalog (``Data/books.csv``); a matched book's
+transcribed clips are written as per-book highlights (source ``audible``) via
+``store.write_highlights`` and an ``audible`` metadata layer row carrying
+``format: audiobook``. A book with no catalog match is skipped and counted (run
+``merge``/``render`` first). Run ``merge`` + ``render`` afterward to surface the
+highlights in the actual notes. Books match by ASIN (the `amazon` id), then by
+standardized title/author.
 
-Transcriptions are cached in <vault>/.imports/audible/cache.json (keyed by
+Transcriptions are cached in <vault>/Data/Imports/audible/cache.json (keyed by
 ASIN + annotation id), so re-runs re-render for free and only download a book that
 has new clips; downloaded audio is written to a temp dir and deleted after cutting.
 
@@ -29,19 +32,9 @@ from pathlib import Path
 import typer
 
 from books.commands.audible.models import Annotation, Chapter, LibraryBook
-from books.core import config
+from books.core import config, store
 from books.core.highlights import Highlight, parse_markers
-from books.renderers.obsidian import (
-    AUTHORS_DIRNAME,
-    BookRef,
-    VaultIndex,
-    link_list,
-    render_highlights,
-    render_marked_section,
-    update_frontmatter,
-    write_stub,
-    yaml_quote,
-)
+from books.core.matching import BookRef
 
 
 def format_timestamp(ms: int) -> str:
@@ -158,38 +151,19 @@ def uncached(annotations: list[Annotation], clips: dict) -> list[Annotation]:
     return [a for a in annotations if a.id not in clips]
 
 
-def render_note(note_path: Path, book: LibraryBook, clips: dict) -> int:
-    """Enrich an existing book note with a book's cached clips.
+def book_highlight_rows(clips: dict) -> list[store.HighlightRow]:
+    """Map a book's cached clips into audible-source HighlightRows.
 
-    Fills provenance frontmatter -- including `format: audiobook` -- (never
-    overwriting existing values, except the `highlighted` flag which flips to
-    true) and replaces the marked "## Highlights" section. Empty-text records are
-    dropped. Returns the number of highlights written.
+    Each clip record becomes a Highlight (:func:`record_to_highlight`); empty-text
+    records are dropped. The cache key (the Audible annotation id) is the stable
+    ``annotation_id`` so re-runs replace cleanly.
     """
-    highlights = [record_to_highlight(rec) for rec in clips.values()]
-    highlights = [h for h in highlights if h.text]
-    if not highlights:
-        # Nothing transcribed (and no note text): don't flip `highlighted` or
-        # write an empty section — leave the note untouched.
-        return 0
-
-    updates = {
-        "title": yaml_quote(book.title),
-        "authors": link_list(book.authors) if book.authors else "",
-        "amazon": yaml_quote(book.asin) if book.asin else "",
-        "source": "audible",
-        "format": "audiobook",
-        "highlighted": "true",
-    }
-    base = note_path.read_text(encoding="utf-8")
-    note_path.write_text(update_frontmatter(base, updates), encoding="utf-8")
-
-    text = note_path.read_text(encoding="utf-8")
-    text = render_marked_section(
-        text, "Highlights", "highlights",
-        render_highlights(highlights, chapter_label="Audible ch."))
-    note_path.write_text(text, encoding="utf-8")
-    return len(highlights)
+    rows: list[store.HighlightRow] = []
+    for ann_id, rec in clips.items():
+        h = record_to_highlight(rec)
+        if h.text:
+            rows.append(store.highlight_to_row(h, "audible", ann_id))
+    return rows
 
 
 def _clip_bounds(ann: Annotation, clip_window: int) -> tuple[int, int]:
@@ -220,19 +194,23 @@ COST_PER_SECOND = 0.00028
 def run(vault, *, client, downloader, cutter, transcriber, cache_path,
         clip_window, limit=None, asin=None, dry_run=False,
         echo=lambda *_: None) -> dict:
-    """Import Audible clips into matching notes. All heavy I/O is injected.
+    """Import Audible clips into the CSV store. All heavy I/O is injected.
 
-    Returns a stats dict: books/entries/skipped/downloaded/transcribed. In
-    *dry_run* mode nothing is downloaded, transcribed, cached, or written; the plan
-    is emitted via *echo*.
+    Resolves each library book to a book_id via the merged catalog
+    (Data/books.csv); an unmatched book is skipped and counted. For a matched book
+    with transcribed clips, writes per-book highlights (source ``audible``) and an
+    ``audible`` metadata layer row (``format: audiobook``). ``merge`` + ``render``
+    later surface them. In *dry_run* mode nothing is written.
     """
     vault.mkdir(parents=True, exist_ok=True)
-    index = VaultIndex(vault)
-    authors_dir = vault / AUTHORS_DIRNAME
+    catalog = store.Catalog(vault)
     cache = load_cache(cache_path)
     stats = {"books": 0, "entries": 0, "skipped": 0,
              "downloaded": 0, "transcribed": 0, "failed": 0,
              "est_seconds": 0.0}
+
+    # Preserve other audiobooks' layer rows across partial (--asin/--limit) runs.
+    layer = {r.amazon: r for r in store.read_layer(vault, "audible") if r.amazon}
 
     library = client.library()
     if asin:
@@ -246,15 +224,15 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
         try:
             ref = BookRef(title=book.title, authors=book.authors,
                           amazon=book.asin)
-            dest = index.find(ref)
-            if dest is None:
+            book_id = catalog.find(ref)
+            if book_id is None:
                 stats["skipped"] += 1
                 if dry_run:
                     authors = ", ".join(book.authors) or "?"
                     anns = client.annotations(book.asin)
                     secs = _clip_seconds(anns, clip_window)
                     stats["est_seconds"] += secs
-                    echo(f"[dry-run] SKIP (no note): {book.title} — {authors} "
+                    echo(f"[dry-run] SKIP (no book): {book.title} — {authors} "
                          f"[asin {book.asin}] — {len(anns)} clip(s), "
                          f"~{secs/60:.1f} min, ~${secs * COST_PER_SECOND:.2f}")
                 continue
@@ -295,19 +273,22 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
                         stats["transcribed"] += 1
                 save_cache(cache_path, cache)
 
-            n = render_note(dest.note_path, book, clips)
-            if n == 0:
-                # No renderable highlights for this book — note left untouched.
+            rows = book_highlight_rows(clips)
+            if not rows:
                 continue
-            for author in book.authors:
-                write_stub(authors_dir, author, "author")
+            store.write_highlights(vault, book_id, "audible", rows)
+            layer[book.asin] = store.BookRow(
+                title=book.title, authors=list(book.authors),
+                amazon=book.asin, format="audiobook")
             stats["books"] += 1
-            stats["entries"] += n
+            stats["entries"] += len(rows)
         except Exception as exc:  # noqa: BLE001 — continue-on-error per book
             stats["failed"] += 1
             echo(f"[skip] {book.title} [asin {book.asin}]: {exc}")
             continue
 
+    if not dry_run:
+        store.write_layer(vault, "audible", list(layer.values()))
     return stats
 
 
@@ -372,14 +353,17 @@ def audible_command(
              "(still logs in to read your library), without downloading audio, "
              "transcribing, or writing."),
 ) -> None:
-    """Import Audible bookmarks & clips into existing Obsidian book notes.
+    """Import Audible bookmarks & clips into the CSV store.
 
     Authenticates to your Audible account (prompting on first run and caching the
-    auth), then for each library book that matches an existing note (by ASIN, then
-    title/author) fetches its bookmarks/clips, downloads the audiobook, and cuts +
-    transcribes each new clip into a marker-wrapped '## Highlights' section. A book
-    with no matching note is skipped and counted (run calibre/goodreads first).
-    Transcriptions are cached, so re-runs only download books with new clips.
+    auth), then for each library book that matches the merged catalog (by ASIN,
+    then title/author) fetches its bookmarks/clips, downloads the audiobook, and
+    cuts + transcribes each new clip. Matched books' clips are written as per-book
+    highlights (source 'audible') and an 'audible' metadata layer with
+    'format: audiobook'; run 'merge' + 'render' afterward to surface them in the
+    notes. A book with no catalog match is skipped and counted (run
+    calibre/goodreads/merge first). Transcriptions are cached, so re-runs only
+    download books with new clips.
     """
     from books.commands.audible.client import AudibleClient
     if quality not in AudibleClient.QUALITY_CHOICES:
@@ -407,13 +391,13 @@ def audible_command(
     if dry_run:
         secs = stats["est_seconds"]
         typer.echo(
-            f"Dry run: {stats['skipped']} book(s) skipped — no note. "
+            f"Dry run: {stats['skipped']} book(s) skipped — no book match. "
             f"Estimated transcription: ~{secs/60:.1f} min "
             f"(~${secs * COST_PER_SECOND:.2f} @ ${COST_PER_SECOND:.5f}/sec) "
             f"across all listed clips.")
         return
     books_word = "book" if stats["books"] == 1 else "books"
-    skip = (f" ({stats['skipped']} skipped — no note)"
+    skip = (f" ({stats['skipped']} skipped — no book match)"
             if stats["skipped"] else "")
     fail = f", {stats['failed']} failed" if stats.get("failed") else ""
     typer.echo(

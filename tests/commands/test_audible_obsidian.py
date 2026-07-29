@@ -7,8 +7,13 @@ from typer.testing import CliRunner
 from books.cli import app
 from books.commands.audible import command as ao
 from books.commands.audible import models
+from books.core import store
 
 runner = CliRunner()
+
+
+def _seed_catalog(vault, rows):
+    store.write_books_csv(vault, rows)
 
 
 def test_command_is_registered():
@@ -138,56 +143,18 @@ def test_uncached_returns_only_new_annotations():
     assert [a.id for a in new] == ["a2"]
 
 
-def _seed_note(out, stem, frontmatter):
-    books = out / "Books"
-    books.mkdir(parents=True, exist_ok=True)
-    note = books / f"{stem}.md"
-    note.write_text(frontmatter, encoding="utf-8")
-    return note
-
-
-def test_render_note_writes_frontmatter_and_marked_section(tmp_path):
-    out = tmp_path / "V"
-    note = _seed_note(
-        out, "Stalin - Stephen Kotkin",
-        '---\ntype: book\ntitle: "Stalin"\n'
-        'authors: ["[[Stephen Kotkin]]"]\namazon:\nsource:\n'
-        'highlighted: false\ncover:\n---\n\nMy body.\n')
-    book = ao.LibraryBook(asin="B0ASIN", title="Stalin",
-                          authors=["Stephen Kotkin"])
+def test_book_highlight_rows_maps_clips_with_annotation_ids():
     clips = {
         "a1": {"text": "First clip.", "start_ms": 120_000, "end_ms": 150_000,
-               "note": None, "date": None, "chapter": "The Rise",
-               "chapter_index": 2},
+               "note": None, "date": None, "chapter": "The Rise", "chapter_index": 2},
+        "a2": {"text": "", "start_ms": 0, "end_ms": None, "note": None,
+               "date": None, "chapter": None, "chapter_index": None},  # empty -> dropped
     }
-    n = ao.render_note(note, book, clips)
-    assert n == 1
-    text = note.read_text(encoding="utf-8")
-    assert "My body." in text                       # body preserved
-    assert 'amazon: "B0ASIN"' in text               # ASIN backfilled (quoted)
-    assert "source: audible" in text
-    assert "format: audiobook" in text              # audible books are audiobooks
-    assert "highlighted: true" in text
-    assert "## Highlights" in text
-    assert "%% books:highlights:start %%" in text
-    assert "### The Rise" in text                   # chapter grouping header
-    assert "Audible ch. 2 · 0:02:00" in text        # chapter_label + bare timestamp (120_000 ms)
-    assert "First clip." in text
-
-
-def test_render_note_skips_empty_text_highlights(tmp_path):
-    out = tmp_path / "V"
-    note = _seed_note(out, "Stalin - Stephen Kotkin",
-                      '---\ntype: book\ntitle: "Stalin"\n---\n')
-    book = ao.LibraryBook(asin="B0ASIN", title="Stalin")
-    clips = {"a1": {"text": "", "start_ms": 0, "end_ms": None, "note": None,
-                    "date": None, "chapter": None, "chapter_index": None}}
-    before = note.read_text()
-    assert ao.render_note(note, book, clips) == 0
-    # No renderable highlights -> note untouched (highlighted not flipped, no
-    # empty Highlights section written).
-    assert note.read_text() == before
-    assert "highlighted: true" not in note.read_text()
+    rows = ao.book_highlight_rows(clips)
+    assert [r.annotation_id for r in rows] == ["a1"]
+    assert rows[0].source == "audible"
+    assert rows[0].text == "First clip."
+    assert rows[0].chapter_title == "The Rise"
 
 
 class FakeClient:
@@ -233,11 +200,12 @@ def _fake_transcriber(path):
     return "transcribed text"
 
 
-def _library_and_notes(tmp_path):
+def _catalog_and_library(tmp_path):
     out = tmp_path / "V"
-    _seed_note(out, "Stalin - Stephen Kotkin",
-               '---\ntype: book\ntitle: "Stalin"\n'
-               'authors: ["[[Stephen Kotkin]]"]\namazon:\n---\n')
+    out.mkdir(parents=True)
+    _seed_catalog(out, [store.BookRow(
+        book_id="Stalin - Stephen Kotkin", title="Stalin",
+        authors=["Stephen Kotkin"], amazon="B0STALIN")])
     book = ao.LibraryBook(asin="B0STALIN", title="Stalin",
                           authors=["Stephen Kotkin"])
     anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=120_000,
@@ -245,59 +213,115 @@ def _library_and_notes(tmp_path):
     return out, book, anns
 
 
-def test_run_enriches_matched_and_writes_cache(tmp_path):
-    out, book, anns = _library_and_notes(tmp_path)
+def test_run_writes_highlights_and_audible_layer(tmp_path):
+    out, book, anns = _catalog_and_library(tmp_path)
     client = FakeClient([book], anns)
-    cache_path = out / ".imports" / "audible" / "cache.json"
+    cache_path = out / "Data" / "Imports" / "audible" / "cache.json"
     down, cut = FakeDownloader(), FakeCutter()
     stats = ao.run(out, client=client, downloader=down, cutter=cut,
                    transcriber=_fake_transcriber, cache_path=cache_path,
                    clip_window=30)
     assert stats["books"] == 1 and stats["entries"] == 1
     assert stats["downloaded"] == 1 and stats["transcribed"] == 1
-    note = out / "Books" / "Stalin - Stephen Kotkin.md"
-    assert "transcribed text" in note.read_text()
-    cache = ao.load_cache(cache_path)
-    assert cache["B0STALIN"]["clips"]["a1"]["text"] == "transcribed text"
+    hl = store.read_highlights(out, "Stalin - Stephen Kotkin")
+    assert [r.source for r in hl] == ["audible"]
+    assert hl[0].text == "transcribed text"
+    assert hl[0].annotation_id == "a1"
+    layer = store.read_layer(out, "audible")
+    assert len(layer) == 1
+    assert layer[0].amazon == "B0STALIN"
+    assert layer[0].format == "audiobook"
 
 
-def test_run_no_highlights_leaves_note_untouched(tmp_path):
-    # A matched book whose clips all transcribe to empty (and carry no note)
-    # is downloaded/transcribed but produces no highlights: the note must be
-    # left untouched (highlighted not flipped) and not counted as a book.
+def test_run_skips_unmatched_without_download(tmp_path):
     out = tmp_path / "V"
-    note = _seed_note(out, "Stalin - Stephen Kotkin",
-                      '---\ntype: book\ntitle: "Stalin"\n'
-                      'authors: ["[[Stephen Kotkin]]"]\namazon:\n---\n')
-    before = note.read_text()
-    book = ao.LibraryBook(asin="B0STALIN", title="Stalin",
-                          authors=["Stephen Kotkin"])
-    anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=0, end_ms=10,
-                                       note=None)]}
+    out.mkdir(parents=True)
+    _seed_catalog(out, [])                     # empty catalog -> no match
+    book = ao.LibraryBook(asin="B0X", title="Unknown", authors=["Nobody"])
+    client = FakeClient([book], {"B0X": [ao.Annotation(id="a1", start_ms=0, end_ms=10)]})
+    down = FakeDownloader()
+    stats = ao.run(out, client=client, downloader=down, cutter=FakeCutter(),
+                   transcriber=_fake_transcriber,
+                   cache_path=out / "c.json", clip_window=30)
+    assert stats["skipped"] == 1 and stats["books"] == 0
+    assert down.calls == []
+    assert store.read_layer(out, "audible") == []
+
+
+def test_run_no_highlights_writes_nothing(tmp_path):
+    out = tmp_path / "V"
+    out.mkdir(parents=True)
+    _seed_catalog(out, [store.BookRow(
+        book_id="Stalin - Stephen Kotkin", title="Stalin",
+        authors=["Stephen Kotkin"], amazon="B0STALIN")])
+    book = ao.LibraryBook(asin="B0STALIN", title="Stalin", authors=["Stephen Kotkin"])
+    anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=0, end_ms=10, note=None)]}
     stats = ao.run(out, client=FakeClient([book], anns),
                    downloader=FakeDownloader(), cutter=FakeCutter(),
                    transcriber=lambda path: "", cache_path=out / "c.json",
                    clip_window=30)
     assert stats["books"] == 0 and stats["entries"] == 0
-    assert note.read_text() == before
-    assert "highlighted: true" not in note.read_text()
+    assert store.read_highlights(out, "Stalin - Stephen Kotkin") == []
+    assert store.read_layer(out, "audible") == []
+
+
+def test_run_replaces_only_audible_highlights(tmp_path):
+    out, book, anns = _catalog_and_library(tmp_path)
+    store.write_highlights(out, "Stalin - Stephen Kotkin", "kobo",
+                           [store.HighlightRow(source="kobo", text="kept")])
+    ao.run(out, client=FakeClient([book], anns), downloader=FakeDownloader(),
+           cutter=FakeCutter(), transcriber=_fake_transcriber,
+           cache_path=out / "c.json", clip_window=30)
+    hl = store.read_highlights(out, "Stalin - Stephen Kotkin")
+    sources = sorted(r.source for r in hl)
+    assert sources == ["audible", "kobo"]
+
+
+def test_run_idempotent_uses_cache_no_redownload(tmp_path):
+    out, book, anns = _catalog_and_library(tmp_path)
+    cache_path = out / "Data" / "Imports" / "audible" / "cache.json"
+    down1 = FakeDownloader()
+    ao.run(out, client=FakeClient([book], anns), downloader=down1,
+           cutter=FakeCutter(), transcriber=_fake_transcriber,
+           cache_path=cache_path, clip_window=30)
+    before = store.read_highlights(out, "Stalin - Stephen Kotkin")
+    down2 = FakeDownloader()
+    ao.run(out, client=FakeClient([book], anns), downloader=down2,
+           cutter=FakeCutter(), transcriber=_fake_transcriber,
+           cache_path=cache_path, clip_window=30)
+    after = store.read_highlights(out, "Stalin - Stephen Kotkin")
+    assert down2.calls == []
+    assert [r.to_csv_dict() for r in before] == [r.to_csv_dict() for r in after]
+
+
+def test_run_point_bookmark_uses_window_before_mark(tmp_path):
+    out = tmp_path / "V"
+    out.mkdir(parents=True)
+    _seed_catalog(out, [store.BookRow(
+        book_id="Stalin - Stephen Kotkin", title="Stalin",
+        authors=["Stephen Kotkin"], amazon="B0STALIN")])
+    book = ao.LibraryBook(asin="B0STALIN", title="Stalin",
+                          authors=["Stephen Kotkin"])
+    anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=90_000, end_ms=None)]}
+    cut = FakeCutter()
+    ao.run(out, client=FakeClient([book], anns), downloader=FakeDownloader(),
+           cutter=cut, transcriber=_fake_transcriber,
+           cache_path=out / "c.json", clip_window=30)
+    # point bookmark: window ends at the mark, starts clip_window seconds earlier
+    assert cut.calls == [("B0STALIN.aaxc", 60_000, 90_000)]
 
 
 def test_run_continues_when_one_book_fails(tmp_path):
-    # One book blows up mid-processing (e.g. a download/license/transcribe
-    # error). It must be counted as failed and skipped, and the *next* book
-    # must still be enriched -- one bad book never aborts the whole run.
     out = tmp_path / "V"
-    _seed_note(out, "Stalin - Stephen Kotkin",
-               '---\ntype: book\ntitle: "Stalin"\n'
-               'authors: ["[[Stephen Kotkin]]"]\namazon:\n---\n')
-    _seed_note(out, "Peace - Leo Tolstoy",
-               '---\ntype: book\ntitle: "Peace"\n'
-               'authors: ["[[Leo Tolstoy]]"]\namazon:\n---\n')
-    bad = ao.LibraryBook(asin="B0BAD", title="Stalin",
-                         authors=["Stephen Kotkin"])
-    good = ao.LibraryBook(asin="B0GOOD", title="Peace",
-                          authors=["Leo Tolstoy"])
+    out.mkdir(parents=True)
+    _seed_catalog(out, [
+        store.BookRow(book_id="Stalin - Stephen Kotkin", title="Stalin",
+                      authors=["Stephen Kotkin"], amazon="B0BAD"),
+        store.BookRow(book_id="Peace - Leo Tolstoy", title="Peace",
+                      authors=["Leo Tolstoy"], amazon="B0GOOD"),
+    ])
+    bad = ao.LibraryBook(asin="B0BAD", title="Stalin", authors=["Stephen Kotkin"])
+    good = ao.LibraryBook(asin="B0GOOD", title="Peace", authors=["Leo Tolstoy"])
     anns = {
         "B0BAD": [ao.Annotation(id="a1", start_ms=1000, end_ms=2000)],
         "B0GOOD": [ao.Annotation(id="a2", start_ms=1000, end_ms=2000)],
@@ -315,78 +339,29 @@ def test_run_continues_when_one_book_fails(tmp_path):
                    clip_window=30)
     assert stats["failed"] == 1
     assert stats["books"] == 1 and stats["entries"] == 1
-    assert "transcribed text" in (
-        out / "Books" / "Peace - Leo Tolstoy.md").read_text()
-
-
-def test_run_skips_unmatched_without_download(tmp_path):
-    out = tmp_path / "V"
-    (out / "Books").mkdir(parents=True)            # no matching note
-    book = ao.LibraryBook(asin="B0X", title="Unknown", authors=["Nobody"])
-    client = FakeClient([book], {"B0X": [ao.Annotation(id="a1", start_ms=0,
-                                                       end_ms=10)]})
-    down = FakeDownloader()
-    stats = ao.run(out, client=client, downloader=down, cutter=FakeCutter(),
-                   transcriber=_fake_transcriber,
-                   cache_path=out / "c.json", clip_window=30)
-    assert stats["skipped"] == 1 and stats["books"] == 0
-    assert down.calls == []                          # never downloaded
-
-
-def test_run_idempotent_uses_cache_no_redownload(tmp_path):
-    out, book, anns = _library_and_notes(tmp_path)
-    cache_path = out / ".imports" / "audible" / "cache.json"
-    down1 = FakeDownloader()
-    ao.run(out, client=FakeClient([book], anns), downloader=down1,
-           cutter=FakeCutter(), transcriber=_fake_transcriber,
-           cache_path=cache_path, clip_window=30)
-    before = (out / "Books" / "Stalin - Stephen Kotkin.md").read_text()
-    down2 = FakeDownloader()
-    ao.run(out, client=FakeClient([book], anns), downloader=down2,
-           cutter=FakeCutter(), transcriber=_fake_transcriber,
-           cache_path=cache_path, clip_window=30)
-    after = (out / "Books" / "Stalin - Stephen Kotkin.md").read_text()
-    assert down2.calls == []                          # no new clips -> no download
-    assert before == after                            # note unchanged
-
-
-def test_run_point_bookmark_uses_window_before_mark(tmp_path):
-    out = tmp_path / "V"
-    _seed_note(out, "Stalin - Stephen Kotkin",
-               '---\ntype: book\ntitle: "Stalin"\n'
-               'authors: ["[[Stephen Kotkin]]"]\n---\n')
-    book = ao.LibraryBook(asin="B0STALIN", title="Stalin",
-                          authors=["Stephen Kotkin"])
-    anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=90_000, end_ms=None)]}
-    cut = FakeCutter()
-    ao.run(out, client=FakeClient([book], anns), downloader=FakeDownloader(),
-           cutter=cut, transcriber=_fake_transcriber,
-           cache_path=out / "c.json", clip_window=30)
-    # point bookmark: window ends at the mark, starts clip_window seconds earlier
-    assert cut.calls == [("B0STALIN.aaxc", 60_000, 90_000)]
+    assert store.read_highlights(out, "Peace - Leo Tolstoy")[0].text == "transcribed text"
 
 
 def test_run_dry_run_writes_nothing(tmp_path):
-    out, book, anns = _library_and_notes(tmp_path)
-    note = out / "Books" / "Stalin - Stephen Kotkin.md"
-    before = note.read_text()
+    out, book, anns = _catalog_and_library(tmp_path)
     down = FakeDownloader()
     stats = ao.run(out, client=FakeClient([book], anns), downloader=down,
                    cutter=FakeCutter(), transcriber=_fake_transcriber,
                    cache_path=out / "c.json", clip_window=30, dry_run=True)
     assert down.calls == []
-    assert note.read_text() == before
+    assert store.read_highlights(out, "Stalin - Stephen Kotkin") == []
+    assert store.read_layer(out, "audible") == []
     assert not (out / "c.json").exists()
     assert stats["books"] == 0
 
 
-def test_cli_enriches_note_end_to_end(monkeypatch, tmp_path):
-    from books.core import config
-    out, book, anns = _library_and_notes(tmp_path)
+def test_cli_enriches_book_end_to_end(monkeypatch, tmp_path):
+    from books.core import config, store
+    out, book, anns = _catalog_and_library(tmp_path)
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: out)
     monkeypatch.setattr(
         config, "resolve_imports",
-        lambda name, output=None: out / ".imports" / name)
+        lambda name, output=None: out / "Data" / "Imports" / name)
     monkeypatch.setattr(ao, "_build_client",
                         lambda quality="normal": FakeClient([book], anns))
     monkeypatch.setattr(ao, "_build_transcriber",
@@ -396,18 +371,18 @@ def test_cli_enriches_note_end_to_end(monkeypatch, tmp_path):
 
     result = runner.invoke(app, ["audible"])
     assert result.exit_code == 0, result.output
-    note = out / "Books" / "Stalin - Stephen Kotkin.md"
-    assert "transcribed text" in note.read_text()
+    hl = store.read_highlights(out, "Stalin - Stephen Kotkin")
+    assert hl and hl[0].text == "transcribed text"
     assert "1 book" in result.output
 
 
 def test_cli_dry_run_builds_no_heavy_adapters(monkeypatch, tmp_path):
     from books.core import config
-    out, book, anns = _library_and_notes(tmp_path)
+    out, book, anns = _catalog_and_library(tmp_path)
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: out)
     monkeypatch.setattr(
         config, "resolve_imports",
-        lambda name, output=None: out / ".imports" / name)
+        lambda name, output=None: out / "Data" / "Imports" / name)
     monkeypatch.setattr(ao, "_build_client",
                         lambda quality="normal": FakeClient([book], anns))
 
