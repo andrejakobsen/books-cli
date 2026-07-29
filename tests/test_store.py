@@ -57,3 +57,38 @@ def test_path_helpers(tmp_path):
     assert store.highlight_path(vault, "The Deluge - Adam Tooze") == (
         vault / "Data" / "Highlights" / "The Deluge - Adam Tooze.csv"
     )
+
+
+def test_write_and_read_layer_roundtrip(tmp_path):
+    vault = tmp_path / "vault"
+    rows = [
+        store.BookRow(title="The Deluge", authors=["Adam Tooze"], format="ebook"),
+        store.BookRow(title="Stalin", authors=["Stephen Kotkin"], shelves=["read"]),
+    ]
+    store.write_layer(vault, "calibre", rows)
+    assert store.layer_path(vault, "calibre").is_file()
+    back = store.read_layer(vault, "calibre")
+    assert [r.title for r in back] == ["The Deluge", "Stalin"]
+    assert back[0].authors == ["Adam Tooze"]
+    assert back[1].shelves == ["read"]
+
+
+def test_read_layer_missing_returns_empty(tmp_path):
+    assert store.read_layer(tmp_path / "vault", "goodreads") == []
+
+
+def test_write_layer_overwrites_previous(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_layer(vault, "calibre", [store.BookRow(title="A")])
+    store.write_layer(vault, "calibre", [store.BookRow(title="B")])
+    back = store.read_layer(vault, "calibre")
+    assert [r.title for r in back] == ["B"]
+
+
+def test_read_all_layers_returns_precedence_order(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_layer(vault, "audible", [store.BookRow(title="Aud")])
+    store.write_layer(vault, "calibre", [store.BookRow(title="Cal")])
+    layers = store.read_all_layers(vault)
+    assert list(layers.keys()) == [s for s in store.PRECEDENCE if s in layers]
+    assert list(layers.keys())[0] == "calibre"  # lowest precedence first

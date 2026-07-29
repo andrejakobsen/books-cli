@@ -12,6 +12,7 @@ book is assigned a stable ``book_id`` (the note stem ``<Title> - <Author>``).
 
 from __future__ import annotations
 
+import csv
 from pathlib import Path
 
 from pydantic import BaseModel, Field
@@ -143,3 +144,40 @@ def highlights_dir(vault: Path) -> Path:
 
 def highlight_path(vault: Path, book_id: str) -> Path:
     return highlights_dir(vault) / f"{book_id}.csv"
+
+
+PRECEDENCE = ("calibre", "goodreads", "covers", "kobo", "highlighted", "readwise", "audible")
+
+
+def _write_csv(path: Path, fieldnames, dict_rows) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.DictWriter(fh, fieldnames=list(fieldnames), extrasaction="ignore")
+        writer.writeheader()
+        for row in dict_rows:
+            writer.writerow(row)
+
+
+def _read_csv(path: Path) -> list[dict]:
+    if not path.is_file():
+        return []
+    with open(path, newline="", encoding="utf-8-sig") as fh:
+        return list(csv.DictReader(fh))
+
+
+def write_layer(vault: Path, source: str, rows: list[BookRow]) -> None:
+    _write_csv(layer_path(vault, source), METADATA_COLUMNS,
+               (r.to_csv_dict() for r in rows))
+
+
+def read_layer(vault: Path, source: str) -> list[BookRow]:
+    return [BookRow.from_csv_dict(r) for r in _read_csv(layer_path(vault, source))]
+
+
+def read_all_layers(vault: Path) -> dict[str, list[BookRow]]:
+    """All present source layers, keyed in ascending precedence order."""
+    out: dict[str, list[BookRow]] = {}
+    for source in PRECEDENCE:
+        if layer_path(vault, source).is_file():
+            out[source] = read_layer(vault, source)
+    return out
