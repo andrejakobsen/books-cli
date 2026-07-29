@@ -531,22 +531,48 @@ def test_same_book_matches_on_amazon_when_no_isbn():
     assert store.same_book(a, b) is True
 
 
-def test_same_book_fuzzy_title_author_fallback():
+def test_same_book_bare_title_merges_with_subtitled_edition():
+    # Same book, one source carries the subtitle and the other does not.
     a = store.BookRow(title="The Deluge: The Great War", authors=["Adam Tooze"])
     b = store.BookRow(title="The Deluge", authors=["Tooze, Adam"])
     assert store.same_book(a, b) is True
 
 
-def test_same_book_different_titles_do_not_merge():
+def test_same_book_distinct_subtitled_volumes_do_not_merge():
+    # Both carry a (different) subtitle -> compared in full -> distinct volumes.
     a = store.BookRow(title="Stalin: Paradoxes of Power", authors=["Stephen Kotkin"])
     b = store.BookRow(title="Stalin: Waiting for Hitler", authors=["Stephen Kotkin"])
     assert store.same_book(a, b) is False
+
+
+def test_same_book_bare_sequel_titles_do_not_merge():
+    # No subtitles anywhere; a sequel is not the same book as its predecessor.
+    a = store.BookRow(title="Dune", authors=["Frank Herbert"])
+    b = store.BookRow(title="Dune Messiah", authors=["Frank Herbert"])
+    assert store.same_book(a, b) is False
+
+
+def test_same_book_bare_title_merges_with_subtitled_same_book():
+    a = store.BookRow(title="1984", authors=["George Orwell"])
+    b = store.BookRow(title="1984: A Novel", authors=["George Orwell"])
+    assert store.same_book(a, b) is True
 ```
 
-> Note on the last two: after `norm_title`, subtitles are folded into the compared
-> string, so "Paradoxes of Power" vs "Waiting for Hitler" score well below the
-> threshold while "The Deluge: The Great War" vs "The Deluge" score above it. If the
-> distinct-volume case ever scores too high in practice, raise `TITLE_MATCH_THRESHOLD`.
+> **Matching is subtitle-aware, using the symmetric `fuzz.ratio`.** This is the crux
+> of the spec's "conservative merge" guarantee. Two requirements look contradictory —
+> "The Deluge" must merge with "The Deluge: The Great War", yet "Dune" must NOT merge
+> with "Dune Messiah" and the two subtitled "Stalin" volumes must stay separate. They
+> reconcile only by treating the subtitle specially:
+> - When **both** titles have a subtitle (contain `:`), compare the **full** titles —
+>   so two different subtitles separate distinct volumes.
+> - Otherwise, compare the **subtitle-stripped base** titles — so a bare title merges
+>   with the subtitled edition of the same book.
+>
+> `fuzz.partial_ratio` MUST NOT be used here: it scores any prefix/substring as 100 and
+> silently merges "Dune"/"Dune Messiah", "Stalin"/"Stalin: Waiting for Hitler", etc.
+> (The genuinely ambiguous bare-title-of-a-multivolume-work case, e.g. a source giving
+> only "Stalin", is accepted as a merge — it is rare and only reached when neither side
+> has an ISBN or Amazon id to anchor on.)
 
 - [ ] **Step 2: Run test to verify it fails**
 
@@ -571,11 +597,31 @@ def canonical_isbn(isbn: str | None) -> str | None:
     return c or norm_isbn(isbn)
 
 
+def _has_subtitle(title: str) -> bool:
+    return strip_subtitle(title).strip().casefold() != (title or "").strip().casefold()
+
+
+def title_similar(t1: str, t2: str) -> bool:
+    """Subtitle-aware fuzzy title match with the symmetric ``fuzz.ratio``.
+
+    When both titles carry a subtitle, compare them in full (differing subtitles
+    separate distinct volumes); otherwise compare the subtitle-stripped bases (a
+    bare title merges with the subtitled edition of the same book). Never uses
+    ``partial_ratio`` — it would merge "Dune"/"Dune Messiah" and the like.
+    """
+    if _has_subtitle(t1) and _has_subtitle(t2):
+        left, right = norm_title(t1), norm_title(t2)
+    else:
+        left, right = norm_title(strip_subtitle(t1)), norm_title(strip_subtitle(t2))
+    return fuzz.ratio(left, right) >= TITLE_MATCH_THRESHOLD
+
+
 def same_book(a: BookRow, b: BookRow) -> bool:
     """True when two rows denote the same book.
 
     ISBN and Amazon id are authoritative when both sides have them (a conflict
-    means *different* books). Otherwise fall back to same author + fuzzy title.
+    means *different* books). Otherwise fall back to same author + subtitle-aware
+    fuzzy title (:func:`title_similar`).
     """
     ia, ib = canonical_isbn(a.isbn), canonical_isbn(b.isbn)
     if ia and ib:
@@ -587,7 +633,7 @@ def same_book(a: BookRow, b: BookRow) -> bool:
         return False
     if author_key(a.authors[0]) != author_key(b.authors[0]):
         return False
-    return fuzz.ratio(norm_title(a.title), norm_title(b.title)) >= TITLE_MATCH_THRESHOLD
+    return title_similar(a.title, b.title)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -977,11 +1023,10 @@ class Catalog:
             if key in self._by_ta:
                 return self._by_ta[key]
             akey = author_key(ref.authors[0])
-            nt = norm_title(ref.title)
             for r in self.rows:
                 if not r.authors or author_key(r.authors[0]) != akey:
                     continue
-                if fuzz.ratio(nt, norm_title(r.title)) >= TITLE_MATCH_THRESHOLD:
+                if title_similar(ref.title, r.title):
                     return r.book_id
         return None
 ```
