@@ -161,12 +161,14 @@ Per note:
   into the marker-wrapped section (`render_marked_section`); last render wins, hand edits
   outside the markers survive.
   - **Source attribution when ambiguous:** when the per-book CSV contains highlights from
-    **more than one distinct `source`**, the renderer makes each highlight's origin
-    explicit — a source label (e.g. `· via Audible`) appended to the callout locator
-    line. When all highlights share a single source (the common case), **no** label is
-    emitted, so single-source output is unchanged. `render_highlights` gains an optional
-    per-highlight `source` and only surfaces it when the caller passes a mixed-source
-    set.
+    **more than one distinct `source`**, the renderer groups the highlights by source and
+    separates each group with a **small header** (e.g. `### Audible`, `### Highlighted`) —
+    a lightweight divider, not a per-highlight label. Within each source group, the
+    existing chapter subheaders and reading-order sort apply as usual. When all
+    highlights share a single source (the common case), **no** source header is emitted,
+    so single-source output is unchanged. `render_highlights` gains an optional
+    per-highlight `source` and only surfaces the grouping when the caller passes a
+    mixed-source set.
 - Note body outside the managed sections is left untouched.
 
 ## Module & command changes
@@ -236,8 +238,8 @@ them accordingly.
   numeric suffix).
 - **Highlights replace-by-source:** re-running one source replaces only its rows; other
   sources' highlights persist; union renders in reading order.
-- **Source attribution:** a mixed-source book labels each highlight with its origin
-  (`· via <Source>`); a single-source book emits no label (output unchanged).
+- **Source attribution:** a mixed-source book groups highlights by source under a small
+  `### <Source>` header; a single-source book emits no source header (output unchanged).
 - **Renderer:** idempotent re-render; `topics` never written/overwritten; `## Review`
   write-once; `highlighted`/`reviewed` derived correctly; note body outside managed
   sections preserved.
