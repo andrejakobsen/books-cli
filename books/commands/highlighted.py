@@ -128,14 +128,14 @@ def highlighted_to_obsidian(
         "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
 ) -> None:
-    """Add Highlighted CSV highlights to existing Obsidian book notes.
+    """Add Highlighted CSV highlights to the CSV highlights store.
 
-    Highlights enrich book notes created by the calibre/goodreads importers; this
-    command never creates book notes itself. Every highlight is imported
-    (regardless of reading status) and embedded under a marker-wrapped
-    '## Highlights' heading. Books are matched to existing notes by ISBN, then by
-    a strict Author/Title comparison; a book with no matching note is skipped and
-    counted. Existing notes are never overwritten.
+    Highlights are written into the per-book highlights store for later rendering
+    by ``render``; this command never creates book notes itself. Every highlight is
+    imported (regardless of reading status). Books are resolved to a book_id via
+    the merged catalog (Data/books.csv) by ISBN, then by a strict Author/Title
+    comparison; a book with no catalog match is skipped and counted, so run
+    ``merge``/``sync`` first. Each source's rows are kept separate in the store.
 
     When --csv is a folder, every top-level '*.csv' file in it is imported in
     sorted order; a file that fails to parse is skipped and reported.

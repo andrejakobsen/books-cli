@@ -143,14 +143,15 @@ def readwise_to_obsidian(
         "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
 ) -> None:
-    """Add Readwise CSV highlights to existing Obsidian book notes.
+    """Add Readwise CSV highlights to the CSV highlights store.
 
-    Highlights enrich book notes created by the calibre/goodreads importers; this
-    command never creates book notes itself. Every highlight is imported and
-    embedded under a marker-wrapped '## Highlights' heading. Books are matched to
-    existing notes by Amazon id, then by a strict Author/Title comparison (using
-    the title with any '(Series #N)' suffix removed); a book with no matching note
-    is skipped and counted. Existing notes are never overwritten.
+    Highlights are written into the per-book highlights store for later rendering
+    by ``render``; this command never creates book notes itself. Every highlight is
+    imported. Books are resolved to a book_id via the merged catalog
+    (Data/books.csv) by Amazon id, then by a strict Author/Title comparison (using
+    the title with any '(Series #N)' suffix removed); a book with no catalog match
+    is skipped and counted, so run ``merge``/``sync`` first. Each source's rows are
+    kept separate in the store.
     """
     try:
         csv = config.resolve_csv_arg(csv, "readwise", output)
