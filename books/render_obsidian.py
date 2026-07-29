@@ -44,6 +44,25 @@ from books.store import BookRow, row_to_highlight
 # key (a merged book has many contributing sources; a single value is meaningless).
 NOTE_PROPERTY_ORDER = tuple(k for k in BOOK_PROPERTY_ORDER if k != "source")
 
+# Non-schema keys that Obsidian itself writes and the user owns. Preserved
+# verbatim from an existing note (like ``topics``) but never fabricated: emitted
+# only when the existing note already carries them, positioned after ``topics``.
+PRESERVED_EXTRA_KEYS = ("aliases", "cssclasses")
+
+
+def _insert_after(order: tuple, anchor: str, extra: tuple) -> tuple:
+    """Return *order* with *extra* keys inserted right after *anchor*."""
+    out: list = []
+    for key in order:
+        out.append(key)
+        if key == anchor:
+            out.extend(extra)
+    return tuple(out)
+
+
+# Render-time key order: schema keys plus the preserved extras after ``topics``.
+_RENDER_KEY_ORDER = _insert_after(NOTE_PROPERTY_ORDER, "topics", PRESERVED_EXTRA_KEYS)
+
 
 def _yaml() -> YAML:
     y = YAML()
@@ -137,7 +156,10 @@ def book_frontmatter(row: BookRow, note_path: Path, existing: dict,
         "date_read": _scalar(row.date_read),
         "cover": _cover_value(row, note_path),
     }
-    return {k: meta[k] for k in NOTE_PROPERTY_ORDER if k in meta}
+    for key in PRESERVED_EXTRA_KEYS:
+        if existing and key in existing:
+            meta[key] = existing[key]
+    return {k: meta[k] for k in _RENDER_KEY_ORDER if k in meta}
 
 
 def render_body(existing_body: str, row: BookRow, note_path: Path,

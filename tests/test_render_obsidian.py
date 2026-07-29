@@ -221,3 +221,41 @@ def test_render_command_renders_vault(tmp_path):
 def test_render_command_errors_without_books_csv(tmp_path):
     result = CliRunner().invoke(app, ["render", "--output", str(tmp_path / "vault")])
     assert result.exit_code != 0
+
+
+def test_book_frontmatter_preserves_aliases_and_cssclasses(tmp_path):
+    note = tmp_path / "Books" / "X - A.md"
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"])
+    existing = {"topics": ["[[History]]"], "aliases": ["The X Book"],
+                "cssclasses": ["book"]}
+    meta = R.book_frontmatter(row, note, existing=existing, has_highlights=False)
+    assert meta["aliases"] == ["The X Book"]
+    assert meta["cssclasses"] == ["book"]
+    keys = list(meta.keys())
+    assert keys.index("topics") < keys.index("aliases") < keys.index("cssclasses")
+
+
+def test_book_frontmatter_omits_absent_aliases_cssclasses(tmp_path):
+    note = tmp_path / "Books" / "X - A.md"
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"])
+    meta = R.book_frontmatter(row, note, existing={}, has_highlights=False)
+    assert "aliases" not in meta
+    assert "cssclasses" not in meta
+
+
+def test_render_note_preserves_aliases_across_rerender(tmp_path):
+    vault = tmp_path / "vault"
+    note = vault / "Books" / "X - A.md"
+    note.parent.mkdir(parents=True)
+    note.write_text(
+        '---\ntype: book\ntitle: X\ntopics: []\naliases:\n- Alt Name\n'
+        'cssclasses:\n- book\n---\n\nManual.\n', encoding="utf-8")
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"], format="ebook")
+    R.render_note(vault, row, [])
+    first = note.read_text(encoding="utf-8")
+    import frontmatter
+    post = frontmatter.loads(first)
+    assert post["aliases"] == ["Alt Name"]
+    assert post["cssclasses"] == ["book"]
+    R.render_note(vault, row, [])            # idempotent with preserved keys
+    assert note.read_text(encoding="utf-8") == first
