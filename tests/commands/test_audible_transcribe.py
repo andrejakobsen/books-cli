@@ -4,8 +4,7 @@ import subprocess
 
 import pytest
 
-from books import audible_obsidian as ao
-from books import audible_transcribe as at
+from books.commands.audible import transcribe as at
 
 
 def test_check_ffmpeg_raises_when_missing(monkeypatch):
@@ -27,7 +26,7 @@ def test_cut_clip_builds_plain_ffmpeg_command(monkeypatch, tmp_path):
         return subprocess.CompletedProcess(cmd, 0)
 
     monkeypatch.setattr(at.subprocess, "run", fake_run)
-    audio = ao.DownloadedAudio(path=tmp_path / "b.aaxc", key=None, iv=None)
+    audio = at.DownloadedAudio(path=tmp_path / "b.aaxc", key=None, iv=None)
     dest = tmp_path / "clip.wav"
     assert at.cut_clip(audio, 60_000, 90_000, dest) == dest
     cmd = calls["cmd"]
@@ -42,7 +41,7 @@ def test_cut_clip_passes_audible_key_iv_when_present(monkeypatch, tmp_path):
     calls = {}
     monkeypatch.setattr(at.subprocess, "run",
                         lambda cmd, **k: calls.setdefault("cmd", cmd))
-    audio = ao.DownloadedAudio(path=tmp_path / "b.aaxc", key="KEY", iv="IV")
+    audio = at.DownloadedAudio(path=tmp_path / "b.aaxc", key="KEY", iv="IV")
     at.cut_clip(audio, 0, 5_000, tmp_path / "c.wav")
     cmd = calls["cmd"]
     assert "-audible_key" in cmd and "KEY" in cmd

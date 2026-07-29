@@ -13,8 +13,9 @@ from __future__ import annotations
 
 import typer
 
-from books import audible_obsidian, sync
+from books import sync
 from books.commands import (
+    audible,
     calibre,
     covers,
     goodreads,
@@ -26,7 +27,7 @@ from books.commands import (
 
 # Modules that expose a register(app) function. Add new capabilities here.
 CAPABILITIES = (
-    audible_obsidian,
+    audible,
     calibre,
     covers,
     goodreads,

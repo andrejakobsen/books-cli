@@ -13,7 +13,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-from books.audible_obsidian import DownloadedAudio
+from books.commands.audible.models import DownloadedAudio
 
 _MISSING = (
     "Audible support needs extra dependencies. Install them with:\n"

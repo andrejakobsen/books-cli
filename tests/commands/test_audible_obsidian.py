@@ -4,8 +4,9 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from books import audible_obsidian as ao
 from books.cli import app
+from books.commands.audible import command as ao
+from books.commands.audible import models
 
 runner = CliRunner()
 
@@ -177,7 +178,7 @@ class FakeDownloader:
         self.calls.append(asin)
         p = Path(dest_dir) / f"{asin}.aaxc"
         p.write_bytes(b"fake-audio")
-        return ao.DownloadedAudio(path=p, key=None, iv=None)
+        return models.DownloadedAudio(path=p, key=None, iv=None)
 
 
 class FakeCutter:

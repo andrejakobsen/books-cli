@@ -24,11 +24,11 @@ from __future__ import annotations
 
 import json
 import tempfile
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import typer
 
+from books.commands.audible.models import Annotation, Chapter, LibraryBook
 from books.core import config
 from books.core.highlights import Highlight, parse_markers
 from books.renderers.obsidian import (
@@ -42,50 +42,6 @@ from books.renderers.obsidian import (
     write_stub,
     yaml_quote,
 )
-
-
-@dataclass
-class LibraryBook:
-    """A book in the Audible library."""
-    asin: str
-    title: str
-    authors: list[str] = field(default_factory=list)
-
-
-@dataclass
-class Annotation:
-    """A single Audible bookmark, clip, or note.
-
-    `end_ms` is None for a point bookmark (the plain "bookmark" button has no
-    duration); a clip carries both start and end. `note` is the user's typed text
-    (may be None).
-    """
-    id: str
-    start_ms: int
-    end_ms: int | None = None
-    note: str | None = None
-    date: str | None = None
-
-
-@dataclass
-class Chapter:
-    """A chapter with its position range (end exclusive), in reading order."""
-    index: int
-    title: str
-    start_ms: int
-    end_ms: int
-
-
-@dataclass
-class DownloadedAudio:
-    """A downloaded (still-encrypted) audiobook plus its AAXC decryption key/iv.
-
-    `key`/`iv` are None for a non-DRM source; when set, ffmpeg decrypts on the fly
-    via -audible_key/-audible_iv while cutting each clip.
-    """
-    path: "Path"
-    key: str | None = None
-    iv: str | None = None
 
 
 def format_timestamp(ms: int) -> str:
@@ -330,17 +286,17 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
 
 def _build_client(quality: str = "normal"):
     """Construct the live Audible client (auto-login on first run)."""
-    from books.audible_client import AudibleClient, default_auth_path
+    from books.commands.audible.client import AudibleClient, default_auth_path
     return AudibleClient.load_or_login(default_auth_path(), quality=quality)
 
 
 def _build_transcriber(kind: str, model: str):
-    from books.audible_transcribe import make_transcriber
+    from books.commands.audible.transcribe import make_transcriber
     return make_transcriber(kind, model)
 
 
 def _build_cutter():
-    from books.audible_transcribe import check_ffmpeg, cut_clip
+    from books.commands.audible.transcribe import check_ffmpeg, cut_clip
 
     class _FfmpegCutter:
         def cut(self, audio, start_ms, end_ms, dest):
@@ -398,7 +354,7 @@ def audible_command(
     with no matching note is skipped and counted (run calibre/goodreads first).
     Transcriptions are cached, so re-runs only download books with new clips.
     """
-    from books.audible_client import AudibleClient
+    from books.commands.audible.client import AudibleClient
     if quality not in AudibleClient.QUALITY_CHOICES:
         raise typer.BadParameter(
             f"--quality must be one of {', '.join(AudibleClient.QUALITY_CHOICES)}")
@@ -443,12 +399,3 @@ def audible_command(
 def register(app: typer.Typer) -> None:
     """Register this capability's command(s) on the shared Typer app."""
     app.command("audible")(audible_command)
-
-
-def main() -> None:
-    """Standalone entry point so the shim script keeps working on its own."""
-    typer.run(audible_command)
-
-
-if __name__ == "__main__":
-    main()

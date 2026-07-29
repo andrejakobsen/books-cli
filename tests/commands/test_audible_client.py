@@ -1,6 +1,6 @@
 """Tests for the Audible cloud adapter's pure helpers."""
 
-from books import audible_client as ac
+from books.commands.audible import client as ac
 
 
 def test_default_auth_path_is_in_config_dir(monkeypatch, tmp_path):

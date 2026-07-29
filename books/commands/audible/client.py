@@ -22,8 +22,13 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.request import urlopen
 
+from books.commands.audible.models import (
+    Annotation,
+    Chapter,
+    DownloadedAudio,
+    LibraryBook,
+)
 from books.core import config
-from books.audible_obsidian import Annotation, Chapter, DownloadedAudio, LibraryBook
 
 _MISSING = (
     "Audible support needs the `audible` package. Install the extra with:\n"
