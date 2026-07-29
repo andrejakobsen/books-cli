@@ -9,8 +9,8 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from books import sync
 from books.cli import app
+from books.commands import sync
 
 runner = CliRunner()
 

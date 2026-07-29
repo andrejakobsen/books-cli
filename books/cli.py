@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import typer
 
-from books import sync
 from books.commands import (
     audible,
     calibre,
@@ -23,6 +22,7 @@ from books.commands import (
     kobo,
     readwise,
     render,
+    sync,
 )
 
 # Modules that expose a register(app) function. Add new capabilities here.
