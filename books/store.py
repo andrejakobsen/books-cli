@@ -248,3 +248,26 @@ def assign_book_id(title: str, author: str, used: set[str]) -> str:
     stem = f"{clean_stem} ({n})"
     used.add(stem)
     return stem
+
+
+def _rank(source: str) -> int:
+    return PRECEDENCE.index(source) if source in PRECEDENCE else -1
+
+
+def coalesce(members: list[tuple[str, BookRow]]) -> BookRow:
+    """Merge ``(source, row)`` members into one row.
+
+    Each field takes the value from the highest-precedence source that has a
+    non-blank value. Pure and order-independent (rank depends only on source).
+    """
+    ordered = sorted(members, key=lambda sr: _rank(sr[0]))
+    merged = BookRow()
+    for _source, row in ordered:
+        for col in METADATA_COLUMNS:
+            val = getattr(row, col)
+            if col in LIST_FIELDS:
+                if val:
+                    setattr(merged, col, list(val))
+            elif val not in (None, ""):
+                setattr(merged, col, val)
+    return merged

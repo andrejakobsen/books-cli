@@ -151,3 +151,32 @@ def test_assign_book_id_numeric_suffix_last_resort():
     b = store.assign_book_id("Poems", "Anon", used)
     assert a == "Poems - Anon"
     assert b == "Poems - Anon (2)"
+
+
+def test_coalesce_higher_precedence_wins_and_fills_blanks():
+    members = [
+        ("goodreads", store.BookRow(title="X", format="ebook", rating="4")),
+        ("audible", store.BookRow(title="X", format="audiobook")),
+    ]
+    merged = store.coalesce(members)
+    assert merged.format == "audiobook"   # audible > goodreads
+    assert merged.rating == "4"           # only goodreads had it
+
+
+def test_coalesce_is_order_independent():
+    m1 = [
+        ("audible", store.BookRow(title="X", format="audiobook")),
+        ("goodreads", store.BookRow(title="X", format="ebook")),
+    ]
+    m2 = list(reversed(m1))
+    assert store.coalesce(m1).format == "audiobook"
+    assert store.coalesce(m2).format == "audiobook"
+
+
+def test_coalesce_merges_list_fields_by_precedence():
+    members = [
+        ("calibre", store.BookRow(title="X", shelves=["a"])),
+        ("goodreads", store.BookRow(title="X", shelves=["b", "c"])),
+    ]
+    # goodreads outranks calibre and has a non-empty list -> it wins wholesale
+    assert store.coalesce(members).shelves == ["b", "c"]
