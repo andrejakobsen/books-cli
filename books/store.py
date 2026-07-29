@@ -271,3 +271,39 @@ def coalesce(members: list[tuple[str, BookRow]]) -> BookRow:
             elif val not in (None, ""):
                 setattr(merged, col, val)
     return merged
+
+
+def _cluster(tagged: list[tuple[str, BookRow]]) -> list[list[tuple[str, BookRow]]]:
+    clusters: list[list[tuple[str, BookRow]]] = []
+    for item in tagged:
+        _src, row = item
+        for c in clusters:
+            if any(same_book(row, member) for _s, member in c):
+                c.append(item)
+                break
+        else:
+            clusters.append([item])
+    return clusters
+
+
+def write_books_csv(vault: Path, rows: list[BookRow]) -> None:
+    _write_csv(books_csv_path(vault), CATALOG_COLUMNS, (r.to_csv_dict() for r in rows))
+
+
+def read_books_csv(vault: Path) -> list[BookRow]:
+    return [BookRow.from_csv_dict(r) for r in _read_csv(books_csv_path(vault))]
+
+
+def merge(vault: Path) -> list[BookRow]:
+    """Cluster all layers, coalesce by precedence, assign book_id, write books.csv."""
+    layers = read_all_layers(vault)
+    tagged = [(source, row) for source, rows in layers.items() for row in rows]
+    used: set[str] = set()
+    catalog: list[BookRow] = []
+    for cluster in _cluster(tagged):
+        merged = coalesce(cluster)
+        author = merged.authors[0] if merged.authors else ""
+        merged.book_id = assign_book_id(merged.title, author, used)
+        catalog.append(merged)
+    write_books_csv(vault, catalog)
+    return catalog

@@ -180,3 +180,45 @@ def test_coalesce_merges_list_fields_by_precedence():
     ]
     # goodreads outranks calibre and has a non-empty list -> it wins wholesale
     assert store.coalesce(members).shelves == ["b", "c"]
+
+
+def test_merge_clusters_across_layers_and_assigns_book_id(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_layer(vault, "calibre", [
+        store.BookRow(title="The Deluge", authors=["Adam Tooze"], format="ebook",
+                      isbn="9780141032184"),
+    ])
+    store.write_layer(vault, "audible", [
+        store.BookRow(title="The Deluge", authors=["Adam Tooze"], format="audiobook",
+                      isbn="0-14-103218-9"),  # same edition, ISBN-10 form
+    ])
+    catalog = store.merge(vault)
+    assert len(catalog) == 1
+    book = catalog[0]
+    assert book.book_id == "The Deluge - Adam Tooze"
+    assert book.format == "audiobook"           # audible wins format
+    assert store.books_csv_path(vault).is_file()
+
+
+def test_merge_is_order_independent(tmp_path):
+    def build(vault, first, second):
+        store.write_layer(vault, first[0], first[1])
+        store.write_layer(vault, second[0], second[1])
+        return {b.book_id: b.format for b in store.merge(vault)}
+
+    cal = ("calibre", [store.BookRow(title="X", authors=["A"], format="ebook")])
+    aud = ("audible", [store.BookRow(title="X", authors=["A"], format="audiobook")])
+    r1 = build(tmp_path / "v1", cal, aud)
+    r2 = build(tmp_path / "v2", aud, cal)
+    assert r1 == r2
+    assert list(r1.values()) == ["audiobook"]
+
+
+def test_merge_read_books_csv_roundtrip(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_layer(vault, "calibre",
+                      [store.BookRow(title="X", authors=["A"], shelves=["read"])])
+    store.merge(vault)
+    rows = store.read_books_csv(vault)
+    assert rows[0].book_id == "X - A"
+    assert rows[0].shelves == ["read"]
