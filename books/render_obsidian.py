@@ -24,8 +24,18 @@ from pathlib import Path
 import frontmatter
 from ruamel.yaml import YAML
 
-from books.obsidian import BOOK_PROPERTY_ORDER, COVERS_DIRNAME, format_rating, wikilink
-from books.store import BookRow
+from books.highlights import render_highlights
+from books.obsidian import (
+    BOOK_PROPERTY_ORDER,
+    COVER_WIDTH,
+    COVERS_DIRNAME,
+    ensure_section,
+    ensure_top_embed,
+    format_rating,
+    render_marked_section,
+    wikilink,
+)
+from books.store import BookRow, row_to_highlight
 
 # The note frontmatter schema: the canonical order minus the retired ``source``
 # key (a merged book has many contributing sources; a single value is meaningless).
@@ -122,3 +132,25 @@ def book_frontmatter(row: BookRow, note_path: Path, existing: dict,
         "cover": _cover_value(row, note_path),
     }
     return {k: meta[k] for k in NOTE_PROPERTY_ORDER if k in meta}
+
+
+def render_body(existing_body: str, row: BookRow, note_path: Path,
+                highlights: list) -> str:
+    """Return the note body: cover embed, write-once ``## Review``, ``## Highlights``.
+
+    Operates on the body only (no frontmatter). Idempotent: the cover embed is
+    inserted once, the review section is write-once (:func:`ensure_section`), and
+    the highlights live between replace-on-rerun markers
+    (:func:`render_marked_section`). Content outside these regions is preserved.
+    """
+    body = existing_body
+    if _cover_value(row, note_path):
+        embed = f"![[{COVERS_DIRNAME}/{note_path.stem}.jpg|{COVER_WIDTH}]]"
+        body = ensure_top_embed(body, embed)
+    review = (row.review or "").strip()
+    if review:
+        body = ensure_section(body, "Review", review + "\n")
+    if highlights:
+        rendered = render_highlights([row_to_highlight(h) for h in highlights])
+        body = render_marked_section(body, "Highlights", "highlights", rendered)
+    return body

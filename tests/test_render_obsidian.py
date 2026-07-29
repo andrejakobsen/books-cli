@@ -79,3 +79,45 @@ def test_book_frontmatter_cover_when_row_has_cover(tmp_path):
                         cover="[[Covers/X - A.jpg]]")
     meta = R.book_frontmatter(row, note, existing={}, has_highlights=False)
     assert meta["cover"] == "[[Covers/X - A.jpg]]"
+
+
+def test_render_body_cover_review_and_highlights(tmp_path):
+    note = tmp_path / "Books" / "X - A.md"
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"],
+                        review="My review", cover="[[Covers/X - A.jpg]]")
+    hls = [store.HighlightRow(source="kobo", annotation_id="1", text="quote one",
+                              location="42", location_kind="percent")]
+    body = R.render_body("", row, note, hls)
+    assert "![[Covers/X - A.jpg|150]]" in body
+    assert "## Review" in body and "My review" in body
+    assert "## Highlights" in body and "quote one" in body
+    assert "%% books:highlights:start %%" in body
+
+
+def test_render_body_review_is_write_once(tmp_path):
+    note = tmp_path / "Books" / "X - A.md"
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"], review="My review")
+    once = R.render_body("", row, note, [])
+    twice = R.render_body(once, row, note, [])
+    assert twice.count("## Review") == 1
+
+
+def test_render_body_mixed_source_groups(tmp_path):
+    note = tmp_path / "Books" / "X - A.md"
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"])
+    hls = [
+        store.HighlightRow(source="kobo", annotation_id="1", text="k",
+                           location="10", location_kind="percent"),
+        store.HighlightRow(source="readwise", annotation_id="2", text="r",
+                           location="20", location_kind="percent"),
+    ]
+    body = R.render_body("", row, note, hls)
+    assert "### Kobo" in body
+    assert "### Readwise" in body
+
+
+def test_render_body_preserves_existing_content(tmp_path):
+    note = tmp_path / "Books" / "X - A.md"
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"])
+    body = R.render_body("My own paragraph.", row, note, [])
+    assert "My own paragraph." in body
