@@ -209,9 +209,13 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
     for r in rows:
         books.setdefault(r["book_title"] or "Untitled", []).append(r)
 
+    # Accumulate highlights per resolved book_id before writing: two titles can
+    # resolve to the same book, and write_highlights replaces a source wholesale
+    # -- so all of a book's rows must be collected before the single write, or the
+    # second title would wipe the first.
     entries = 0
-    written = 0
     skipped = 0
+    by_book: dict[str, list] = {}
     for title, book_rows in books.items():
         author = (book_rows[0]["author"] or "").strip()
         authors = [author] if author else []
@@ -220,15 +224,16 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
         if book_id is None:
             skipped += 1
             continue
+        by_book.setdefault(book_id, []).extend(
+            row_to_highlight(r) for r in book_rows)
 
-        highlights = [row_to_highlight(r) for r in book_rows]
+    for book_id, highlights in by_book.items():
         hl_rows = [store.highlight_to_row(h, "kobo", str(i))
                    for i, h in enumerate(highlights)]
         store.write_highlights(vault, book_id, "kobo", hl_rows)
         entries += len(hl_rows)
-        written += 1
 
-    return {"books": written, "entries": entries, "skipped": skipped}
+    return {"books": len(by_book), "entries": entries, "skipped": skipped}
 
 
 def export(db_path: Path, out_path: Path) -> dict:

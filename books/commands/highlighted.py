@@ -89,6 +89,11 @@ def convert(csv_path: Path, output: Path) -> dict:
             key, {"title": title, "author": author, "isbn": isbn, "rows": []})
         group["rows"].append(row)
 
+    # Accumulate highlights per resolved book_id: two groups (e.g. one keyed by
+    # ISBN, one by title) can resolve to the same book, and write_highlights
+    # replaces a source wholesale -- so we must collect all of a book's rows
+    # before the single write, or the second group would wipe the first.
+    by_book: dict[str, list] = {}
     for group in groups.values():
         authors = [group["author"]] if group["author"] else []
         book_id = catalog.find(
@@ -96,7 +101,10 @@ def convert(csv_path: Path, output: Path) -> dict:
         if book_id is None:
             stats["skipped"] += 1
             continue
-        highlights = [row_to_highlight(r) for r in group["rows"]]
+        by_book.setdefault(book_id, []).extend(
+            row_to_highlight(r) for r in group["rows"])
+
+    for book_id, highlights in by_book.items():
         hl_rows = [store.highlight_to_row(h, "highlighted", str(i))
                    for i, h in enumerate(highlights)]
         store.write_highlights(output, book_id, "highlighted", hl_rows)

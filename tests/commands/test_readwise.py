@@ -213,6 +213,27 @@ def test_convert_same_amazon_different_title_rows_group_together(tmp_path):
     assert stats["books"] == 1 and stats["entries"] == 2
 
 
+def test_convert_two_groups_same_book_id_keeps_all(tmp_path):
+    """Two groups (one keyed by Amazon id, one by title/author) resolving to the
+    same book must accumulate -- the second group must not wipe the first."""
+    vault = tmp_path / "vault"
+    _seed_deluge(vault)
+    csv = tmp_path / "rw.csv"
+    # Row 1 carries the Amazon id (group key = amazon); row 2 omits it (group
+    # key = title\x00author). Both resolve to "The Deluge - Adam Tooze".
+    csv.write_text(
+        HEADER +
+        '"with amazon","The Deluge",Adam Tooze,B00XYZ,,,,page,1,2020-01-01 00:00:00+00:00,\n'
+        '"no amazon","The Deluge",Adam Tooze,,,,,page,2,2020-01-02 00:00:00+00:00,\n',
+        encoding="utf-8")
+
+    stats = rw.convert(csv, vault)
+
+    rows = store.read_highlights(vault, "The Deluge - Adam Tooze")
+    assert {r.text for r in rows} == {"with amazon", "no amazon"}
+    assert stats["books"] == 1 and stats["entries"] == 2
+
+
 def test_convert_empty_csv_creates_nothing(tmp_path):
     vault = tmp_path / "vault"
     csv = tmp_path / "rw.csv"

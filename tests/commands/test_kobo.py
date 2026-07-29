@@ -89,6 +89,47 @@ def test_kobo_skips_unmatched_book(tmp_path):
     assert store.read_highlights(vault, _GATSBY_ID) == []
 
 
+def test_kobo_two_titles_same_book_id_keeps_all(tmp_path):
+    """Two Kobo titles resolving to the same catalog book must accumulate --
+    the second title's highlights must not wipe the first's."""
+    vault = tmp_path / "vault"
+    _seed_gatsby_catalog(vault)  # catalog title: "The Great Gatsby"
+    db = tmp_path / "KoboReader.sqlite"
+    conn = sqlite3.connect(db)
+    conn.executescript(
+        """
+        CREATE TABLE content (
+            ContentID TEXT, ContentType INTEGER, Title TEXT, BookTitle TEXT,
+            Attribution TEXT, VolumeIndex INTEGER, ISBN TEXT
+        );
+        CREATE TABLE Bookmark (
+            VolumeID TEXT, ContentID TEXT, ChapterProgress REAL, Text TEXT,
+            Annotation TEXT, DateCreated TEXT, StartContainerPath TEXT, Hidden TEXT
+        );
+        """
+    )
+    # Two device "books" with title variants that both fuzzy-match the catalog
+    # entry (subtitle-stripped): a bare title and a subtitled one, same author.
+    conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
+                 ("bookA", 6, "The Great Gatsby", None, "F. Scott Fitzgerald", None, None))
+    conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
+                 ("bookB", 6, "The Great Gatsby: A Novel", None, "F. Scott Fitzgerald", None, None))
+    conn.execute("INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
+                 ("bookA", "bookA", 0.10, "from A", None, "2026-07-01",
+                  r"span#kobo\.1\.0", "false"))
+    conn.execute("INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
+                 ("bookB", "bookB", 0.20, "from B", None, "2026-07-02",
+                  r"span#kobo\.2\.0", "false"))
+    conn.commit()
+    conn.close()
+
+    stats = ke.export_obsidian(db, vault)
+
+    rows = store.read_highlights(vault, _GATSBY_ID)
+    assert {r.text for r in rows} == {"from A", "from B"}
+    assert stats == {"books": 1, "entries": 2, "skipped": 0}
+
+
 def test_kobo_rerun_replaces_own_rows(tmp_path):
     vault = tmp_path / "vault"
     _seed_gatsby_catalog(vault)

@@ -159,6 +159,27 @@ def test_convert_writes_two_highlights_to_store(tmp_path):
     assert all(r.source == "highlighted" for r in rows)
 
 
+def test_convert_two_groups_same_book_id_keeps_all(tmp_path):
+    """Two groups (one keyed by ISBN, one by title) resolving to the same book
+    must accumulate -- the second group must not wipe the first."""
+    vault = tmp_path / "vault"
+    _seed_deluge(vault)
+    csv = tmp_path / "h.csv"
+    # Row 1 carries the ISBN (group key = ISBN); row 2 omits it (group key =
+    # title). Both resolve to "The Deluge - Adam Tooze".
+    csv.write_text(
+        "Highlight,Title,Author,ISBN,Location,Tags,Note,Date\n"
+        "with isbn,The Deluge,Adam Tooze,9780141032184,10,,,\n"
+        "no isbn,The Deluge,Adam Tooze,,20,,,\n",
+        encoding="utf-8")
+
+    stats = highlighted.convert(csv, vault)
+
+    rows = store.read_highlights(vault, "The Deluge - Adam Tooze")
+    assert {r.text for r in rows} == {"with isbn", "no isbn"}
+    assert stats["books"] == 1 and stats["entries"] == 2
+
+
 def test_convert_rerun_replaces_own_rows(tmp_path):
     vault = tmp_path / "vault"
     seed_stalin(vault)
