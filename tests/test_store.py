@@ -1,4 +1,3 @@
-from pathlib import Path
 
 from books import store
 from books.highlights import Highlight
@@ -235,9 +234,12 @@ def test_catalog_find_by_isbn_amazon_and_title_author(tmp_path):
     store.merge(vault)
     cat = store.Catalog(vault)
 
-    assert cat.find(BookRef(title="whatever", isbn="0-14-103218-9")) == "The Deluge - Adam Tooze"
-    assert cat.find(BookRef(title="whatever", amazon="b00deluge")) == "The Deluge - Adam Tooze"
-    assert cat.find(BookRef(title="The Deluge", authors=["Tooze, Adam"])) == "The Deluge - Adam Tooze"
+    assert cat.find(BookRef(title="whatever", isbn="0-14-103218-9")) == \
+        "The Deluge - Adam Tooze"
+    assert cat.find(BookRef(title="whatever", amazon="b00deluge")) == \
+        "The Deluge - Adam Tooze"
+    assert cat.find(BookRef(title="The Deluge", authors=["Tooze, Adam"])) == \
+        "The Deluge - Adam Tooze"
     assert cat.find(BookRef(title="Nonexistent", authors=["Nobody"])) is None
 
 

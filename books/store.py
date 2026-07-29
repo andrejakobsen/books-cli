@@ -20,7 +20,15 @@ from pydantic import BaseModel, Field
 from rapidfuzz import fuzz
 
 from books.highlights import Highlight
-from books.obsidian import BookRef, author_key, norm_amazon, norm_isbn, norm_title, safe_filename, strip_subtitle
+from books.obsidian import (
+    BookRef,
+    author_key,
+    norm_amazon,
+    norm_isbn,
+    norm_title,
+    safe_filename,
+    strip_subtitle,
+)
 
 LIST_SEP = ";"
 
@@ -74,7 +82,7 @@ class BookRow(BaseModel):
         return out
 
     @classmethod
-    def from_csv_dict(cls, row: dict[str, str]) -> "BookRow":
+    def from_csv_dict(cls, row: dict[str, str]) -> BookRow:
         data: dict[str, object] = {}
         if row.get("book_id"):
             data["book_id"] = row["book_id"].strip()
@@ -110,7 +118,7 @@ class HighlightRow(BaseModel):
         return out
 
     @classmethod
-    def from_csv_dict(cls, row: dict[str, str]) -> "HighlightRow":
+    def from_csv_dict(cls, row: dict[str, str]) -> HighlightRow:
         data: dict[str, object] = {}
         for col in HIGHLIGHT_COLUMNS:
             raw = (row.get(col) or "").strip()
