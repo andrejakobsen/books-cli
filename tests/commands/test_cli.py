@@ -192,20 +192,20 @@ def _highlighted_csv(tmp_path: Path) -> Path:
 
 
 def test_highlighted_end_to_end(tmp_path):
+    from books.core import store
+
     csv_path = _highlighted_csv(tmp_path)
     out = tmp_path / "Obsidian"
-    _seed_note(out, "Stalin - Stephen Kotkin",
-               '---\ntype: book\ntitle: "Stalin"\n'
-               'authors: ["[[Stephen Kotkin]]"]\nisbn: "9781594203794"\n---\n\n')
+    store.write_books_csv(out, [store.BookRow(
+        book_id="Stalin - Stephen Kotkin", title="Stalin",
+        authors=["Stephen Kotkin"], isbn="9781594203794")])
     result = runner.invoke(app, ["highlighted", "--csv", str(csv_path), "--output", str(out)])
     assert result.exit_code == 0, result.output
-    note = out / "Books" / "Stalin - Stephen Kotkin.md"
-    assert note.exists()
-    note_text = note.read_text()
-    assert "## Highlights" in note_text
-    assert "%% books:highlights:start %%" in note_text
-    assert "> [!quote]+ p. 45–49" in note_text
-    assert "^p45-49" in note_text
+    rows = store.read_highlights(out, "Stalin - Stephen Kotkin")
+    assert len(rows) == 1
+    assert rows[0].source == "highlighted"
+    assert rows[0].text == "Fear is the mind-killer"
+    assert rows[0].location == "45-49" and rows[0].location_kind == "page"
 
 
 def _readwise_csv(tmp_path: Path) -> Path:

@@ -25,20 +25,10 @@ from pathlib import Path
 
 import typer
 
-from books.core import config
+from books.core import config, store
 from books.core.highlights import Highlight, split_tag_column
+from books.core.matching import BookRef
 from books.core.paths import resolve_path
-from books.renderers.obsidian import (
-    AUTHORS_DIRNAME,
-    BookRef,
-    VaultIndex,
-    link_list,
-    render_highlights,
-    render_marked_section,
-    update_frontmatter,
-    write_stub,
-    yaml_quote,
-)
 
 
 def parse_csv(path: Path) -> list[dict]:
@@ -76,10 +66,15 @@ def row_to_highlight(row: dict) -> Highlight:
 
 
 def convert(csv_path: Path, output: Path) -> dict:
-    """Import every highlight, grouped by book, into the Obsidian vault."""
-    stats = {"books": 0, "entries": 0, "authors": set(), "skipped": 0}
-    index = VaultIndex(output)
-    authors_dir = output / AUTHORS_DIRNAME
+    """Write every highlight, grouped by book, into the per-book store.
+
+    Each book is resolved to a ``book_id`` via ``store.Catalog`` (built by the
+    metadata importers + merge); a book with no catalog match is skipped and
+    counted. Returns {"books": int, "entries": int, "skipped": int}.
+    """
+    stats = {"books": 0, "entries": 0, "skipped": 0}
+    output.mkdir(parents=True, exist_ok=True)
+    catalog = store.Catalog(output)
 
     # Group rows by book (ISBN when present, else title), preserving CSV order.
     groups: dict[str, dict] = {}
@@ -96,32 +91,17 @@ def convert(csv_path: Path, output: Path) -> dict:
 
     for group in groups.values():
         authors = [group["author"]] if group["author"] else []
-        ref = BookRef(title=group["title"], authors=authors, isbn=group["isbn"])
-        dest = index.find(ref)
-        if dest is None:
+        book_id = catalog.find(
+            BookRef(title=group["title"], authors=authors, isbn=group["isbn"]))
+        if book_id is None:
             stats["skipped"] += 1
             continue
-
-        base = dest.note_path.read_text(encoding="utf-8")
-        dest.note_path.write_text(update_frontmatter(base, {
-            "title": yaml_quote(group["title"]),
-            "authors": link_list(authors) if authors else "",
-            "isbn": yaml_quote(group["isbn"]) if group["isbn"] else "",
-            "source": "highlighted",
-            "highlighted": "true",
-        }), encoding="utf-8")
-
         highlights = [row_to_highlight(r) for r in group["rows"]]
-        text = dest.note_path.read_text(encoding="utf-8")
-        text = render_marked_section(
-            text, "Highlights", "highlights", render_highlights(highlights))
-        dest.note_path.write_text(text, encoding="utf-8")
-
-        for author in authors:
-            write_stub(authors_dir, author, "author")
-            stats["authors"].add(author)
+        hl_rows = [store.highlight_to_row(h, "highlighted", str(i))
+                   for i, h in enumerate(highlights)]
+        store.write_highlights(output, book_id, "highlighted", hl_rows)
         stats["books"] += 1
-        stats["entries"] += len(highlights)
+        stats["entries"] += len(hl_rows)
 
     return stats
 
@@ -166,7 +146,7 @@ def highlighted_to_obsidian(
 
     output.mkdir(parents=True, exist_ok=True)
 
-    totals = {"books": 0, "entries": 0, "authors": set(), "skipped": 0}
+    totals = {"books": 0, "entries": 0, "skipped": 0}
     skipped = 0
     for path in csv_paths:
         try:
@@ -177,17 +157,16 @@ def highlighted_to_obsidian(
             continue
         totals["books"] += stats["books"]
         totals["entries"] += stats["entries"]
-        totals["authors"].update(stats["authors"])
         totals["skipped"] += stats["skipped"]
 
     files = len(csv_paths)
     files_word = "file" if files == 1 else "files"
     skipped_note = f" ({skipped} skipped)" if skipped else ""
-    no_note = (f" ({totals['skipped']} skipped — no book note)"
+    no_note = (f" ({totals['skipped']} skipped — no book)"
                if totals["skipped"] else "")
     typer.echo(
         f"Done. {files} {files_word}{skipped_note}, {totals['books']} books{no_note}, "
-        f"{totals['entries']} highlights, {len(totals['authors'])} authors.\n"
+        f"{totals['entries']} highlights.\n"
         f"Output: {output}"
     )
 

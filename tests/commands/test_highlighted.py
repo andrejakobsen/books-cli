@@ -1,4 +1,4 @@
-"""Tests for the Highlighted -> Obsidian importer."""
+"""Tests for the Highlighted -> CSV highlights-store importer."""
 
 from pathlib import Path
 
@@ -7,7 +7,9 @@ import typer
 from typer.testing import CliRunner
 
 from books.cli import app
+from books.commands import highlighted
 from books.commands import highlighted as hi
+from books.core import store
 
 runner = CliRunner()
 
@@ -33,21 +35,18 @@ def write_csv(tmp_path: Path) -> Path:
     return p
 
 
-def seed_note(out: Path, stem: str, frontmatter: str) -> Path:
-    """Pre-create a book note (as calibre/goodreads would) so importers can match."""
-    books = out / "Books"
-    books.mkdir(parents=True, exist_ok=True)
-    note = books / f"{stem}.md"
-    note.write_text(frontmatter, encoding="utf-8")
-    return note
+def seed_books(vault: Path, rows: list[store.BookRow]) -> None:
+    """Seed books.csv (as calibre/goodreads + merge would) so Catalog can match."""
+    store.write_books_csv(vault, rows)
 
 
-def seed_stalin(out: Path) -> Path:
-    return seed_note(
-        out, "Stalin - Stephen Kotkin",
-        '---\ntype: book\ntitle: "Stalin"\n'
-        'authors: ["[[Stephen Kotkin]]"]\nisbn: "9781594203794"\n---\n\n')
+def seed_stalin(vault: Path) -> None:
+    seed_books(vault, [store.BookRow(
+        book_id="Stalin - Stephen Kotkin", title="Stalin",
+        authors=["Stephen Kotkin"], isbn="9781594203794")])
 
+
+# --- CSV parsing / mapping helpers (unchanged, store-agnostic) ----------------
 
 def test_resolve_csv_paths_single_file(tmp_path):
     p = write_csv(tmp_path)
@@ -110,62 +109,65 @@ def test_row_to_highlight_splits_links_from_tags():
     assert h.links == ["War Commisar"]
 
 
-def test_convert_writes_highlights_and_embed(tmp_path):
-    out = tmp_path / "Obsidian"
-    seed_stalin(out)
-    stats = hi.convert(write_csv(tmp_path), out)
+# --- convert -> CSV highlights store ------------------------------------------
+
+_HL_CSV = (
+    "Highlight,Title,Author,ISBN,Location,Tags,Note,Date\n"
+    'a quote,The Deluge,Adam Tooze,9780141032184,45,"#war,@trotsky",my note,2020-01-01\n'
+)
+
+
+def _seed_deluge(vault: Path) -> None:
+    seed_books(vault, [store.BookRow(
+        book_id="The Deluge - Adam Tooze", title="The Deluge",
+        authors=["Adam Tooze"], isbn="9780141032184")])
+
+
+def test_highlighted_writes_highlights_to_store(tmp_path):
+    vault = tmp_path / "vault"
+    _seed_deluge(vault)
+    csv = tmp_path / "h.csv"
+    csv.write_text(_HL_CSV, encoding="utf-8")
+
+    stats = highlighted.convert(csv, vault)
+
+    rows = store.read_highlights(vault, "The Deluge - Adam Tooze")
+    assert len(rows) == 1
+    assert rows[0].source == "highlighted"
+    assert rows[0].text == "a quote"
+    assert rows[0].location == "45" and rows[0].location_kind == "page"
+    assert rows[0].tags == ["war"] and rows[0].links == ["Trotsky"]
+    assert stats["books"] == 1 and stats["entries"] == 1 and stats["skipped"] == 0
+
+
+def test_highlighted_skips_unmatched(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_books_csv(vault, [])
+    csv = tmp_path / "h.csv"
+    csv.write_text(_HL_CSV, encoding="utf-8")
+    stats = highlighted.convert(csv, vault)
+    assert stats["skipped"] == 1 and stats["books"] == 0
+
+
+def test_convert_writes_two_highlights_to_store(tmp_path):
+    vault = tmp_path / "vault"
+    seed_stalin(vault)
+    stats = hi.convert(write_csv(tmp_path), vault)
     assert stats["books"] == 1 and stats["entries"] == 2
-    note = out / "Books" / "Stalin - Stephen Kotkin.md"
-    assert note.exists()
-    note_text = note.read_text()
-    # Highlights are an inline, marker-wrapped '## Highlights' section.
-    assert "## Highlights" in note_text
-    assert "%% books:highlights:start %%" in note_text
-    assert "%% books:highlights:end %%" in note_text
-    assert 'isbn: "9781594203794"' in note_text     # ISBN persisted for matching
-    assert "source: highlighted" in note_text              # provenance frontmatter
-    assert "> [!quote]+ p. 4" in note_text
-    assert "^p45-49" in note_text
-    assert "Fear is the mind-killer" in note_text
-    assert "#stalin" in note_text   # tag rendered inside the note
+    rows = store.read_highlights(vault, "Stalin - Stephen Kotkin")
+    assert [r.text for r in rows] == ["Fear is the mind-killer", "A longer passage."]
+    assert all(r.source == "highlighted" for r in rows)
 
 
-def test_convert_skips_book_without_existing_note(tmp_path):
-    # Highlight importers enrich only: no calibre/goodreads note -> skip, create nothing.
-    out = tmp_path / "Obsidian"
-    stats = hi.convert(write_csv(tmp_path), out)
-    assert stats["books"] == 0
-    assert stats["entries"] == 0
-    assert stats["skipped"] == 1
-    assert not (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
+def test_convert_rerun_replaces_own_rows(tmp_path):
+    vault = tmp_path / "vault"
+    seed_stalin(vault)
+    hi.convert(write_csv(tmp_path), vault)
+    hi.convert(write_csv(tmp_path), vault)  # re-run
+    assert len(store.read_highlights(vault, "Stalin - Stephen Kotkin")) == 2
 
 
-def test_convert_merges_into_existing_note_by_isbn(tmp_path):
-    out = tmp_path / "Obsidian"
-    book_dir = out / "Books"
-    book_dir.mkdir(parents=True)
-    note = book_dir / "Stalin.md"
-    note.write_text(
-        '---\ntype: book\ntitle: "Stalin"\nisbn: "9781594203794"\n'
-        'status: read\n---\n\nMy body.\n', encoding="utf-8")
-    stats = hi.convert(write_csv(tmp_path), out)
-    assert stats["books"] == 1
-    updated = note.read_text()
-    assert "status: read" in updated       # existing value untouched
-    assert "My body." in updated           # body preserved
-    assert "## Highlights" in updated
-    assert "%% books:highlights:start %%" in updated
-
-
-def test_convert_idempotent(tmp_path):
-    out = tmp_path / "Obsidian"
-    seed_stalin(out)
-    hi.convert(write_csv(tmp_path), out)
-    before = {p: p.read_text() for p in out.rglob("*.md")}
-    hi.convert(write_csv(tmp_path), out)
-    after = {p: p.read_text() for p in out.rglob("*.md")}
-    assert before == after
-
+# --- CLI (folder mode) --------------------------------------------------------
 
 def test_cli_folder_imports_all_and_sums(tmp_path):
     src = tmp_path / "src"
@@ -173,19 +175,21 @@ def test_cli_folder_imports_all_and_sums(tmp_path):
     (src / "stalin.csv").write_text(HEADER + ROWS, encoding="utf-8")
     (src / "trotsky.csv").write_text(HEADER + ROWS_TROTSKY, encoding="utf-8")
     out = tmp_path / "Obsidian"
-    seed_stalin(out)
-    seed_note(
-        out, "The Prophet Armed - Isaac Deutscher",
-        '---\ntype: book\ntitle: "The Prophet Armed"\n'
-        'authors: ["[[Isaac Deutscher]]"]\nisbn: "9781781683118"\n---\n\n')
+    seed_books(out, [
+        store.BookRow(book_id="Stalin - Stephen Kotkin", title="Stalin",
+                      authors=["Stephen Kotkin"], isbn="9781594203794"),
+        store.BookRow(book_id="The Prophet Armed - Isaac Deutscher",
+                      title="The Prophet Armed", authors=["Isaac Deutscher"],
+                      isbn="9781781683118"),
+    ])
     result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "2 files" in result.output
-    assert (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
-    assert (out / "Books" / "The Prophet Armed - Isaac Deutscher.md").exists()
     # books/entries summed across both files
     assert "2 books" in result.output
     assert "3 highlights" in result.output
+    assert len(store.read_highlights(out, "Stalin - Stephen Kotkin")) == 2
+    assert len(store.read_highlights(out, "The Prophet Armed - Isaac Deutscher")) == 1
 
 
 def test_cli_folder_same_book_last_file_wins(tmp_path):
@@ -200,13 +204,11 @@ def test_cli_folder_same_book_last_file_wins(tmp_path):
     seed_stalin(out)
     result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
     assert result.exit_code == 0, result.output
-    # exactly one Stalin note (matched by ISBN, no duplicate)
-    stalin_notes = list((out / "Books").glob("Stalin*"))
-    assert len(stalin_notes) == 1
-    hl = stalin_notes[0].read_text()
+    rows = store.read_highlights(out, "Stalin - Stephen Kotkin")
     # last file (b.csv) wins: its highlight is present, the earlier file's is gone
-    assert "Another line." in hl
-    assert "Fear is the mind-killer" not in hl
+    texts = [r.text for r in rows]
+    assert "Another line." in texts
+    assert "Fear is the mind-killer" not in texts
 
 
 def test_cli_folder_skips_bad_csv(tmp_path):
@@ -220,7 +222,7 @@ def test_cli_folder_skips_bad_csv(tmp_path):
     result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "1 skipped" in result.output
-    assert (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
+    assert len(store.read_highlights(out, "Stalin - Stephen Kotkin")) == 2
 
 
 def test_cli_single_file_shows_one_file(tmp_path):
@@ -230,7 +232,8 @@ def test_cli_single_file_shows_one_file(tmp_path):
     result = runner.invoke(app, ["highlighted", "-c", str(csv), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "1 file" in result.output
-    assert (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
+    assert "authors" not in result.output   # folder-mode echo drops authors
+    assert len(store.read_highlights(out, "Stalin - Stephen Kotkin")) == 2
 
 
 def test_cli_empty_folder_errors(tmp_path):
@@ -255,23 +258,14 @@ def test_highlighted_defaults_csv_to_imports(monkeypatch, tmp_path):
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
     monkeypatch.setattr(config, "resolve_imports",
                         lambda name, output=None: vault / ".imports" / name)
-    seed_note(
-        vault, "The Deluge - Adam Tooze",
-        '---\ntype: book\ntitle: "The Deluge"\n'
-        'authors: ["[[Adam Tooze]]"]\n---\n\n')
+    seed_books(vault, [store.BookRow(
+        book_id="The Deluge - Adam Tooze", title="The Deluge",
+        authors=["Adam Tooze"])])
 
     app = typer.Typer()
     hi.register(app)
     result = CliRunner().invoke(app, [])
 
     assert result.exit_code == 0, result.output
-    note = vault / "Books" / "The Deluge - Adam Tooze.md"
-    assert note.exists()
-    assert "## Highlights" in note.read_text()
-
-
-def test_highlighted_sets_highlighted_true(tmp_path):
-    out = tmp_path / "Obsidian"
-    note_path = seed_stalin(out)
-    hi.convert(write_csv(tmp_path), out)
-    assert "highlighted: true" in note_path.read_text(encoding="utf-8")
+    rows = store.read_highlights(vault, "The Deluge - Adam Tooze")
+    assert len(rows) == 1 and rows[0].text == "A line."
