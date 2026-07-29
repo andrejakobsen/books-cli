@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from pathlib import Path
 from urllib.parse import quote
 
 
 @dataclass
 class MissingBook:
-    """A book note whose `cover:` frontmatter is blank/absent."""
-    note_path: Path
+    """A catalog book (row in books.csv) that has no cover yet."""
+    book_id: str
     title: str
     authors: list[str]
     isbn: str | None

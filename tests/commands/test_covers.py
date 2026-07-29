@@ -162,7 +162,7 @@ def test_normalize_author_leaves_simple_names():
 
 def test_google_query_uses_normalized_author():
     book = covers.MissingBook(
-        note_path=None, title="The  Republic", authors=["Plato and Benjamin Jowett"],
+        book_id="x", title="The  Republic", authors=["Plato and Benjamin Jowett"],
         isbn=None, amazon=None)
     captured = {}
 
@@ -179,7 +179,7 @@ def test_google_query_uses_normalized_author():
 
 def test_openlibrary_query_uses_normalized_author():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=["James   Barr"], isbn=None, amazon=None)
+        book_id="x", title="X", authors=["James   Barr"], isbn=None, amazon=None)
     captured = {}
 
     def fake_fetch(url):
@@ -194,7 +194,7 @@ def test_openlibrary_query_uses_normalized_author():
 
 def test_google_books_prefers_largest_and_upgrades_url():
     book = covers.MissingBook(
-        note_path=None, title="The Deluge", authors=["Adam Tooze"],
+        book_id="x", title="The Deluge", authors=["Adam Tooze"],
         isbn=None, amazon=None)
     captured = {}
 
@@ -225,7 +225,7 @@ def test_google_books_captures_isbn13_from_identifiers():
         "imageLinks": {"thumbnail": "http://x/y?zoom=1"},
     }}]}
     book = covers.MissingBook(
-        note_path=None, title="The Deluge", authors=["Adam Tooze"],
+        book_id="x", title="The Deluge", authors=["Adam Tooze"],
         isbn=None, amazon=None)
     cands = covers.google_books_candidates(book, lambda url: data)
     assert cands[0].isbn == "9780141032184"   # ISBN_13 preferred over ISBN_10
@@ -268,7 +268,7 @@ def test_apply_cover_does_not_overwrite_existing_isbn(tmp_path):
 
 def test_google_books_uses_isbn_query_when_present():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn="9780141032016", amazon=None)
+        book_id="x", title="X", authors=[], isbn="9780141032016", amazon=None)
     captured = {}
 
     def fake_fetch(url):
@@ -281,7 +281,7 @@ def test_google_books_uses_isbn_query_when_present():
 
 def test_google_books_strips_edge_curl_when_only_thumbnail():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+        book_id="x", title="X", authors=[], isbn=None, amazon=None)
     data = {"items": [{"volumeInfo": {"title": "X", "imageLinks": {
         "thumbnail": "http://books.google.com/x?zoom=1&edge=curl"}}}]}
     cands = covers.google_books_candidates(book, lambda url: data)
@@ -291,7 +291,7 @@ def test_google_books_strips_edge_curl_when_only_thumbnail():
 
 def test_google_books_no_images_returns_empty():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+        book_id="x", title="X", authors=[], isbn=None, amazon=None)
     cands = covers.google_books_candidates(
         book, lambda url: {"items": [{"volumeInfo": {"title": "X"}}]})
     assert cands == []
@@ -311,7 +311,7 @@ OL_EDITIONS = {
 
 def test_openlibrary_title_author_paperback_first():
     book = covers.MissingBook(
-        note_path=None, title="Napoleon", authors=["Andrew Roberts"],
+        book_id="x", title="Napoleon", authors=["Andrew Roberts"],
         isbn=None, amazon=None)
     captured = {}
 
@@ -339,7 +339,7 @@ def test_openlibrary_title_author_paperback_first():
 
 def test_openlibrary_falls_back_to_search_cover_when_no_editions():
     book = covers.MissingBook(
-        note_path=None, title="Napoleon", authors=["Andrew Roberts"],
+        book_id="x", title="Napoleon", authors=["Andrew Roberts"],
         isbn=None, amazon=None)
 
     def fake_fetch(url):
@@ -355,7 +355,7 @@ def test_openlibrary_falls_back_to_search_cover_when_no_editions():
 
 def test_openlibrary_isbn_path_builds_isbn_cover_url():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn="9780141032016", amazon=None)
+        book_id="x", title="X", authors=[], isbn="9780141032016", amazon=None)
     captured = {}
 
     def fake_fetch(url):
@@ -370,14 +370,14 @@ def test_openlibrary_isbn_path_builds_isbn_cover_url():
 
 def test_openlibrary_no_cover_returns_empty():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+        book_id="x", title="X", authors=[], isbn=None, amazon=None)
     cands = covers.openlibrary_candidates(book, lambda url: {"docs": []})
     assert cands == []
 
 
 def test_amazon_candidate_from_asin():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=["Y"], isbn=None, amazon="B00ABCDEFG")
+        book_id="x", title="X", authors=["Y"], isbn=None, amazon="B00ABCDEFG")
     cands = covers.amazon_candidates(book)
     assert len(cands) == 1
     assert cands[0].source == "amazon"
@@ -386,7 +386,7 @@ def test_amazon_candidate_from_asin():
 
 def test_amazon_no_asin_returns_empty():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+        book_id="x", title="X", authors=[], isbn=None, amazon=None)
     assert covers.amazon_candidates(book) == []
 
 
@@ -485,7 +485,7 @@ def test_fetch_with_retry_exhausts_and_raises():
 
 def test_gather_with_errors_reports_failing_source():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=["Y"], isbn=None, amazon="B00ABCDEFG")
+        book_id="x", title="X", authors=["Y"], isbn=None, amazon="B00ABCDEFG")
 
     def fetch_json(url):
         if "googleapis" in url:
@@ -548,7 +548,7 @@ def test_run_does_not_count_later_source_errors_when_earlier_succeeds(tmp_path):
 
 def test_gather_candidates_source_order():
     book = covers.MissingBook(
-        note_path=None, title="Napoleon", authors=["Andrew Roberts"],
+        book_id="x", title="Napoleon", authors=["Andrew Roberts"],
         isbn=None, amazon="B00ABCDEFG")
 
     def fake_fetch(url):
@@ -931,7 +931,7 @@ def test_cli_covers_single_book_rejects_note_outside_books(tmp_path):
 
 def test_apple_books_query_uses_title_and_author_not_isbn():
     book = covers.MissingBook(
-        note_path=None, title="The  Deluge", authors=["Adam Tooze"],
+        book_id="x", title="The  Deluge", authors=["Adam Tooze"],
         isbn="9781847374530", amazon=None)
     captured = {}
 
@@ -951,7 +951,7 @@ def test_apple_books_query_uses_title_and_author_not_isbn():
 
 def test_apple_books_builds_candidate_with_hires_url_and_isbn():
     book = covers.MissingBook(
-        note_path=None, title="The Deluge", authors=["Adam Tooze"],
+        book_id="x", title="The Deluge", authors=["Adam Tooze"],
         isbn=None, amazon=None)
     cands = covers.apple_books_candidates(book, lambda url: ITUNES_RESULTS)
     assert len(cands) == 1
@@ -965,7 +965,7 @@ def test_apple_books_builds_candidate_with_hires_url_and_isbn():
 
 def test_apple_books_uses_collection_name_and_no_isbn_for_opaque_art():
     book = covers.MissingBook(
-        note_path=None, title="The Anatomy of Fascism",
+        book_id="x", title="The Anatomy of Fascism",
         authors=["Robert O. Paxton"], isbn=None, amazon=None)
     cands = covers.apple_books_candidates(book, lambda url: ITUNES_RESULTS_NO_ISBN)
     assert len(cands) == 1
@@ -976,7 +976,7 @@ def test_apple_books_uses_collection_name_and_no_isbn_for_opaque_art():
 
 def test_apple_books_normalizes_author():
     book = covers.MissingBook(
-        note_path=None, title="The Republic",
+        book_id="x", title="The Republic",
         authors=["Plato and Benjamin Jowett"], isbn=None, amazon=None)
     captured = {}
 
@@ -991,20 +991,20 @@ def test_apple_books_normalizes_author():
 
 def test_apple_books_no_results_returns_empty():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+        book_id="x", title="X", authors=[], isbn=None, amazon=None)
     assert covers.apple_books_candidates(book, lambda url: {"results": []}) == []
 
 
 def test_apple_books_skips_results_without_artwork():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=["Y"], isbn=None, amazon=None)
+        book_id="x", title="X", authors=["Y"], isbn=None, amazon=None)
     data = {"results": [{"trackName": "X", "artistName": "Y"}]}
     assert covers.apple_books_candidates(book, lambda url: data) == []
 
 
 def test_gather_candidates_apple_first():
     book = covers.MissingBook(
-        note_path=None, title="The Deluge", authors=["Adam Tooze"],
+        book_id="x", title="The Deluge", authors=["Adam Tooze"],
         isbn=None, amazon="B00ABCDEFG")
 
     def fake_fetch(url):
