@@ -23,20 +23,9 @@ from pathlib import Path
 
 import typer
 
-from books.core import config
+from books.core import config, store
 from books.core.highlights import Highlight, split_tag_column
-from books.renderers.obsidian import (
-    AUTHORS_DIRNAME,
-    BookRef,
-    VaultIndex,
-    link_list,
-    plain_list,
-    render_highlights,
-    render_marked_section,
-    update_frontmatter,
-    write_stub,
-    yaml_quote,
-)
+from books.core.matching import BookRef
 
 # Trailing "(Series #N)" or "(Series #N.M)" suffix on a Readwise book title.
 _SERIES_RE = re.compile(r"\s*\(([^()]+?)\s+#(\d+(?:\.\d+)?)\)\s*$")
@@ -88,10 +77,19 @@ def parse_csv(path: Path) -> list[dict]:
 
 
 def convert(csv_path: Path, output: Path) -> dict:
-    """Import every highlight, grouped by book, into the Obsidian vault."""
-    stats = {"books": 0, "entries": 0, "authors": set(), "skipped": 0}
-    index = VaultIndex(output)
-    authors_dir = output / AUTHORS_DIRNAME
+    """Write every highlight, grouped by book, into the per-book store.
+
+    Each book is resolved to a ``book_id`` via ``store.Catalog`` (built by the
+    metadata importers + merge); a book with no catalog match is skipped and
+    counted. Returns {"books": int, "entries": int, "skipped": int}.
+
+    A trailing "(Series #N)" suffix is still split off the title for grouping and
+    matching, but series/amazon/shelves metadata is no longer persisted -- this
+    importer writes highlights only.
+    """
+    stats = {"books": 0, "entries": 0, "skipped": 0}
+    output.mkdir(parents=True, exist_ok=True)
+    catalog = store.Catalog(output)
 
     # Group rows by book (Amazon id when present, else standardized title),
     # preserving CSV order.
@@ -103,49 +101,24 @@ def convert(csv_path: Path, output: Path) -> dict:
         title, series, series_index = split_series(raw_title)
         amazon = (row.get("Amazon Book ID") or "").strip() or None
         author = (row.get("Book Author") or "").strip()
-        doc_tags = [t.strip() for t in (row.get("Document tags") or "").split(",")
-                    if t.strip()]
         key = amazon or f"{title}\x00{author}"
         group = groups.setdefault(key, {
-            "title": title, "author": author, "amazon": amazon,
-            "series": series, "series_index": series_index,
-            "shelves": doc_tags, "rows": []})
+            "title": title, "author": author, "amazon": amazon, "rows": []})
         group["rows"].append(row)
 
     for group in groups.values():
         authors = [group["author"]] if group["author"] else []
-        ref = BookRef(title=group["title"], authors=authors, amazon=group["amazon"])
-        dest = index.find(ref)
-        if dest is None:
+        book_id = catalog.find(
+            BookRef(title=group["title"], authors=authors, amazon=group["amazon"]))
+        if book_id is None:
             stats["skipped"] += 1
             continue
-
-        updates = {
-            "title": yaml_quote(group["title"]),
-            "authors": link_list(authors) if authors else "",
-            "amazon": yaml_quote(group["amazon"]) if group["amazon"] else "",
-            "shelves": plain_list(group["shelves"]) if group["shelves"] else "",
-            "source": "readwise",
-            "highlighted": "true",
-        }
-        if group["series"]:
-            updates["series"] = yaml_quote(group["series"])
-        if group["series_index"]:
-            updates["series_index"] = group["series_index"]
-        base = dest.note_path.read_text(encoding="utf-8")
-        dest.note_path.write_text(update_frontmatter(base, updates), encoding="utf-8")
-
         highlights = [row_to_highlight(r) for r in group["rows"]]
-        text = dest.note_path.read_text(encoding="utf-8")
-        text = render_marked_section(
-            text, "Highlights", "highlights", render_highlights(highlights))
-        dest.note_path.write_text(text, encoding="utf-8")
-
-        for author in authors:
-            write_stub(authors_dir, author, "author")
-            stats["authors"].add(author)
+        hl_rows = [store.highlight_to_row(h, "readwise", str(i))
+                   for i, h in enumerate(highlights)]
+        store.write_highlights(output, book_id, "readwise", hl_rows)
         stats["books"] += 1
-        stats["entries"] += len(highlights)
+        stats["entries"] += len(hl_rows)
 
     return stats
 
@@ -185,11 +158,11 @@ def readwise_to_obsidian(
 
     output.mkdir(parents=True, exist_ok=True)
     stats = convert(csv, output)
-    no_note = (f" ({stats['skipped']} skipped — no book note)"
+    no_note = (f" ({stats['skipped']} skipped — no book)"
                if stats["skipped"] else "")
     typer.echo(
-        f"Done. {stats['books']} books{no_note}, {stats['entries']} highlights, "
-        f"{len(stats['authors'])} authors.\nOutput: {output}"
+        f"Done. {stats['books']} books{no_note}, {stats['entries']} highlights.\n"
+        f"Output: {output}"
     )
 
 

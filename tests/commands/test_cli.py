@@ -220,11 +220,17 @@ def _readwise_csv(tmp_path: Path) -> Path:
 
 
 def test_readwise_end_to_end(tmp_path):
+    from books.core import store
+
     csv_path = _readwise_csv(tmp_path)
     out = tmp_path / "Obsidian"
-    _seed_note(out, "Stalin - Stephen Kotkin",
-               '---\ntype: book\ntitle: "Stalin"\n'
-               'authors: ["[[Stephen Kotkin]]"]\namazon: "B00INIXPYE"\n---\n\n')
+    store.write_books_csv(out, [store.BookRow(
+        book_id="Stalin - Stephen Kotkin", title="Stalin",
+        authors=["Stephen Kotkin"], amazon="B00INIXPYE")])
     result = runner.invoke(app, ["readwise", "--csv", str(csv_path), "--output", str(out)])
     assert result.exit_code == 0, result.output
-    assert (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
+    rows = store.read_highlights(out, "Stalin - Stephen Kotkin")
+    assert len(rows) == 1
+    assert rows[0].source == "readwise"
+    assert rows[0].text == "A passage."
+    assert rows[0].location == "3" and rows[0].location_kind == "page"

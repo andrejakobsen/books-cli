@@ -1,11 +1,13 @@
-"""Tests for the Readwise -> Obsidian importer."""
+"""Tests for the Readwise -> CSV highlights-store importer."""
 
 from pathlib import Path
 
 import typer
 from typer.testing import CliRunner
 
+from books.commands import readwise
 from books.commands import readwise as rw
+from books.core import store
 
 HEADER = ("Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
           "Location Type,Location,Highlighted at,Document tags\n")
@@ -23,21 +25,18 @@ def write_csv(tmp_path: Path) -> Path:
     return p
 
 
-def seed_note(out: Path, stem: str, frontmatter: str) -> Path:
-    """Pre-create a book note (as calibre/goodreads would) so importers can match."""
-    books = out / "Books"
-    books.mkdir(parents=True, exist_ok=True)
-    note = books / f"{stem}.md"
-    note.write_text(frontmatter, encoding="utf-8")
-    return note
+def seed_books(vault: Path, rows: list[store.BookRow]) -> None:
+    """Seed books.csv (as calibre/goodreads + merge would) so Catalog can match."""
+    store.write_books_csv(vault, rows)
 
 
-def seed_stalin(out: Path) -> Path:
-    return seed_note(
-        out, "Stalin - Stephen Kotkin",
-        '---\ntype: book\ntitle: "Stalin"\n'
-        'authors: ["[[Stephen Kotkin]]"]\namazon: "B00INIXPYE"\n---\n\n')
+def seed_stalin(vault: Path) -> None:
+    seed_books(vault, [store.BookRow(
+        book_id="Stalin - Stephen Kotkin", title="Stalin",
+        authors=["Stephen Kotkin"], amazon="B00INIXPYE")])
 
+
+# --- CSV parsing / mapping helpers (unchanged, store-agnostic) ----------------
 
 def test_split_series_extracts_name_and_index():
     title, series, index = rw.split_series(
@@ -59,6 +58,14 @@ def test_split_series_no_suffix_is_verbatim():
     assert title == "The Landscape of History"
     assert series is None
     assert index is None
+
+
+def test_split_series_ignores_non_numbered_parenthetical():
+    # A trailing parenthetical without "#N" must NOT be treated as a series.
+    title, series, index = rw.split_series(
+        "The Landscape of History: How Historians Map the Past (Inaugural Lectures)")
+    assert title == "The Landscape of History: How Historians Map the Past (Inaugural Lectures)"
+    assert series is None and index is None
 
 
 def test_row_to_highlight_page_location():
@@ -110,74 +117,124 @@ def test_parse_csv_reads_rows(tmp_path):
     assert rows[0]["Book Title"] == "Stalin: Volume I (Stalin #1)"
 
 
-def test_convert_writes_highlights_and_frontmatter(tmp_path):
-    out = tmp_path / "Obsidian"
-    seed_stalin(out)
-    stats = rw.convert(write_csv(tmp_path), out)
+# --- convert -> CSV highlights store ------------------------------------------
+
+_RW_CSV = (
+    "Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
+    "Location Type,Location,Highlighted at,Document tags\n"
+    "insight,The Deluge (History #1),Adam Tooze,B00XYZ,,,,page,120,2020-01-01,\n"
+)
+
+
+def _seed_deluge(vault: Path) -> None:
+    seed_books(vault, [store.BookRow(
+        book_id="The Deluge - Adam Tooze", title="The Deluge",
+        authors=["Adam Tooze"], amazon="B00XYZ")])
+
+
+def test_readwise_writes_highlights_to_store(tmp_path):
+    vault = tmp_path / "vault"
+    _seed_deluge(vault)
+    csv = tmp_path / "rw.csv"
+    csv.write_text(_RW_CSV, encoding="utf-8")
+
+    stats = readwise.convert(csv, vault)
+
+    rows = store.read_highlights(vault, "The Deluge - Adam Tooze")
+    assert len(rows) == 1
+    assert rows[0].source == "readwise"
+    assert rows[0].text == "insight"
+    assert rows[0].location == "120" and rows[0].location_kind == "page"
+    assert stats["books"] == 1 and stats["entries"] == 1 and stats["skipped"] == 0
+
+
+def test_readwise_skips_unmatched(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_books_csv(vault, [])
+    csv = tmp_path / "rw.csv"
+    csv.write_text(_RW_CSV, encoding="utf-8")
+    stats = readwise.convert(csv, vault)
+    assert stats["skipped"] == 1 and stats["books"] == 0
+
+
+def test_convert_writes_two_highlights_to_store(tmp_path):
+    vault = tmp_path / "vault"
+    seed_stalin(vault)
+    stats = rw.convert(write_csv(tmp_path), vault)
     assert stats["books"] == 1 and stats["entries"] == 2
-    note = out / "Books" / "Stalin - Stephen Kotkin.md"
-    assert note.exists()
-    note_text = note.read_text()
-    # Highlights are an inline, marker-wrapped '## Highlights' section.
-    assert "## Highlights" in note_text
-    assert "%% books:highlights:start %%" in note_text
-    assert "%% books:highlights:end %%" in note_text
-    assert 'amazon: "B00INIXPYE"' in note_text
-    assert 'series: "Stalin"' in note_text
-    assert "series_index: 1" in note_text
-    assert 'shelves: ["favorites"]' in note_text
-    assert "source: readwise" in note_text
-    assert "> [!quote]+ p. 3" in note_text
-    assert "First passage." in note_text
-    assert "#history" in note_text
+    rows = store.read_highlights(vault, "Stalin - Stephen Kotkin")
+    assert [r.text for r in rows] == ["First passage.", "Second passage."]
+    assert all(r.source == "readwise" for r in rows)
+    # First row's Tags column ("history") becomes a #tag.
+    assert rows[0].tags == ["history"]
 
 
-def test_convert_skips_book_without_existing_note(tmp_path):
-    out = tmp_path / "Obsidian"
-    stats = rw.convert(write_csv(tmp_path), out)
-    assert stats["books"] == 0
-    assert stats["entries"] == 0
-    assert stats["skipped"] == 1
-    assert not (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
+def test_convert_rerun_replaces_own_rows(tmp_path):
+    vault = tmp_path / "vault"
+    seed_stalin(vault)
+    rw.convert(write_csv(tmp_path), vault)
+    rw.convert(write_csv(tmp_path), vault)  # re-run
+    assert len(store.read_highlights(vault, "Stalin - Stephen Kotkin")) == 2
 
 
-def test_convert_merges_into_existing_note_by_amazon(tmp_path):
-    out = tmp_path / "Obsidian"
-    books = out / "Books"
-    books.mkdir(parents=True)
-    note = books / "Existing.md"
-    note.write_text(
-        '---\ntype: book\ntitle: "Stalin"\namazon: "B00INIXPYE"\n'
-        'status: read\n---\n\nMy body.\n', encoding="utf-8")
-    stats = rw.convert(write_csv(tmp_path), out)
-    assert stats["books"] == 1
-    updated = note.read_text()
-    assert "status: read" in updated       # existing value untouched
-    assert "My body." in updated           # body preserved
-    assert "## Highlights" in updated
-    assert "%% books:highlights:start %%" in updated
+def test_convert_same_title_different_authors_no_amazon_stay_separate(tmp_path):
+    vault = tmp_path / "vault"
+    csv = tmp_path / "rw.csv"
+    csv.write_text(
+        HEADER +
+        '"From A.","Selected Essays",Author A,,,,,page,1,2026-01-01 00:00:00+00:00,\n'
+        '"From B.","Selected Essays",Author B,,,,,page,2,2026-01-02 00:00:00+00:00,\n',
+        encoding="utf-8")
+    seed_books(vault, [
+        store.BookRow(book_id="Selected Essays - Author A",
+                      title="Selected Essays", authors=["Author A"]),
+        store.BookRow(book_id="Selected Essays - Author B",
+                      title="Selected Essays", authors=["Author B"]),
+    ])
+    stats = rw.convert(csv, vault)
+    assert stats["books"] == 2
+    assert len(store.read_highlights(vault, "Selected Essays - Author A")) == 1
+    assert len(store.read_highlights(vault, "Selected Essays - Author B")) == 1
 
 
-def test_convert_idempotent(tmp_path):
-    out = tmp_path / "Obsidian"
-    seed_stalin(out)
-    rw.convert(write_csv(tmp_path), out)
-    before = {p: p.read_text() for p in out.rglob("*.md")}
-    rw.convert(write_csv(tmp_path), out)
-    after = {p: p.read_text() for p in out.rglob("*.md")}
-    assert before == after
+def test_convert_same_amazon_different_title_rows_group_together(tmp_path):
+    # Same Amazon id groups rows even if a later row's title differs slightly.
+    vault = tmp_path / "vault"
+    csv = tmp_path / "rw.csv"
+    csv.write_text(
+        HEADER +
+        '"One.","Book (Series #1)",Kotkin,B00INIXPYE,,,,page,1,2026-01-01 00:00:00+00:00,\n'
+        '"Two.","Book (Series #1)",Kotkin,B00INIXPYE,,,,page,2,2026-01-02 00:00:00+00:00,\n',
+        encoding="utf-8")
+    seed_books(vault, [store.BookRow(
+        book_id="Book - Kotkin", title="Book", authors=["Kotkin"],
+        amazon="B00INIXPYE")])
+    stats = rw.convert(csv, vault)
+    assert stats["books"] == 1 and stats["entries"] == 2
 
+
+def test_convert_empty_csv_creates_nothing(tmp_path):
+    vault = tmp_path / "vault"
+    csv = tmp_path / "rw.csv"
+    csv.write_text(HEADER, encoding="utf-8")
+    stats = rw.convert(csv, vault)
+    assert stats == {"books": 0, "entries": 0, "skipped": 0}
+
+
+# --- CLI ----------------------------------------------------------------------
 
 def test_readwise_command_end_to_end(tmp_path):
     app = typer.Typer()
     rw.register(app)
-    out = tmp_path / "Obsidian"
-    seed_stalin(out)
+    vault = tmp_path / "Vault"
+    seed_stalin(vault)
     result = CliRunner().invoke(
-        app, ["--csv", str(write_csv(tmp_path)), "--output", str(out)])
+        app, ["--csv", str(write_csv(tmp_path)), "--output", str(vault)])
     assert result.exit_code == 0, result.output
-    assert (out / "Books" / "Stalin - Stephen Kotkin.md").exists()
     assert "2 highlights" in result.output
+    assert "authors" not in result.output   # echo drops authors
+    rows = store.read_highlights(vault, "Stalin - Stephen Kotkin")
+    assert [r.text for r in rows] == ["First passage.", "Second passage."]
 
 
 def test_readwise_missing_csv_errors(tmp_path):
@@ -186,52 +243,6 @@ def test_readwise_missing_csv_errors(tmp_path):
     result = CliRunner().invoke(
         app, ["--csv", str(tmp_path / "nope.csv"), "--output", str(tmp_path / "o")])
     assert result.exit_code != 0
-
-
-def test_convert_same_title_different_authors_no_amazon_stay_separate(tmp_path):
-    out = tmp_path / "Obsidian"
-    csv = tmp_path / "rw.csv"
-    csv.write_text(
-        "Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
-        "Location Type,Location,Highlighted at,Document tags\n"
-        '"From A.","Selected Essays",Author A,,,,,page,1,2026-01-01 00:00:00+00:00,\n'
-        '"From B.","Selected Essays",Author B,,,,,page,2,2026-01-02 00:00:00+00:00,\n',
-        encoding="utf-8")
-    seed_note(out, "Selected Essays - Author A",
-              '---\ntype: book\ntitle: "Selected Essays"\n'
-              'authors: ["[[Author A]]"]\n---\n\n')
-    seed_note(out, "Selected Essays - Author B",
-              '---\ntype: book\ntitle: "Selected Essays"\n'
-              'authors: ["[[Author B]]"]\n---\n\n')
-    stats = rw.convert(csv, out)
-    assert stats["books"] == 2
-    assert (out / "Books" / "Selected Essays - Author A.md").exists()
-    assert (out / "Books" / "Selected Essays - Author B.md").exists()
-
-
-def test_convert_same_amazon_different_title_rows_group_together(tmp_path):
-    # Same Amazon id groups rows even if a later row's title differs slightly.
-    out = tmp_path / "Obsidian"
-    csv = tmp_path / "rw.csv"
-    csv.write_text(
-        "Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
-        "Location Type,Location,Highlighted at,Document tags\n"
-        '"One.","Book (Series #1)",Kotkin,B00INIXPYE,,,,page,1,2026-01-01 00:00:00+00:00,\n'
-        '"Two.","Book (Series #1)",Kotkin,B00INIXPYE,,,,page,2,2026-01-02 00:00:00+00:00,\n',
-        encoding="utf-8")
-    seed_note(out, "Book - Kotkin",
-              '---\ntype: book\ntitle: "Book"\n'
-              'authors: ["[[Kotkin]]"]\namazon: "B00INIXPYE"\n---\n\n')
-    stats = rw.convert(csv, out)
-    assert stats["books"] == 1 and stats["entries"] == 2
-
-
-def test_split_series_ignores_non_numbered_parenthetical():
-    # A trailing parenthetical without "#N" must NOT be treated as a series.
-    title, series, index = rw.split_series(
-        "The Landscape of History: How Historians Map the Past (Inaugural Lectures)")
-    assert title == "The Landscape of History: How Historians Map the Past (Inaugural Lectures)"
-    assert series is None and index is None
 
 
 def test_readwise_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
@@ -251,7 +262,7 @@ def test_readwise_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
     result = CliRunner().invoke(app, [])
 
     assert result.exit_code == 0, result.output
-    assert (vault / "Books" / "Stalin - Stephen Kotkin.md").exists()
+    assert len(store.read_highlights(vault, "Stalin - Stephen Kotkin")) == 2
 
 
 def test_readwise_folder_arg_picks_newest(monkeypatch, tmp_path):
@@ -275,22 +286,4 @@ def test_readwise_folder_arg_picks_newest(monkeypatch, tmp_path):
     result = CliRunner().invoke(app, ["--csv", str(folder), "--output", str(vault)])
 
     assert result.exit_code == 0, result.output
-    assert (vault / "Books" / "Stalin - Stephen Kotkin.md").exists()
-
-
-def test_convert_empty_csv_creates_nothing(tmp_path):
-    out = tmp_path / "Obsidian"
-    csv = tmp_path / "rw.csv"
-    csv.write_text(
-        "Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
-        "Location Type,Location,Highlighted at,Document tags\n",
-        encoding="utf-8")
-    stats = rw.convert(csv, out)
-    assert stats == {"books": 0, "entries": 0, "authors": set(), "skipped": 0}
-
-
-def test_readwise_sets_highlighted_true(tmp_path):
-    out = tmp_path / "Obsidian"
-    note_path = seed_stalin(out)
-    rw.convert(write_csv(tmp_path), out)
-    assert "highlighted: true" in note_path.read_text(encoding="utf-8")
+    assert len(store.read_highlights(vault, "Stalin - Stephen Kotkin")) == 2
