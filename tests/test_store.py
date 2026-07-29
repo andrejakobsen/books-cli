@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from books import store
+from books.highlights import Highlight
 from books.obsidian import BookRef
 
 
@@ -248,3 +249,41 @@ def test_catalog_find_fuzzy_title(tmp_path):
     cat = store.Catalog(vault)
     assert cat.find(BookRef(title="The Deluge", authors=["Adam Tooze"])) == \
         "The Deluge - Adam Tooze"
+
+
+def test_highlight_to_row_percent():
+    h = Highlight(text="t", progress=0.42, chapter_index=3, chapter_title="Ch",
+                  tags=["war"], links=["Trotsky"], note="n", date="2020")
+    row = store.highlight_to_row(h, "kobo", "a1")
+    assert row.source == "kobo"
+    assert row.annotation_id == "a1"
+    assert row.location == "42"
+    assert row.location_kind == "percent"
+    assert row.chapter_index == "3"
+    assert row.tags == ["war"]
+
+
+def test_highlight_to_row_page_and_kindle_and_timestamp():
+    page = store.highlight_to_row(Highlight(text="t", page="45-49"), "highlighted", "1")
+    assert (page.location, page.location_kind) == ("45-49", "page")
+
+    kindle = store.highlight_to_row(
+        Highlight(text="t", page="1234", location_label="loc."), "readwise", "2")
+    assert (kindle.location, kindle.location_kind) == ("1234", "kindle_loc")
+
+    ts = store.highlight_to_row(
+        Highlight(text="t", page="3:24:15", location_label=""), "audible", "3")
+    assert (ts.location, ts.location_kind) == ("3:24:15", "timestamp")
+
+
+def test_row_to_highlight_reverses_each_kind():
+    for kind, loc, want in [
+        ("percent", "42", ("progress", 0.42)),
+        ("page", "45-49", ("page", "45-49")),
+        ("kindle_loc", "1234", ("location_label", "loc.")),
+        ("timestamp", "3:24:15", ("location_label", "")),
+    ]:
+        row = store.HighlightRow(text="t", location=loc, location_kind=kind)
+        h = store.row_to_highlight(row)
+        attr, value = want
+        assert getattr(h, attr) == value

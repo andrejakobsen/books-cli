@@ -19,6 +19,7 @@ import isbnlib
 from pydantic import BaseModel, Field
 from rapidfuzz import fuzz
 
+from books.highlights import Highlight
 from books.obsidian import BookRef, author_key, norm_amazon, norm_isbn, norm_title, safe_filename, strip_subtitle
 
 LIST_SEP = ";"
@@ -352,3 +353,70 @@ class Catalog:
                 if fuzz.partial_ratio(nt, norm_title(r.title)) >= TITLE_MATCH_THRESHOLD:
                     return r.book_id
         return None
+
+
+def highlight_to_row(h: Highlight, source: str, annotation_id: str) -> HighlightRow:
+    """Map a source-agnostic Highlight to a CSV HighlightRow.
+
+    location/location_kind unify progress/page/timestamp:
+      progress            -> ("percent", "<pct>")
+      page + label "loc." -> ("kindle_loc", page)
+      page + label ""     -> ("timestamp", page)   (audio; suppressed prefix)
+      page (default)      -> ("page", page)
+    """
+    location = ""
+    kind = ""
+    if h.progress is not None:
+        location, kind = str(round(h.progress * 100)), "percent"
+    elif h.page:
+        location = h.page
+        if h.location_label == "loc.":
+            kind = "kindle_loc"
+        elif h.location_label == "":
+            kind = "timestamp"
+        else:
+            kind = "page"
+    return HighlightRow(
+        source=source,
+        annotation_id=annotation_id,
+        chapter_index=str(h.chapter_index) if h.chapter_index is not None else "",
+        chapter_title=h.chapter_title or "",
+        location=location,
+        location_kind=kind,
+        block=h.block or "",
+        segment=h.segment or "",
+        date=h.date or "",
+        text=h.text,
+        note=h.note or "",
+        tags=list(h.tags),
+        links=list(h.links),
+    )
+
+
+def row_to_highlight(row: HighlightRow) -> Highlight:
+    """Reverse of :func:`highlight_to_row`."""
+    progress = None
+    page = None
+    label = None
+    if row.location_kind == "percent" and row.location:
+        progress = round(int(row.location)) / 100
+    elif row.location_kind == "kindle_loc":
+        page, label = row.location or None, "loc."
+    elif row.location_kind == "timestamp":
+        page, label = row.location or None, ""
+    elif row.location_kind == "page":
+        page = row.location or None
+    return Highlight(
+        text=row.text,
+        note=row.note or None,
+        chapter_index=int(row.chapter_index) if row.chapter_index else None,
+        chapter_title=row.chapter_title or None,
+        progress=progress,
+        block=row.block or None,
+        segment=row.segment or None,
+        page=page,
+        location_label=label,
+        date=row.date or None,
+        tags=list(row.tags),
+        links=list(row.links),
+    )
