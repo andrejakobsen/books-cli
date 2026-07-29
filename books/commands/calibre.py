@@ -8,8 +8,9 @@ each row's ``cover`` field; the ``render`` command materializes them (after merg
 into ``Data/Covers/<book_id>.jpg`` and creates the notes/stubs. Ebook files and
 Calibre internals are ignored.
 
-Standard library only (plus the ``store`` layer's ``html_to_markdown`` for the
-unchanged opf description parsing).
+The layer is written via ``books.core.store`` (pydantic ``BookRow``). The only
+remaining ``books.renderers.obsidian`` dependency is ``html_to_markdown``, kept
+solely because the unchanged ``parse_opf`` still converts the OPF ``<description>``.
 """
 
 from __future__ import annotations
@@ -145,6 +146,8 @@ def parse_opf(opf_path: Path) -> BookMetadata:
         elif name == "calibre:series_index":
             meta.series_index = content.strip()
 
+    # description/genres are still parsed here but NOT mapped to a store column
+    # this pass (no BookRow field exists for them yet) — _to_row omits both.
     desc = metadata.find(".//{*}description")
     if desc is not None and desc.text:
         meta.description = html_to_markdown(desc.text)
@@ -162,7 +165,11 @@ def _rating_str(rating: float | None) -> str:
 
 
 def _to_row(meta: BookMetadata, cover_rel: str) -> store.BookRow:
-    """Map parsed Calibre metadata to a store BookRow (cover = staged rel path)."""
+    """Map parsed Calibre metadata to a store BookRow (cover = staged rel path).
+
+    ``meta.description`` and ``meta.genres`` are intentionally not mapped: the
+    store schema has no column for them this pass.
+    """
     return store.BookRow(
         title=meta.title or "",
         authors=list(meta.authors),
