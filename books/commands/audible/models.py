@@ -19,12 +19,13 @@ class Annotation:
     """A single Audible bookmark, clip, or note.
 
     `end_ms` is None for a point bookmark (the plain "bookmark" button has no
-    duration); a clip carries both start and end. `note` is the user's typed text
-    (may be None).
+    duration); a clip carries both start and end. `title` is the clip's title and
+    `note` is its note body -- both user-typed (either may be None).
     """
     id: str
     start_ms: int
     end_ms: int | None = None
+    title: str | None = None
     note: str | None = None
     date: str | None = None
 

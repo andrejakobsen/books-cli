@@ -72,15 +72,27 @@ def test_annotations_returns_empty_on_404(monkeypatch):
 
 
 def test_annotations_from_sidecar_maps_clips_and_bookmarks():
+    # A real clip carries its title and note under a nested `metadata` object
+    # (confirmed against Libation's AudibleApi); a standalone note uses a
+    # top-level `text` field; a bookmark carries neither.
     payload = {"payload": {"records": [
-        {"annotationId": "c1", "type": "audible.Clip",
+        {"annotationId": "c1", "type": "audible.clip",
          "startPosition": "10000", "endPosition": "20000",
-         "creationTime": "2026-07-01", "text": "my note"},
-        {"annotationId": "b1", "type": "audible.Bookmark",
+         "creationTime": "2026-07-01",
+         "metadata": {"title": "My clip", "note": "my note"}},
+        {"annotationId": "n1", "type": "audible.note",
+         "startPosition": "25000", "endPosition": "25000",
+         "creationTime": "2026-07-03", "text": "standalone note"},
+        {"annotationId": "b1", "type": "audible.bookmark",
          "startPosition": "30000", "creationTime": "2026-07-02"},
     ]}}
     anns = ac.annotations_from_sidecar(payload)
     assert anns[0].id == "c1" and anns[0].start_ms == 10000
-    assert anns[0].end_ms == 20000 and anns[0].note == "my note"
-    assert anns[1].id == "b1" and anns[1].start_ms == 30000
-    assert anns[1].end_ms is None            # bookmark has no duration
+    assert anns[0].end_ms == 20000                       # clip has duration
+    assert anns[0].title == "My clip"                    # metadata.title
+    assert anns[0].note == "my note"                     # metadata.note
+    assert anns[1].id == "n1" and anns[1].note == "standalone note"  # top-level text
+    assert anns[1].title is None                         # note has no title
+    assert anns[2].id == "b1" and anns[2].start_ms == 30000
+    assert anns[2].end_ms is None                        # bookmark has no duration
+    assert anns[2].title is None and anns[2].note is None

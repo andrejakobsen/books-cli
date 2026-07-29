@@ -93,7 +93,9 @@ def annotations_from_sidecar(payload: dict) -> list[Annotation]:
     """Parse the CDE sidecar payload into Annotations (clips + bookmarks + notes).
 
     A record with an endPosition is a clip (has duration); one without is a point
-    bookmark. `text` carries the user's typed note when present.
+    bookmark. A clip carries its title and note under a nested `metadata` object
+    (`metadata.title` / `metadata.note`); a standalone `audible.note` record uses a
+    top-level `text` field instead. Both shapes are read defensively.
     """
     records = ((payload or {}).get("payload") or {}).get("records") or []
     out: list[Annotation] = []
@@ -102,11 +104,16 @@ def annotations_from_sidecar(payload: dict) -> list[Annotation]:
         if not ann_id or rec.get("startPosition") is None:
             continue
         end = rec.get("endPosition")
+        meta = rec.get("metadata")
+        meta = meta if isinstance(meta, dict) else {}
+        title = (meta.get("title") or "").strip() or None
+        note = (meta.get("note") or rec.get("text") or "").strip() or None
         out.append(Annotation(
             id=str(ann_id),
             start_ms=_to_ms(rec.get("startPosition")),
             end_ms=None if end is None else _to_ms(end),
-            note=(rec.get("text") or "").strip() or None,
+            title=title,
+            note=note,
             date=(rec.get("creationTime") or "").strip() or None,
         ))
     return out

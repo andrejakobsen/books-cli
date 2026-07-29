@@ -43,11 +43,13 @@ def _chapters():
 
 def test_annotation_to_record_maps_clip_with_chapter():
     ann = ao.Annotation(id="a1", start_ms=120_000, end_ms=150_000,
-                        note="Key idea #power @stalin", date="2026-07-01")
+                        title="Clip title @lenin", note="Key idea #power @stalin",
+                        date="2026-07-01")
     rec = ao.annotation_to_record(ann, "This is the clip text.", _chapters())
     assert rec["text"] == "This is the clip text."
     assert rec["start_ms"] == 120_000
     assert rec["end_ms"] == 150_000
+    assert rec["title"] == "Clip title @lenin"
     assert rec["note"] == "Key idea #power @stalin"
     assert rec["chapter"] == "The Rise"
     assert rec["chapter_index"] == 2
@@ -76,6 +78,42 @@ def test_record_to_highlight_falls_back_to_note_when_no_text():
     h = ao.record_to_highlight(rec)
     assert h.text == "Just my note"       # note used as body
     assert h.note is None                 # not duplicated
+
+
+def test_record_to_highlight_merges_title_and_note_with_pooled_markers():
+    # Both the clip's title and note may carry #tag/@link markers at the end;
+    # they are stripped from both and pooled, and the two cleaned texts merge
+    # into the note as `title\nbody` (title first).
+    rec = {"text": "This is the clip text.", "start_ms": 120_000,
+           "end_ms": 150_000, "title": "Purge begins @stalin",
+           "note": "Key idea #power @trotsky",
+           "date": "2026-07-01", "chapter": "The Rise", "chapter_index": 2}
+    h = ao.record_to_highlight(rec)
+    assert h.text == "This is the clip text."     # transcription stays the body
+    assert h.note == "Purge begins\nKey idea"     # title first, then note body
+    assert h.tags == ["power"]
+    assert h.links == ["Stalin", "Trotsky"]       # pooled, title's link first
+
+
+def test_record_to_highlight_title_only_becomes_note():
+    rec = {"text": "The clip text.", "start_ms": 0, "end_ms": 10,
+           "title": "A memorable moment #favorite", "note": None,
+           "date": None, "chapter": None, "chapter_index": None}
+    h = ao.record_to_highlight(rec)
+    assert h.text == "The clip text."
+    assert h.note == "A memorable moment"         # title alone is the note
+    assert h.tags == ["favorite"]
+
+
+def test_record_to_highlight_merged_title_note_body_when_no_text():
+    # No transcription: the merged title+note becomes the highlight body.
+    rec = {"text": "", "start_ms": 0, "end_ms": None,
+           "title": "The title", "note": "The note @person",
+           "date": None, "chapter": None, "chapter_index": None}
+    h = ao.record_to_highlight(rec)
+    assert h.text == "The title\nThe note"        # merged text used as body
+    assert h.note is None                         # not duplicated
+    assert h.links == ["Person"]                  # markers still pooled
 
 
 def test_cache_roundtrip_and_missing(tmp_path):

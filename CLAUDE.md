@@ -80,7 +80,11 @@ no longer used by any importer; note creation belongs solely to `render`.
   audiobook, and uses **ffmpeg** to decrypt (AAXC via `-audible_key`/`-audible_iv`) and
   cut each clip, then transcribes it with a pluggable backend (`--transcriber
   local|openai|google`, default `local`). Clips use their own start→end; a point
-  bookmark (no end) uses `--clip-window` seconds ending at the mark. Transcriptions are
+  bookmark (no end) uses `--clip-window` seconds ending at the mark. A clip's own
+  **title and note** (parsed from the sidecar's nested `metadata.title`/`metadata.note`,
+  falling back to a note record's top-level `text`) are merged (title first, then note
+  body) into the highlight's nested blockquote, with their `#tag`/`@link` markers parsed
+  out and pooled (same convention as Kobo). Transcriptions are
   cached in `<vault>/Data/Imports/audible/cache.json` (keyed by ASIN + annotation id), so
   re-runs re-render for free and only download books with new clips; downloaded audio
   is written to a temp dir and deleted. Not part of `sync`. Lives as a package

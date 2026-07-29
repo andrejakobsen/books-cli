@@ -73,6 +73,7 @@ def annotation_to_record(ann: Annotation, text: str,
         "text": (text or "").strip(),
         "start_ms": int(ann.start_ms),
         "end_ms": None if ann.end_ms is None else int(ann.end_ms),
+        "title": ann.title,
         "note": ann.note,
         "date": ann.date,
         "chapter": ch.title if ch else None,
@@ -80,17 +81,43 @@ def annotation_to_record(ann: Annotation, text: str,
     }
 
 
+def _merge_markers(*parts: str | None) -> tuple[str | None, list[str], list[str]]:
+    """Parse #tag/@link markers out of each part and merge the results.
+
+    Each part is marker-parsed independently (same convention as Kobo); the
+    cleaned texts are joined with newlines in order (blank/missing parts dropped),
+    and the links/tags are pooled in first-seen order (de-duplicated). Returns
+    ``(merged_text, links, tags)`` with merged_text None when nothing remains.
+    """
+    texts: list[str] = []
+    links: list[str] = []
+    tags: list[str] = []
+    for part in parts:
+        clean, part_links, part_tags = parse_markers(
+            (part or "").strip() or None)
+        if clean:
+            texts.append(clean)
+        for link in part_links:
+            if link not in links:
+                links.append(link)
+        for tag in part_tags:
+            if tag not in tags:
+                tags.append(tag)
+    return ("\n".join(texts) or None), links, tags
+
+
 def record_to_highlight(rec: dict) -> Highlight:
     """Build a source-agnostic Highlight from a cache record.
 
-    The transcription is the highlight text; the user's typed note becomes the
-    nested blockquote (with its #tag/@link markers parsed out, same convention as
-    Kobo). When there is no transcription, the note text is used as the body so a
-    bookmark that carries only a note still comes through. The locator is a bare
-    timestamp (empty location_label); the zero-padded ms position goes in `block`
-    so highlights sort in exact listening order.
+    The transcription is the highlight text; the clip's title and note are merged
+    into the nested blockquote (title first, then body on a new line), with their
+    #tag/@link markers parsed out and pooled (same convention as Kobo). When there
+    is no transcription, the merged title+note is used as the body so a clip that
+    carries only text still comes through. The locator is a bare timestamp (empty
+    location_label); the zero-padded ms position goes in `block` so highlights sort
+    in exact listening order.
     """
-    note, links, tags = parse_markers((rec.get("note") or "").strip() or None)
+    note, links, tags = _merge_markers(rec.get("title"), rec.get("note"))
     body = (rec.get("text") or "").strip()
     if not body:
         body = note or ""
