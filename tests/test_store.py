@@ -1,7 +1,7 @@
 
 from books import store
 from books.highlights import Highlight
-from books.obsidian import BookRef
+from books.renderers.obsidian import BookRef
 
 
 def test_bookrow_csv_roundtrip_joins_list_fields():

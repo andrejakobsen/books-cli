@@ -20,7 +20,7 @@ from pydantic import BaseModel, Field
 from rapidfuzz import fuzz
 
 from books.highlights import Highlight
-from books.obsidian import (
+from books.renderers.obsidian import (
     BookRef,
     author_key,
     next_free_stem,

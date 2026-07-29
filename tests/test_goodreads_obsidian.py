@@ -59,7 +59,7 @@ def test_parse_csv_fields(tmp_path):
 
 
 def test_normalization_helpers():
-    from books import obsidian as ob
+    from books.renderers import obsidian as ob
     assert ob.norm_isbn('="9780698176287"') == "9780698176287"
     assert ob.norm_title("The Cold War: A New History") == \
         ob.norm_title("The Cold War - A New History")

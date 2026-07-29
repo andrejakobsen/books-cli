@@ -10,7 +10,7 @@ URL — no scraping). When a note has an ISBN it drives the Google/Open Library
 lookup directly (Google `isbn:` query / Open Library `/b/isbn/` cover); Apple is
 always queried by title+author because its ISBN-term search is unreliable. All
 network I/O is injected so the logic is unit-testable; vault writing reuses
-books.obsidian.
+books.renderers.obsidian.
 
 Robustness: HTTP fetches retry transient failures (403/429/5xx — 403 covers
 iTunes throttling) with exponential backoff, giving up on a persistently throttled
@@ -40,7 +40,7 @@ import typer
 
 from books.core import config
 from books.core.paths import resolve_path
-from books.obsidian import (
+from books.renderers.obsidian import (
     BOOKS_DIRNAME,
     VaultIndex,
     cover_path,

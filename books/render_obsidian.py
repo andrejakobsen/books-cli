@@ -28,7 +28,7 @@ from ruamel.yaml import YAML
 from books import store
 from books.core import config
 from books.highlights import render_highlights
-from books.obsidian import (
+from books.renderers.obsidian import (
     BOOK_PROPERTY_ORDER,
     BOOKS_DIRNAME,
     COVER_WIDTH,

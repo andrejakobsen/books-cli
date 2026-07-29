@@ -1,6 +1,6 @@
 """Unit tests for the shared Obsidian helpers."""
 
-from books import obsidian as ob
+from books.renderers import obsidian as ob
 
 
 def test_safe_filename_replaces_illegal_chars():
@@ -245,13 +245,13 @@ def test_vaultindex_find_returns_existing_note(tmp_path):
 
 
 def test_source_in_property_order():
-    from books import obsidian as ob
+    from books.renderers import obsidian as ob
     assert "source" in ob.BOOK_PROPERTY_ORDER
 
 
 def test_source_never_overwrites_existing():
     # "First metadata importer wins" on a shared note (spec addendum).
-    from books import obsidian as ob
+    from books.renderers import obsidian as ob
     note = "---\ntype: book\nsource: calibre\n---\n\nBody.\n"
     out = ob.update_frontmatter(note, {"source": "goodreads"})
     assert "source: calibre" in out

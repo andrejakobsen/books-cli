@@ -31,7 +31,7 @@ import typer
 
 from books.core import config
 from books.highlights import Highlight, parse_markers, render_highlights
-from books.obsidian import (
+from books.renderers.obsidian import (
     AUTHORS_DIRNAME,
     BookRef,
     VaultIndex,

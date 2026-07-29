@@ -25,7 +25,7 @@ import typer
 
 from books.core import config
 from books.highlights import Highlight, render_highlights, split_tag_column
-from books.obsidian import (
+from books.renderers.obsidian import (
     AUTHORS_DIRNAME,
     BookRef,
     VaultIndex,

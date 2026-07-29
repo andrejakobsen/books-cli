@@ -232,7 +232,7 @@ def test_google_books_captures_isbn13_from_identifiers():
 
 
 def test_apply_cover_backfills_isbn_when_learned(tmp_path):
-    from books.obsidian import VaultIndex
+    from books.renderers.obsidian import VaultIndex
 
     note = _write_note(tmp_path, "Deluge - Adam Tooze.md",
         '---\ntype: book\ntitle: "The Deluge"\n'
@@ -249,7 +249,7 @@ def test_apply_cover_backfills_isbn_when_learned(tmp_path):
 
 
 def test_apply_cover_does_not_overwrite_existing_isbn(tmp_path):
-    from books.obsidian import VaultIndex
+    from books.renderers.obsidian import VaultIndex
 
     note = _write_note(tmp_path, "Deluge - Adam Tooze.md",
         '---\ntype: book\ntitle: "The Deluge"\n'
@@ -650,7 +650,7 @@ def test_pick_cover_interactive_quit_raises():
 
 
 def test_apply_cover_writes_file_and_frontmatter(tmp_path):
-    from books.obsidian import VaultIndex
+    from books.renderers.obsidian import VaultIndex
 
     note = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
         '---\ntype: book\ntitle: "Napoleon"\n'
@@ -675,7 +675,7 @@ def test_apply_cover_writes_file_and_frontmatter(tmp_path):
 
 
 def test_apply_cover_idempotent(tmp_path):
-    from books.obsidian import VaultIndex
+    from books.renderers.obsidian import VaultIndex
 
     note = _write_note(tmp_path, "N - A.md",
         '---\ntype: book\ntitle: "N"\nauthors: ["[[A]]"]\ncover:\n---\n')
