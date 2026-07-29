@@ -20,16 +20,14 @@ from pydantic import BaseModel, Field
 from rapidfuzz import fuzz
 
 from books.core.highlights import Highlight
-from books.renderers.obsidian import (
+from books.core.matching import (
     BookRef,
     author_key,
-    next_free_stem,
     norm_amazon,
     norm_isbn,
     norm_title,
-    safe_filename,
-    strip_subtitle,
 )
+from books.core.naming import next_free_stem, safe_filename, strip_subtitle
 
 LIST_SEP = ";"
 

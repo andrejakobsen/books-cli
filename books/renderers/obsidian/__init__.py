@@ -1,5 +1,14 @@
 """Obsidian renderer: vault layout, frontmatter, sections, matching, formatting."""
 
+from books.core.matching import (
+    BookRef,
+    author_key,
+    fold,
+    norm_amazon,
+    norm_isbn,
+    norm_title,
+)
+from books.core.naming import next_free_stem, safe_filename, strip_subtitle
 from books.renderers.obsidian.format import (
     format_rating,
     html_to_markdown,
@@ -27,19 +36,9 @@ from books.renderers.obsidian.layout import (
     TOPICS_DIRNAME,
     cover_path,
     cover_refs,
-    next_free_stem,
-    safe_filename,
     sanitize_folder_name,
-    strip_subtitle,
     write_if_absent,
     write_stub,
-)
-from books.renderers.obsidian.matching import (
-    author_key,
-    fold,
-    norm_amazon,
-    norm_isbn,
-    norm_title,
 )
 from books.renderers.obsidian.sections import (
     ensure_section,
@@ -48,7 +47,6 @@ from books.renderers.obsidian.sections import (
 )
 from books.renderers.obsidian.vault_index import (
     BookNote,
-    BookRef,
     VaultIndex,
     build_index,
 )

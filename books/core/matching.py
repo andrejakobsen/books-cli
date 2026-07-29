@@ -1,9 +1,24 @@
-"""Title/ISBN/author normalization used to match a book to an existing note."""
+"""Format-agnostic book identity: title/ISBN/author normalization + BookRef.
+
+These helpers reduce titles, ISBNs, Amazon ids, and author names to canonical
+forms so the same book can be matched across sources (and across any renderer).
+They carry no Obsidian/markdown knowledge.
+"""
 
 from __future__ import annotations
 
 import re
 import unicodedata
+from dataclasses import dataclass, field
+
+
+@dataclass
+class BookRef:
+    """Source-neutral book identity used for matching and note creation."""
+    title: str
+    authors: list[str] = field(default_factory=list)
+    isbn: str | None = None
+    amazon: str | None = None
 
 
 def fold(text: str) -> str:

@@ -34,8 +34,13 @@ The package is organized in three layers with a one-way dependency direction
 (`commands → renderers → core`):
 - **`books/core/`** — format-agnostic building blocks: `paths.py` (`resolve_path`),
   `config.py` (vault/imports resolution), `store.py` (the CSV catalog + per-book
-  highlights data model), and `highlights.py` (the `Highlight` model, `#tag`/`@link`
-  marker parsing, and reading-order `sort_key` — no markdown/Obsidian knowledge).
+  highlights data model), `highlights.py` (the `Highlight` model, `#tag`/`@link`
+  marker parsing, and reading-order `sort_key`), `matching.py` (the `BookRef` identity
+  dataclass + `norm_title`/`norm_isbn`/`norm_amazon`/`author_key`/`fold` normalization),
+  and `naming.py` (the `<Title> - <Author>` note-stem/filename logic: `safe_filename`,
+  `strip_subtitle`, `next_free_stem`) — none of it carries markdown/Obsidian knowledge.
+  The `store` shares these identity helpers with the Obsidian renderer, which is why they
+  live in `core` (the renderer re-exports them, so nothing imports them from `core` directly).
 - **`books/renderers/`** — output targets. `books/renderers/obsidian/` owns 100% of the
   Obsidian/markdown-specific code (a future renderer slots in beside it). Its
   `__init__.py` re-exports the public API so call sites use `from books.renderers.obsidian
@@ -133,11 +138,13 @@ be reading order); Kobo's SQL `ORDER BY` produces the same order and is merely r
 The `books/renderers/obsidian/` package is the heart of the design and the reason the
 Calibre and Goodreads importers compose. Read it before changing either importer. Its
 `__init__.py` re-exports the whole public API (so call sites do `from
-books.renderers.obsidian import X`), and it is split by responsibility across `layout.py`
-(folder constants + cover/filename helpers), `frontmatter.py` (schema + `update_frontmatter`
-+ readers), `sections.py` (section helpers), `matching.py` (normalization), `format.py`
-(`wikilink`/`link_list`/`html_to_markdown`), `highlights.py` (`render_highlights`), and
-`vault_index.py` (`VaultIndex`/`BookNote`). It owns:
+books.renderers.obsidian import X`) — including the format-agnostic identity helpers that
+actually live in `books/core/{matching,naming}.py`, re-exported here so existing call sites
+are unchanged. It is split by responsibility across `layout.py` (folder constants +
+cover/filename helpers), `frontmatter.py` (schema + `update_frontmatter` + readers),
+`sections.py` (section helpers), `format.py` (`wikilink`/`link_list`/`html_to_markdown`),
+`highlights.py` (`render_highlights`), and `vault_index.py` (`VaultIndex`/`BookNote`). It
+owns:
 
 - **The flat vault layout.** Everything lives in top-level folders — `Books/` (the
   indexed book notes), `Covers/` (flat cover images named `<Title> - <Author>.jpg`),
@@ -172,14 +179,16 @@ books.renderers.obsidian import X`), and it is split by responsibility across `l
   pair (the embed carrying `|150`).
 - **Matching normalization** used to detect that a Goodreads row and an existing Calibre
   note are the same book: `norm_title`, `norm_isbn`, `author_key` (reduces names to
-  (first, last), handling "Last, First"), and `fold` (accent/case folding).
+  (first, last), handling "Last, First"), and `fold` (accent/case folding). These live in
+  `books/core/matching.py` (format-agnostic) and are re-exported by the renderer.
 - **Two ways to resolve a book to a note** (`VaultIndex`): `find_or_create(ref)` matches an
   existing note or creates a flat stub for a new book — used only by the note-creating
   importers (`calibre`, `goodreads`). `find(ref)` is match-only: it returns the existing
   `BookNote` or `None` and never creates a file — used by the highlight-only importers
   (`kobo`, `highlighted`, `readwise`), which enrich but never author book identity. Both
   match by ISBN, then Amazon id, then standardized (title, author).
-- **Flat note filenames** (`VaultIndex._new_note_path` + `strip_subtitle`): new book notes
+- **Flat note filenames** (`VaultIndex._new_note_path` + `next_free_stem`/`strip_subtitle`
+  from `books/core/naming.py`): new book notes
   are named `<Title> - <Author>.md` with the subtitle (anything after the first `:`) dropped
   — e.g. `The Deluge - Adam Tooze.md`. Only the filename is decluttered; the frontmatter
   `title` keeps the full title (matching uses the full title, so this is safe). When the

@@ -2,9 +2,17 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
+from books.core.matching import (
+    BookRef,
+    author_key,
+    norm_amazon,
+    norm_isbn,
+    norm_title,
+)
+from books.core.naming import next_free_stem
 from books.renderers.obsidian.format import link_list, yaml_quote
 from books.renderers.obsidian.frontmatter import (
     BOOK_FLAG_DEFAULTS,
@@ -13,22 +21,7 @@ from books.renderers.obsidian.frontmatter import (
     unquote,
     update_frontmatter,
 )
-from books.renderers.obsidian.layout import BOOKS_DIRNAME, next_free_stem
-from books.renderers.obsidian.matching import (
-    author_key,
-    norm_amazon,
-    norm_isbn,
-    norm_title,
-)
-
-
-@dataclass
-class BookRef:
-    """Source-neutral book identity used for matching and note creation."""
-    title: str
-    authors: list[str] = field(default_factory=list)
-    isbn: str | None = None
-    amazon: str | None = None
+from books.renderers.obsidian.layout import BOOKS_DIRNAME
 
 
 @dataclass
