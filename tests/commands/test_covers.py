@@ -823,3 +823,32 @@ def test_gather_candidates_apple_first():
     assert sources[-1] == "amazon"
     assert (sources.index("apple") < sources.index("google")
             < sources.index("openlibrary") < sources.index("amazon"))
+
+
+def test_covers_merge_render_materializes_cover(tmp_path):
+    from books.commands import render
+    # a goodreads-style source layer with one cover-less book
+    store.write_layer(tmp_path, "goodreads", [
+        store.BookRow(title="A", authors=["Ann"], isbn="")])
+    store.merge(tmp_path)                       # -> books.csv with a book_id
+
+    covers.run(
+        tmp_path, interactive=False, dry_run=False, limit=None,
+        fetch_json=lambda url: _google_volume_with_isbn("9780141032184")
+        if "googleapis" in url else {"docs": []},
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+
+    store.merge(tmp_path)                       # fold covers layer into books.csv
+    row = next(r for r in store.read_books_csv(tmp_path) if r.title == "A")
+    assert row.isbn == "9780141032184"          # learned isbn folded in
+    assert row.cover.endswith(".jpg")           # staged path folded in
+
+    render.render(tmp_path)
+    cover_file = tmp_path / "Data" / "Covers" / f"{row.book_id}.jpg"
+    assert cover_file.is_file()                  # materialized
+    note = (tmp_path / "Books" / f"{row.book_id}.md").read_text()
+    assert f"![[Data/Covers/{row.book_id}.jpg|150]]" in note
+
+    first = (tmp_path / "Books" / f"{row.book_id}.md").read_bytes()
+    render.render(tmp_path)
+    assert (tmp_path / "Books" / f"{row.book_id}.md").read_bytes() == first
