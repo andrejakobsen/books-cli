@@ -30,21 +30,11 @@ from pathlib import Path
 
 import typer
 
-from books.core import config
+from books.core import config, store
 from books.core.highlights import Highlight, parse_markers
+from books.core.matching import BookRef
+from books.core.naming import safe_filename
 from books.core.paths import resolve_path
-from books.renderers.obsidian import (
-    AUTHORS_DIRNAME,
-    BookRef,
-    VaultIndex,
-    link_list,
-    render_highlights,
-    render_marked_section,
-    safe_filename,
-    update_frontmatter,
-    write_stub,
-    yaml_quote,
-)
 
 KOBO_DEVICE_DB = Path("/Volumes/KOBOeReader/.kobo/KoboReader.sqlite")
 
@@ -194,10 +184,10 @@ def row_to_highlight(row: sqlite3.Row) -> Highlight:
 
 
 def export_obsidian(db_path: Path, vault: Path) -> dict:
-    """Export Kobo highlights into existing Obsidian book notes.
+    """Write Kobo highlights into the per-book highlights store.
 
-    Highlights are written only into notes that already exist (created by the
-    calibre/goodreads importers); a book with no matching note is skipped and
+    Each book is resolved to a ``book_id`` via ``store.Catalog`` (built by the
+    metadata importers + merge); a book with no catalog match is skipped and
     counted. Returns {"books": int, "entries": int, "skipped": int}. Raises
     FileNotFoundError if the db is missing.
     """
@@ -212,8 +202,7 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
         conn.close()
 
     vault.mkdir(parents=True, exist_ok=True)
-    index = VaultIndex(vault)
-    authors_dir = vault / AUTHORS_DIRNAME
+    catalog = store.Catalog(vault)
 
     # Group rows by book, preserving the query's reading order.
     books: dict[str, list] = {}
@@ -227,32 +216,16 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
         author = (book_rows[0]["author"] or "").strip()
         authors = [author] if author else []
         isbn = (book_rows[0]["isbn"] or "").strip() or None
-        ref = BookRef(title=title, authors=authors, isbn=isbn)
-
-        dest = index.find(ref)
-        if dest is None:
+        book_id = catalog.find(BookRef(title=title, authors=authors, isbn=isbn))
+        if book_id is None:
             skipped += 1
             continue
 
-        updates = {
-            "title": yaml_quote(title),
-            "authors": link_list(authors) if authors else "",
-            "isbn": yaml_quote(isbn) if isbn else "",
-            "source": "kobo",
-            "highlighted": "true",
-        }
-        base = dest.note_path.read_text(encoding="utf-8")
-        dest.note_path.write_text(update_frontmatter(base, updates), encoding="utf-8")
-
         highlights = [row_to_highlight(r) for r in book_rows]
-        text = dest.note_path.read_text(encoding="utf-8")
-        text = render_marked_section(
-            text, "Highlights", "highlights",
-            render_highlights(highlights, chapter_label="Kobo ch."))
-        dest.note_path.write_text(text, encoding="utf-8")
-        for a in authors:
-            write_stub(authors_dir, a, "author")
-        entries += len(highlights)
+        hl_rows = [store.highlight_to_row(h, "kobo", str(i))
+                   for i, h in enumerate(highlights)]
+        store.write_highlights(vault, book_id, "kobo", hl_rows)
+        entries += len(hl_rows)
         written += 1
 
     return {"books": written, "entries": entries, "skipped": skipped}

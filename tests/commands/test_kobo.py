@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from books.commands import kobo as ke
+from books.core import store
 
 
 def _make_db(path: Path) -> None:
@@ -50,75 +51,52 @@ def test_row_to_highlight_maps_fields():
     assert abs(h.progress - 0.42) < 1e-9
 
 
-def _seed_gatsby(vault: Path) -> Path:
-    """Pre-create the book note (as calibre/goodreads would) so kobo can match."""
-    books = vault / "Books"
-    books.mkdir(parents=True, exist_ok=True)
-    note = books / "The Great Gatsby - F. Scott Fitzgerald.md"
-    note.write_text(
-        '---\ntype: book\ntitle: "The Great Gatsby"\n'
-        'authors: ["[[F. Scott Fitzgerald]]"]\nisbn: "9780743273565"\n---\n\n',
-        encoding="utf-8")
-    return note
+_GATSBY_ID = "The Great Gatsby - F. Scott Fitzgerald"
 
 
-def test_export_obsidian_skips_book_without_existing_note(tmp_path):
+def _seed_gatsby_catalog(vault: Path) -> None:
+    """Seed books.csv with the Gatsby book (as calibre/goodreads + merge would)."""
+    store.write_books_csv(vault, [store.BookRow(
+        book_id=_GATSBY_ID, title="The Great Gatsby",
+        authors=["F. Scott Fitzgerald"], isbn="9780743273565")])
+
+
+def test_kobo_writes_highlights_to_store(tmp_path):
+    vault = tmp_path / "vault"
+    _seed_gatsby_catalog(vault)
     db = tmp_path / "KoboReader.sqlite"
     _make_db(db)
-    vault = tmp_path / "Obsidian"
+
     stats = ke.export_obsidian(db, vault)
-    assert stats["books"] == 0
-    assert stats["entries"] == 0
-    assert stats["skipped"] == 1
-    assert not (vault / "Books" / "The Great Gatsby - F. Scott Fitzgerald.md").exists()
+
+    rows = store.read_highlights(vault, _GATSBY_ID)
+    assert len(rows) == 2  # _make_db seeds two highlights
+    assert all(r.source == "kobo" for r in rows)
+    # reading order: 0.42 then 0.55
+    assert rows[0].text == "First highlight"
+    assert rows[0].location == "42" and rows[0].location_kind == "percent"
+    assert rows[1].text == "Second highlight"
+    assert stats == {"books": 1, "entries": 2, "skipped": 0}
 
 
-def test_export_obsidian_writes_highlights_and_embed(tmp_path):
+def test_kobo_skips_unmatched_book(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_books_csv(vault, [])  # empty catalog -> nothing matches
     db = tmp_path / "KoboReader.sqlite"
     _make_db(db)
-    vault = tmp_path / "Obsidian"
-    _seed_gatsby(vault)
     stats = ke.export_obsidian(db, vault)
-    assert stats["books"] == 1 and stats["entries"] == 2
-
-    note = (vault / "Books" / "The Great Gatsby - F. Scott Fitzgerald.md").read_text()
-    # Highlights are an inline, marker-wrapped '## Highlights' section.
-    assert "## Highlights" in note
-    assert "%% books:highlights:start %%" in note
-    assert "%% books:highlights:end %%" in note
-    assert "source: kobo" in note                # provenance frontmatter
-    assert "### The Valley of Ashes" in note     # chapter title header (level 3)
-    assert "%% Kobo ch." not in note             # hidden reading-order comment removed
-    assert "> [!quote]+ Kobo ch. 2 · 42%" in note  # locator keeps the chapter
-    assert "^ch2-42" in note                      # anchor mirrors the locator
-    assert ">> my note" in note                  # first highlight's note as nested quote
-    assert "[!note]" not in note                 # no separate note callout
+    assert stats == {"books": 0, "entries": 0, "skipped": 1}
+    assert store.read_highlights(vault, _GATSBY_ID) == []
 
 
-def test_export_obsidian_regenerates_highlights_wholesale(tmp_path):
+def test_kobo_rerun_replaces_own_rows(tmp_path):
+    vault = tmp_path / "vault"
+    _seed_gatsby_catalog(vault)
     db = tmp_path / "KoboReader.sqlite"
     _make_db(db)
-    vault = tmp_path / "Obsidian"
-    _seed_gatsby(vault)
     ke.export_obsidian(db, vault)
-    note_path = vault / "Books" / "The Great Gatsby - F. Scott Fitzgerald.md"
-    # Simulate a hand edit to the book note body; it must survive re-export.
-    note_path.write_text(note_path.read_text() + "\nMy own paragraph.\n", encoding="utf-8")
-    ke.export_obsidian(db, vault)
-    assert "My own paragraph." in note_path.read_text()
-    assert note_path.read_text().count("## Highlights") == 1
-
-
-def test_export_obsidian_idempotent(tmp_path):
-    db = tmp_path / "KoboReader.sqlite"
-    _make_db(db)
-    vault = tmp_path / "Obsidian"
-    _seed_gatsby(vault)
-    ke.export_obsidian(db, vault)
-    before = {p: p.read_text() for p in vault.rglob("*.md")}
-    ke.export_obsidian(db, vault)  # second run
-    after = {p: p.read_text() for p in vault.rglob("*.md")}
-    assert before == after
+    ke.export_obsidian(db, vault)  # re-run
+    assert len(store.read_highlights(vault, _GATSBY_ID)) == 2  # not duplicated
 
 
 class _R(dict):
@@ -329,12 +307,3 @@ def test_kobo_default_missing_everything_errors(monkeypatch, tmp_path):
     result = CliRunner().invoke(app, [])
 
     assert result.exit_code != 0
-
-
-def test_kobo_sets_highlighted_true(tmp_path):
-    db = tmp_path / "KoboReader.sqlite"
-    _make_db(db)
-    vault = tmp_path / "Obsidian"
-    note_path = _seed_gatsby(vault)
-    ke.export_obsidian(db, vault)
-    assert "highlighted: true" in note_path.read_text(encoding="utf-8")
