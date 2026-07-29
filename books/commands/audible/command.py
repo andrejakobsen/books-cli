@@ -8,10 +8,10 @@ clip's audio, which is transcribed into text. Each library book is resolved to a
 book_id against the merged catalog (``Data/books.csv``); a matched book's
 transcribed clips are written as per-book highlights (source ``audible``) via
 ``store.write_highlights`` and an ``audible`` metadata layer row carrying
-``format: audiobook``. A book with no catalog match is skipped and counted (run
-``merge``/``render`` first). Run ``merge`` + ``render`` afterward to surface the
-highlights in the actual notes. Books match by ASIN (the `amazon` id), then by
-standardized title/author.
+``format: audiobook``. A book with no catalog match is skipped and counted, so run
+the metadata importers + ``merge`` first to build ``Data/books.csv``; run ``merge``
++ ``render`` afterward to fold in the layer and surface the highlights in the actual
+notes. Books match by ASIN (the `amazon` id), then by standardized title/author.
 
 Transcriptions are cached in <vault>/Data/Imports/audible/cache.json (keyed by
 ASIN + annotation id), so re-runs re-render for free and only download a book that

@@ -396,3 +396,28 @@ def test_cli_dry_run_builds_no_heavy_adapters(monkeypatch, tmp_path):
     result = runner.invoke(app, ["audible", "--dry-run"])
     assert result.exit_code == 0, result.output
     assert "[dry-run]" in result.output
+
+
+def test_run_asin_preserves_other_audible_layer_rows(tmp_path):
+    out = tmp_path / "V"
+    out.mkdir(parents=True)
+    _seed_catalog(out, [
+        store.BookRow(book_id="Stalin - Stephen Kotkin", title="Stalin",
+                      authors=["Stephen Kotkin"], amazon="B0STALIN"),
+        store.BookRow(book_id="Peace - Leo Tolstoy", title="Peace",
+                      authors=["Leo Tolstoy"], amazon="B0PEACE"),
+    ])
+    # a prior audible run already recorded a layer row for another book
+    store.write_layer(out, "audible", [store.BookRow(
+        title="Peace", authors=["Leo Tolstoy"], amazon="B0PEACE",
+        format="audiobook")])
+
+    book = ao.LibraryBook(asin="B0STALIN", title="Stalin",
+                          authors=["Stephen Kotkin"])
+    anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=120_000, end_ms=150_000)]}
+    ao.run(out, client=FakeClient([book], anns), downloader=FakeDownloader(),
+           cutter=FakeCutter(), transcriber=_fake_transcriber,
+           cache_path=out / "c.json", clip_window=30, asin="B0STALIN")
+
+    asins = sorted(r.amazon for r in store.read_layer(out, "audible"))
+    assert asins == ["B0PEACE", "B0STALIN"]     # prior row preserved + new one added
