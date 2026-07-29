@@ -92,3 +92,40 @@ def test_read_all_layers_returns_precedence_order(tmp_path):
     layers = store.read_all_layers(vault)
     assert list(layers.keys()) == [s for s in store.PRECEDENCE if s in layers]
     assert list(layers.keys())[0] == "calibre"  # lowest precedence first
+
+
+def test_canonical_isbn_normalizes_isbn10_to_13():
+    # 0141032189 (ISBN-10) == 9780141032184 (ISBN-13) for the same edition.
+    assert store.canonical_isbn("0-14-103218-9") == store.canonical_isbn("9780141032184")
+    assert store.canonical_isbn("") is None
+    assert store.canonical_isbn(None) is None
+
+
+def test_same_book_matches_on_isbn():
+    a = store.BookRow(title="X", isbn="0-14-103218-9")
+    b = store.BookRow(title="Totally Different", isbn="9780141032184")
+    assert store.same_book(a, b) is True
+
+
+def test_same_book_isbn_conflict_is_not_a_match():
+    a = store.BookRow(title="X", authors=["A"], isbn="9780000000001")
+    b = store.BookRow(title="X", authors=["A"], isbn="9780000000002")
+    assert store.same_book(a, b) is False
+
+
+def test_same_book_matches_on_amazon_when_no_isbn():
+    a = store.BookRow(title="X", amazon="B00ABC")
+    b = store.BookRow(title="Y", amazon="b00abc")
+    assert store.same_book(a, b) is True
+
+
+def test_same_book_fuzzy_title_author_fallback():
+    a = store.BookRow(title="The Deluge: The Great War", authors=["Adam Tooze"])
+    b = store.BookRow(title="The Deluge", authors=["Tooze, Adam"])
+    assert store.same_book(a, b) is True
+
+
+def test_same_book_different_titles_do_not_merge():
+    a = store.BookRow(title="Stalin: Paradoxes of Power", authors=["Stephen Kotkin"])
+    b = store.BookRow(title="Stalin: Waiting for Hitler", authors=["Stephen Kotkin"])
+    assert store.same_book(a, b) is False

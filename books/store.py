@@ -15,7 +15,11 @@ from __future__ import annotations
 import csv
 from pathlib import Path
 
+import isbnlib
 from pydantic import BaseModel, Field
+from rapidfuzz import fuzz
+
+from books.obsidian import author_key, norm_amazon, norm_isbn, norm_title
 
 LIST_SEP = ";"
 
@@ -181,3 +185,35 @@ def read_all_layers(vault: Path) -> dict[str, list[BookRow]]:
         if layer_path(vault, source).is_file():
             out[source] = read_layer(vault, source)
     return out
+
+
+TITLE_MATCH_THRESHOLD = 90  # rapidfuzz ratio 0-100; conservative to avoid false merges
+
+
+def canonical_isbn(isbn: str | None) -> str | None:
+    """Canonical ISBN-13 for matching, or None. Falls back to digit-normalization."""
+    if not isbn:
+        return None
+    c = isbnlib.canonical(str(isbn))
+    if c and isbnlib.is_isbn10(c):
+        c = isbnlib.to_isbn13(c) or c
+    return c or norm_isbn(isbn)
+
+
+def same_book(a: BookRow, b: BookRow) -> bool:
+    """True when two rows denote the same book.
+
+    ISBN and Amazon id are authoritative when both sides have them (a conflict
+    means *different* books). Otherwise fall back to same author + fuzzy title.
+    """
+    ia, ib = canonical_isbn(a.isbn), canonical_isbn(b.isbn)
+    if ia and ib:
+        return ia == ib
+    aa, ab = norm_amazon(a.amazon), norm_amazon(b.amazon)
+    if aa and ab:
+        return aa == ab
+    if not (a.authors and b.authors):
+        return False
+    if author_key(a.authors[0]) != author_key(b.authors[0]):
+        return False
+    return fuzz.partial_ratio(norm_title(a.title), norm_title(b.title)) >= TITLE_MATCH_THRESHOLD
