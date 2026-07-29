@@ -29,7 +29,7 @@ from pathlib import Path
 
 import typer
 
-from books import config
+from books.core import config
 from books.highlights import Highlight, parse_markers, render_highlights
 from books.obsidian import (
     AUTHORS_DIRNAME,

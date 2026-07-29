@@ -342,7 +342,7 @@ def test_run_dry_run_writes_nothing(tmp_path):
 
 
 def test_cli_enriches_note_end_to_end(monkeypatch, tmp_path):
-    from books import config
+    from books.core import config
     out, book, anns = _library_and_notes(tmp_path)
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: out)
     monkeypatch.setattr(
@@ -363,7 +363,7 @@ def test_cli_enriches_note_end_to_end(monkeypatch, tmp_path):
 
 
 def test_cli_dry_run_builds_no_heavy_adapters(monkeypatch, tmp_path):
-    from books import config
+    from books.core import config
     out, book, anns = _library_and_notes(tmp_path)
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: out)
     monkeypatch.setattr(

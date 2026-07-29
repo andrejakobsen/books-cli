@@ -4,7 +4,7 @@ from books import audible_client as ac
 
 
 def test_default_auth_path_is_in_config_dir(monkeypatch, tmp_path):
-    from books import config
+    from books.core import config
     monkeypatch.setattr(config, "config_path",
                         lambda: tmp_path / "books" / "config.toml")
     assert ac.default_auth_path() == tmp_path / "books" / "audible-auth.json"

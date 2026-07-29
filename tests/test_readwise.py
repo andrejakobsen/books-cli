@@ -235,7 +235,7 @@ def test_split_series_ignores_non_numbered_parenthetical():
 
 
 def test_readwise_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
-    from books import config
+    from books.core import config
 
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "readwise"
@@ -257,7 +257,7 @@ def test_readwise_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
 def test_readwise_folder_arg_picks_newest(monkeypatch, tmp_path):
     import os
 
-    from books import config
+    from books.core import config
 
     vault = tmp_path / "Vault"
     folder = tmp_path / "exports"

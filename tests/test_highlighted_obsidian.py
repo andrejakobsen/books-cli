@@ -242,7 +242,7 @@ def test_cli_empty_folder_errors(tmp_path):
 
 
 def test_highlighted_defaults_csv_to_imports(monkeypatch, tmp_path):
-    from books import config
+    from books.core import config
 
     vault = tmp_path / "Vault"
     folder = vault / ".imports" / "highlighted"

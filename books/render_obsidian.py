@@ -25,7 +25,8 @@ import frontmatter
 import typer
 from ruamel.yaml import YAML
 
-from books import config, store
+from books import store
+from books.core import config
 from books.highlights import render_highlights
 from books.obsidian import (
     BOOK_PROPERTY_ORDER,

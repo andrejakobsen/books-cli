@@ -17,7 +17,8 @@ from xml.etree import ElementTree as ET
 
 import typer
 
-from books import config, resolve_path
+from books.core import config
+from books.core.paths import resolve_path
 from books.obsidian import (
     AUTHORS_DIRNAME,
     TOPICS_DIRNAME,

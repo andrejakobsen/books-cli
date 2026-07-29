@@ -12,7 +12,7 @@ import tomllib
 from dataclasses import dataclass
 from pathlib import Path
 
-from books import resolve_path
+from books.core.paths import resolve_path
 
 DEFAULT_OBSIDIAN_PATH = "~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian"
 DEFAULT_VAULT = "History"

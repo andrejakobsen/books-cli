@@ -38,7 +38,8 @@ from urllib.request import Request, urlopen
 
 import typer
 
-from books import config, resolve_path
+from books.core import config
+from books.core.paths import resolve_path
 from books.obsidian import (
     BOOKS_DIRNAME,
     VaultIndex,

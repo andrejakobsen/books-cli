@@ -19,7 +19,7 @@ from pathlib import Path
 
 import typer
 
-from books import config
+from books.core import config
 from books.obsidian import (
     AUTHORS_DIRNAME,
     BOOK_PROPERTY_ORDER,

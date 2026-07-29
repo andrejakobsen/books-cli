@@ -179,7 +179,8 @@ def test_calibre_defaults_library_to_home_calibre_library(monkeypatch, tmp_path)
     import typer
     from typer.testing import CliRunner
     from pathlib import Path as _Path
-    from books import calibre_obsidian as cal, config
+    from books import calibre_obsidian as cal
+    from books.core import config
 
     # Real config; only the config path is faked so resolve_vault has a vault.
     cfg = tmp_path / "config.toml"

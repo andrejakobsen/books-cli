@@ -23,12 +23,12 @@ import typer
 
 from books import (
     calibre_obsidian,
-    config,
     goodreads_obsidian,
     highlighted_obsidian,
     kobo_export,
     readwise_obsidian,
 )
+from books.core import config
 
 
 # --- Detection helpers ------------------------------------------------------

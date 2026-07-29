@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from books import config
+from books.core import config
 
 
 def test_load_config_creates_default_file_when_absent(tmp_path):

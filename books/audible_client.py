@@ -22,7 +22,7 @@ from __future__ import annotations
 from pathlib import Path
 from urllib.request import urlopen
 
-from books import config
+from books.core import config
 from books.audible_obsidian import Annotation, Chapter, DownloadedAudio, LibraryBook
 
 _MISSING = (

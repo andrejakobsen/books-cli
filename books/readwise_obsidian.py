@@ -23,7 +23,7 @@ from pathlib import Path
 
 import typer
 
-from books import config
+from books.core import config
 from books.highlights import Highlight, render_highlights, split_tag_column
 from books.obsidian import (
     AUTHORS_DIRNAME,
