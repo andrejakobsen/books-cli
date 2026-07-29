@@ -223,6 +223,15 @@ def test_render_command_errors_without_books_csv(tmp_path):
     assert result.exit_code != 0
 
 
+def test_render_command_no_obsidian_errors(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_layer(vault, "calibre",
+                      [store.BookRow(title="X", authors=["A"], format="ebook")])
+    store.merge(vault)
+    result = CliRunner().invoke(app, ["render", "--no-obsidian", "--output", str(vault)])
+    assert result.exit_code != 0
+
+
 def test_book_frontmatter_preserves_aliases_and_cssclasses(tmp_path):
     note = tmp_path / "Books" / "X - A.md"
     row = store.BookRow(book_id="X - A", title="X", authors=["A"])

@@ -76,9 +76,9 @@ imports = "Data/Imports"
 ```
 
 Commands write to `obsidian_path/vault`; pass `--output` to override per run.
-`imports` is a dot-folder inside the vault holding raw exports — Obsidian keeps
-dot-folders out of its explorer, search, and graph. This is why the zero-config
-commands above just work: drop a file in the right subfolder and it's found.
+`imports` is a folder inside the vault (under `Data/`) holding your raw exports.
+This is why the zero-config commands above just work: drop a file in the right
+subfolder and it's found.
 
 ## Commands
 
@@ -104,6 +104,7 @@ books covers         # fetch missing cover images
 | **`highlighted`** | Imports highlights from *physical* books via the [Highlighted](https://highlighted.app) app, anchored by page. |
 | **`audible`** | Imports Audible bookmarks & clips, transcribing each clip to text in a `## Highlights` section. Needs the `[audible]` extra + `ffmpeg`; not part of `sync`. See below. |
 | **`covers`** | Finds book notes with a blank cover and fetches one (Apple Books → Google Books → Open Library → Amazon). |
+| **`render`** | Renders the CSV store (`Data/books.csv` + `Data/Highlights/`) into book notes. Output format is picked by a flag — `--obsidian` (the default and only format today), with room for other formats later. See below. |
 
 Point at explicit paths to override the defaults:
 
@@ -155,6 +156,30 @@ On first run you're prompted for your Audible email, password, and marketplace
   deleted after cutting.
 - **Notes** — any typed note on a clip renders as a nested blockquote, and its
   `#tag` / `@link` markers follow the same convention as the other importers.
+
+## Rendering the CSV store
+
+Under the hood, book data lives in a plain-CSV store under `Data/` — a merged
+catalog (`Data/books.csv`), per-source layers (`Data/Sources/`), and per-book
+highlights (`Data/Highlights/`). `books render` reads that store and writes the
+notes:
+
+```bash
+books render               # render every book into Obsidian notes
+books render --output ~/Obsidian
+```
+
+Keeping the data and the rendered output separate means the *format* is just a
+choice at render time. Today the only format is Obsidian Markdown, selected by
+`--obsidian` (on by default):
+
+```bash
+books render --obsidian    # the default — Obsidian book notes under Books/
+```
+
+The flag exists so future output formats can slot in beside Obsidian without
+changing how the data is collected. `render` errors cleanly if no `books.csv`
+exists yet.
 
 ## The vault layout
 

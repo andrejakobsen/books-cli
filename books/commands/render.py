@@ -234,15 +234,27 @@ def render_command(
              "(~/.config/books/config.toml). Relative paths resolve against the "
              "current directory.",
     ),
+    obsidian: bool = typer.Option(
+        True, "--obsidian/--no-obsidian",
+        help="Render the CSV store as Obsidian book notes. This is the only "
+             "output format today; the flag exists so future formats can slot in "
+             "beside it.",
+    ),
 ) -> None:
-    """Render the CSV store into Obsidian book notes under Books/.
+    """Render the CSV store into book notes.
 
     Reads <vault>/Data/books.csv and <vault>/Data/Highlights/<book-id>.csv (built
-    by the importers + merge) and writes one flat note per book. Frontmatter is
-    written authoritatively from the store; your hand-edited `topics` and any
-    `## Review` section are preserved, as is note body outside the managed
-    Highlights markers.
+    by the importers + merge) and writes one flat note per book. The output format
+    is selected by a flag (`--obsidian`, the default and only format for now).
+    Frontmatter is written authoritatively from the store; your hand-edited
+    `topics` and any `## Review` section are preserved, as is note body outside the
+    managed Highlights markers.
     """
+    if not obsidian:
+        raise typer.BadParameter(
+            "no output format selected — pass --obsidian (the only format today)",
+            param_hint="--obsidian",
+        )
     vault = config.resolve_vault(output)
     if not store.books_csv_path(vault).is_file():
         raise typer.BadParameter(
