@@ -22,8 +22,10 @@ import io
 from pathlib import Path
 
 import frontmatter
+import typer
 from ruamel.yaml import YAML
 
+from books import store
 from books.highlights import render_highlights
 from books.obsidian import (
     BOOK_PROPERTY_ORDER,
@@ -89,6 +91,9 @@ def _cover_value(row: BookRow, note_path: Path):
 
     Present when the row records a cover OR the flat ``Covers/<stem>.jpg`` file
     already exists (kept in lockstep with the note stem = book_id).
+
+    Assumes *note_path* is ``<vault>/Books/<stem>.md`` so ``note_path.parents[1]``
+    is the vault root.
     """
     stem = note_path.stem
     cover_file = note_path.parents[1] / COVERS_DIRNAME / f"{stem}.jpg"
@@ -173,3 +178,28 @@ def render_note(vault: Path, row: BookRow, highlights: list) -> Path:
     note_path.parent.mkdir(parents=True, exist_ok=True)
     note_path.write_text(content, encoding="utf-8")
     return note_path
+
+
+def render(vault: Path) -> dict:
+    """Render every book in ``books.csv`` (+ its highlights) into ``Books/``.
+
+    Continue-on-error: a book whose note cannot be rendered (e.g. an existing
+    note with hand-corrupted frontmatter) is counted under ``failed`` and
+    reported; the remaining books still render.
+    """
+    stats = {"notes": 0, "highlights": 0, "reviews": 0, "failed": 0}
+    for row in store.read_books_csv(vault):
+        if not row.book_id:
+            continue
+        highlights = store.read_highlights(vault, row.book_id)
+        try:
+            render_note(vault, row, highlights)
+        except Exception as exc:  # continue-on-error per book
+            stats["failed"] += 1
+            typer.secho(f"  ! {row.book_id}: {exc}", fg=typer.colors.YELLOW)
+            continue
+        stats["notes"] += 1
+        stats["highlights"] += len(highlights)
+        if (row.review or "").strip():
+            stats["reviews"] += 1
+    return stats

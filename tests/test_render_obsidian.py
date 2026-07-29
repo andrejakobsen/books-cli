@@ -160,3 +160,47 @@ def test_render_note_preserves_topics_and_manual_body(tmp_path):
     assert post["topics"] == ["[[History]]"]     # user-owned, preserved
     assert post["format"] == "ebook"             # refreshed from the row
     assert "My own paragraph." in post.content   # manual body preserved
+
+
+def test_render_writes_notes_from_store(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_layer(vault, "calibre", [
+        store.BookRow(title="The Deluge", authors=["Adam Tooze"], format="ebook",
+                      isbn="9780141032184"),
+    ])
+    store.merge(vault)
+    bid = "The Deluge - Adam Tooze"
+    store.write_highlights(vault, bid, "kobo", [
+        store.HighlightRow(source="kobo", annotation_id="1", text="an insight",
+                           location="42", location_kind="percent"),
+    ])
+    stats = R.render(vault)
+    note = vault / "Books" / f"{bid}.md"
+    assert note.is_file()
+    post = frontmatter.loads(note.read_text(encoding="utf-8"))
+    assert post["title"] == "The Deluge"
+    assert post["highlighted"] is True
+    assert "an insight" in post.content
+    assert stats == {"notes": 1, "highlights": 1, "reviews": 0, "failed": 0}
+
+
+def test_render_empty_catalog_is_noop(tmp_path):
+    assert R.render(tmp_path / "vault") == {
+        "notes": 0, "highlights": 0, "reviews": 0, "failed": 0}
+
+
+def test_render_continues_past_a_corrupted_note(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_layer(vault, "calibre", [
+        store.BookRow(title="Good", authors=["A"], format="ebook"),
+        store.BookRow(title="Bad", authors=["B"], format="ebook"),
+    ])
+    store.merge(vault)
+    # Corrupt the "Bad" note's frontmatter so load_note/render_note raises.
+    bad = vault / "Books" / "Bad - B.md"
+    bad.parent.mkdir(parents=True, exist_ok=True)
+    bad.write_text("---\ntopics: [unclosed\n---\n\nbody\n", encoding="utf-8")
+    stats = R.render(vault)
+    assert stats["failed"] == 1
+    assert stats["notes"] == 1
+    assert (vault / "Books" / "Good - A.md").is_file()
