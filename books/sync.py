@@ -21,12 +21,12 @@ from pathlib import Path
 
 import typer
 
-from books import (
-    calibre_obsidian,
-    goodreads_obsidian,
-    highlighted_obsidian,
-    kobo_export,
-    readwise_obsidian,
+from books.commands import (
+    calibre,
+    goodreads,
+    highlighted,
+    kobo,
+    readwise,
 )
 from books.core import config
 
@@ -65,7 +65,7 @@ def _detect_goodreads(vault: Path) -> str | None:
 
 def _kobo_source(vault: Path) -> str | None:
     """Kobo source: a mounted device, else a `*.sqlite` in `.imports/kobo`."""
-    if kobo_export.KOBO_DEVICE_DB.is_file():
+    if kobo.KOBO_DEVICE_DB.is_file():
         return "Kobo device"
     folder = _imports_folder("kobo", vault)
     if folder.is_dir() and any(folder.glob("*.sqlite")):
@@ -88,24 +88,24 @@ def _detect_readwise(vault: Path) -> str | None:
 # --- Step runners (call each module's core function directly) ----------------
 
 def _run_calibre(vault: Path) -> dict:
-    return calibre_obsidian.convert(_calibre_library(), vault)
+    return calibre.convert(_calibre_library(), vault)
 
 
 def _run_goodreads(vault: Path) -> dict:
     csv = config.newest_csv(_imports_folder("goodreads", vault))
-    return goodreads_obsidian.convert(csv, vault)
+    return goodreads.convert(csv, vault)
 
 
 def _run_kobo(vault: Path) -> dict:
-    db = kobo_export._default_kobo_db(vault)
-    return kobo_export.export_obsidian(db, vault)
+    db = kobo._default_kobo_db(vault)
+    return kobo.export_obsidian(db, vault)
 
 
 def _run_highlighted(vault: Path) -> dict:
     folder = _imports_folder("highlighted", vault)
     totals = {"books": 0, "entries": 0, "skipped": 0, "authors": set()}
     for path in sorted(folder.glob("*.csv")):
-        stats = highlighted_obsidian.convert(path, vault)
+        stats = highlighted.convert(path, vault)
         totals["books"] += stats["books"]
         totals["entries"] += stats["entries"]
         totals["skipped"] += stats["skipped"]
@@ -115,7 +115,7 @@ def _run_highlighted(vault: Path) -> dict:
 
 def _run_readwise(vault: Path) -> dict:
     csv = config.newest_csv(_imports_folder("readwise", vault))
-    return readwise_obsidian.convert(csv, vault)
+    return readwise.convert(csv, vault)
 
 
 # --- Summaries --------------------------------------------------------------

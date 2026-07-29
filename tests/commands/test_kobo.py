@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from books import kobo_export as ke
+from books.commands import kobo as ke
 
 
 def _make_db(path: Path) -> None:
@@ -122,7 +122,7 @@ def test_export_obsidian_idempotent(tmp_path):
 
 
 class _R(dict):
-    """Row stub matching kobo_export's row access (missing keys -> None)."""
+    """Row stub matching the kobo module's row access (missing keys -> None)."""
     def __getitem__(self, k):
         return dict.get(self, k)
 
@@ -185,7 +185,7 @@ def test_kobo_note_only_markers_becomes_none():
 def test_kobo_copies_from_mounted_device(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from books import kobo_export as ke
+    from books.commands import kobo as ke
     from books.core import config
 
     vault = tmp_path / "Vault"
@@ -236,7 +236,7 @@ def test_safe_copy_db_removes_partial_snapshot_on_failure(tmp_path):
 def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from books import kobo_export as ke
+    from books.commands import kobo as ke
     from books.core import config
 
     vault = tmp_path / "Vault"
@@ -259,7 +259,7 @@ def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
 def test_kobo_csv_mode_default_ignores_zip_output_for_imports(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from books import kobo_export as ke
+    from books.commands import kobo as ke
     from books.core import config
 
     vault = tmp_path / "Vault"
@@ -288,7 +288,7 @@ def test_kobo_csv_mode_default_ignores_zip_output_for_imports(monkeypatch, tmp_p
 def test_kobo_obsidian_mode_default_forwards_output_for_imports(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from books import kobo_export as ke
+    from books.commands import kobo as ke
     from books.core import config
 
     vault = tmp_path / "Vault"
@@ -316,7 +316,7 @@ def test_kobo_obsidian_mode_default_forwards_output_for_imports(monkeypatch, tmp
 def test_kobo_default_missing_everything_errors(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
-    from books import kobo_export as ke
+    from books.commands import kobo as ke
     from books.core import config
 
     vault = tmp_path / "Vault"

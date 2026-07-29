@@ -261,12 +261,3 @@ def render_command(
 def register(app: typer.Typer) -> None:
     """Register this capability's command(s) on the shared Typer app."""
     app.command("render")(render_command)
-
-
-def main() -> None:
-    """Standalone entry point so a shim script keeps working on its own."""
-    typer.run(render_command)
-
-
-if __name__ == "__main__":
-    main()

@@ -218,7 +218,7 @@ def test_importer_writes_to_configured_vault_without_output(monkeypatch, tmp_pat
     import typer
     from typer.testing import CliRunner
 
-    from books import readwise_obsidian as rw
+    from books.commands import readwise as rw
 
     vault = tmp_path / "ConfiguredVault"
     monkeypatch.setattr(config, "default_vault", lambda path=None: vault)

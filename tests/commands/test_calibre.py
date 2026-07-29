@@ -3,7 +3,7 @@
 import textwrap
 from pathlib import Path
 
-from books import calibre_obsidian as c2o
+from books.commands import calibre as c2o
 
 
 OPF_WITH_COVER = """<?xml version='1.0' encoding='utf-8'?>
@@ -179,7 +179,7 @@ def test_calibre_defaults_library_to_home_calibre_library(monkeypatch, tmp_path)
     import typer
     from typer.testing import CliRunner
     from pathlib import Path as _Path
-    from books import calibre_obsidian as cal
+    from books.commands import calibre as cal
     from books.core import config
 
     # Real config; only the config path is faked so resolve_vault has a vault.

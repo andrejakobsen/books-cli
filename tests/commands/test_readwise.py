@@ -5,7 +5,7 @@ from pathlib import Path
 import typer
 from typer.testing import CliRunner
 
-from books import readwise_obsidian as rw
+from books.commands import readwise as rw
 
 HEADER = ("Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
           "Location Type,Location,Highlighted at,Document tags\n")

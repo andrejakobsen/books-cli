@@ -1,8 +1,8 @@
 import frontmatter
 from typer.testing import CliRunner
 
-from books import render_obsidian as R
 from books.cli import app
+from books.commands import render as R
 from books.core import store
 
 

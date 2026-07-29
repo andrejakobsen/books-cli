@@ -323,12 +323,3 @@ def calibre_to_obsidian(
 def register(app: typer.Typer) -> None:
     """Register this capability's command(s) on the shared Typer app."""
     app.command("calibre")(calibre_to_obsidian)
-
-
-def main() -> None:
-    """Standalone entry point so the shim script keeps working on its own."""
-    typer.run(calibre_to_obsidian)
-
-
-if __name__ == "__main__":
-    main()

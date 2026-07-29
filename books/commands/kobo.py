@@ -13,10 +13,10 @@ highlights are instead written into existing Obsidian book notes (created by the
 calibre/goodreads importers); a book with no matching note is skipped and counted.
 
 Usage:
-    python kobo_export.py                       # uses ~/KoboReader.sqlite
-    python kobo_export.py /path/to/KoboReader.sqlite
-    python kobo_export.py -i in.sqlite -o kobo_highlights.zip
-    python kobo_export.py --obsidian -o ./Obsidian
+    books kobo                        # uses the mounted device or the .imports copy
+    books kobo /path/to/KoboReader.sqlite
+    books kobo -i in.sqlite -o kobo_highlights.zip
+    books kobo --obsidian -o ./Obsidian
 """
 
 from __future__ import annotations
@@ -435,12 +435,3 @@ def kobo_export(
 def register(app: typer.Typer) -> None:
     """Register this capability's command(s) on the shared Typer app."""
     app.command("kobo")(kobo_export)
-
-
-def main() -> None:
-    """Standalone entry point so the shim script keeps working on its own."""
-    typer.run(kobo_export)
-
-
-if __name__ == "__main__":
-    main()

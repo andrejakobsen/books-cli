@@ -13,28 +13,26 @@ from __future__ import annotations
 
 import typer
 
-from books import (
-    audible_obsidian,
-    calibre_obsidian,
-    covers,
-    goodreads_obsidian,
-    highlighted_obsidian,
-    kobo_export,
-    readwise_obsidian,
-    render_obsidian,
-    sync,
+from books import audible_obsidian, covers, sync
+from books.commands import (
+    calibre,
+    goodreads,
+    highlighted,
+    kobo,
+    readwise,
+    render,
 )
 
 # Modules that expose a register(app) function. Add new capabilities here.
 CAPABILITIES = (
     audible_obsidian,
-    calibre_obsidian,
+    calibre,
     covers,
-    goodreads_obsidian,
-    highlighted_obsidian,
-    kobo_export,
-    readwise_obsidian,
-    render_obsidian,
+    goodreads,
+    highlighted,
+    kobo,
+    readwise,
+    render,
     sync,
 )
 

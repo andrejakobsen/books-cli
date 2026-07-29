@@ -46,12 +46,12 @@ def test_detect_calibre_follows_library(tmp_path, monkeypatch):
 def test_kobo_source_prefers_device(tmp_path, monkeypatch):
     device = tmp_path / "device.sqlite"
     device.write_text("db", encoding="utf-8")
-    monkeypatch.setattr(sync.kobo_export, "KOBO_DEVICE_DB", device)
+    monkeypatch.setattr(sync.kobo, "KOBO_DEVICE_DB", device)
     assert sync._kobo_source(tmp_path) == "Kobo device"
 
 
 def test_kobo_source_falls_back_to_imports_folder(tmp_path, monkeypatch):
-    monkeypatch.setattr(sync.kobo_export, "KOBO_DEVICE_DB",
+    monkeypatch.setattr(sync.kobo, "KOBO_DEVICE_DB",
                         tmp_path / "not-mounted.sqlite")
     folder = sync._imports_folder("kobo", tmp_path)
     folder.mkdir(parents=True)
@@ -67,7 +67,7 @@ def _seed_all_sources(vault: Path, monkeypatch):
     lib = vault / "Calibre Library"
     lib.mkdir(parents=True)
     monkeypatch.setattr(sync, "_calibre_library", lambda: lib)
-    monkeypatch.setattr(sync.kobo_export, "KOBO_DEVICE_DB",
+    monkeypatch.setattr(sync.kobo, "KOBO_DEVICE_DB",
                         vault / "not-mounted.sqlite")
     for name in ("goodreads", "highlighted", "readwise"):
         _make_csv(sync._imports_folder(name, vault))
@@ -105,7 +105,7 @@ def test_skips_steps_without_sources(tmp_path, monkeypatch):
     vault.mkdir()
     # Only goodreads has a source.
     monkeypatch.setattr(sync, "_calibre_library", lambda: vault / "nolib")
-    monkeypatch.setattr(sync.kobo_export, "KOBO_DEVICE_DB", vault / "nodev.sqlite")
+    monkeypatch.setattr(sync.kobo, "KOBO_DEVICE_DB", vault / "nodev.sqlite")
     _make_csv(sync._imports_folder("goodreads", vault))
     order = []
     _stub_runs(monkeypatch, order)
@@ -156,7 +156,7 @@ def _seed_real_create_and_enrich(vault: Path, monkeypatch):
     create-then-enrich composition end to end.
     """
     monkeypatch.setattr(sync, "_calibre_library", lambda: vault / "nolib")
-    monkeypatch.setattr(sync.kobo_export, "KOBO_DEVICE_DB", vault / "nodev.sqlite")
+    monkeypatch.setattr(sync.kobo, "KOBO_DEVICE_DB", vault / "nodev.sqlite")
 
     gr_folder = sync._imports_folder("goodreads", vault)
     gr_folder.mkdir(parents=True, exist_ok=True)

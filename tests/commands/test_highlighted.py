@@ -6,8 +6,8 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from books import highlighted_obsidian as hi
 from books.cli import app
+from books.commands import highlighted as hi
 
 runner = CliRunner()
 
