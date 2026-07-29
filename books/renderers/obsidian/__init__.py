@@ -17,6 +17,7 @@ from books.renderers.obsidian.frontmatter import (
     unquote,
     update_frontmatter,
 )
+from books.renderers.obsidian.highlights import build_anchors, render_highlights
 from books.renderers.obsidian.layout import (
     AUTHORS_DIRNAME,
     BOOKS_DIRNAME,
@@ -55,7 +56,8 @@ from books.renderers.obsidian.vault_index import (
 __all__ = [
     "AUTHORS_DIRNAME", "BOOKS_DIRNAME", "BOOK_FLAG_DEFAULTS", "BOOK_PROPERTY_ORDER",
     "BookNote", "BookRef", "COVERS_DIRNAME", "COVER_WIDTH", "NOTES_DIRNAME",
-    "OVERWRITE_KEYS", "TOPICS_DIRNAME", "VaultIndex", "author_key", "build_index",
+    "OVERWRITE_KEYS", "TOPICS_DIRNAME", "VaultIndex", "author_key", "build_anchors",
+    "build_index", "render_highlights",
     "cover_path", "cover_refs", "ensure_section", "ensure_top_embed",
     "extract_wikilinks", "fold", "format_rating", "frontmatter_values",
     "html_to_markdown", "link_list", "next_free_stem", "norm_amazon", "norm_isbn",

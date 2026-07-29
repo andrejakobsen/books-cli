@@ -27,7 +27,6 @@ from ruamel.yaml import YAML
 
 from books import store
 from books.core import config
-from books.highlights import render_highlights
 from books.renderers.obsidian import (
     BOOK_PROPERTY_ORDER,
     BOOKS_DIRNAME,
@@ -36,6 +35,7 @@ from books.renderers.obsidian import (
     ensure_section,
     ensure_top_embed,
     format_rating,
+    render_highlights,
     render_marked_section,
     wikilink,
 )

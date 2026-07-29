@@ -1,6 +1,6 @@
 
 from books import store
-from books.highlights import Highlight
+from books.core.highlights import Highlight
 from books.renderers.obsidian import BookRef
 
 

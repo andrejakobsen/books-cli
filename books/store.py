@@ -19,7 +19,7 @@ import isbnlib
 from pydantic import BaseModel, Field
 from rapidfuzz import fuzz
 
-from books.highlights import Highlight
+from books.core.highlights import Highlight
 from books.renderers.obsidian import (
     BookRef,
     author_key,

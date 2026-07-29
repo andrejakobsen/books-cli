@@ -31,20 +31,20 @@ from pathlib import Path
 import typer
 
 from books.core import config
+from books.core.highlights import Highlight, parse_markers
 from books.core.paths import resolve_path
-from books.highlights import Highlight, parse_markers, render_highlights
 from books.renderers.obsidian import (
     AUTHORS_DIRNAME,
     BookRef,
     VaultIndex,
     link_list,
+    render_highlights,
     render_marked_section,
     safe_filename,
     update_frontmatter,
     write_stub,
     yaml_quote,
 )
-
 
 KOBO_DEVICE_DB = Path("/Volumes/KOBOeReader/.kobo/KoboReader.sqlite")
 

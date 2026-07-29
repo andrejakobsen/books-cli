@@ -30,12 +30,13 @@ from pathlib import Path
 import typer
 
 from books.core import config
-from books.highlights import Highlight, parse_markers, render_highlights
+from books.core.highlights import Highlight, parse_markers
 from books.renderers.obsidian import (
     AUTHORS_DIRNAME,
     BookRef,
     VaultIndex,
     link_list,
+    render_highlights,
     render_marked_section,
     update_frontmatter,
     write_stub,
