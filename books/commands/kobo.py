@@ -9,11 +9,12 @@ notes, writes a CSV containing:
     Date Created
 
 All CSVs are bundled into a single compressed .zip archive. With --obsidian the
-highlights are instead written into existing Obsidian book notes (created by the
-calibre/goodreads importers); a book with no matching note is skipped and counted.
+highlights are instead written into the CSV highlights store, resolved to a
+book_id via the merged catalog (Data/books.csv); a book with no catalog match is
+skipped and counted. Run ``merge`` (or ``sync``) first to build the catalog.
 
 Usage:
-    books kobo                        # uses the mounted device or the .imports copy
+    books kobo                        # uses the mounted device or the Data/Imports copy
     books kobo /path/to/KoboReader.sqlite
     books kobo -i in.sqlite -o kobo_highlights.zip
     books kobo --obsidian -o ./Obsidian
@@ -68,7 +69,7 @@ def _safe_copy_db(src: Path, dest: Path) -> Path:
 
 
 def _default_kobo_db(output: Path | None) -> Path:
-    """Resolve the Kobo DB under <vault>/.imports/kobo.
+    """Resolve the Kobo DB under <vault>/Data/Imports/kobo.
 
     If the Kobo device is mounted (``KOBO_DEVICE_DB`` exists), safely copy its DB
     into the imports folder and use the copy. Otherwise fall back to an existing
@@ -309,8 +310,8 @@ def kobo_export(
         help="Path to KoboReader.sqlite. Relative paths resolve against the current "
              "directory. When omitted, a mounted Kobo's DB "
              "(/Volumes/KOBOeReader/.kobo/KoboReader.sqlite) is safely copied into "
-             "<vault>/.imports/kobo/ and used; otherwise the existing copy there is "
-             "used. [default: <vault>/.imports/kobo/KoboReader.sqlite]",
+             "<vault>/Data/Imports/kobo/ and used; otherwise the existing copy there "
+             "is used. [default: <vault>/Data/Imports/kobo/KoboReader.sqlite]",
     ),
     input_path: Path | None = typer.Option(
         None, "--input", "-i", help="Alternative way to specify the sqlite path."
@@ -330,8 +331,9 @@ def kobo_export(
     ),
     obsidian: bool = typer.Option(
         False, "--obsidian",
-        help="Write highlights into an Obsidian vault (flat note + Exports/) instead "
-             "of CSV/zip. In this mode --output is the vault directory "
+        help="Write highlights into the CSV highlights store (resolved to a book "
+             "via the merged Data/books.csv) instead of CSV/zip. In this mode "
+             "--output is the vault directory "
              "[default: the vault from ~/.config/books/config.toml].",
     ),
 ) -> None:
@@ -342,7 +344,7 @@ def kobo_export(
     never modified. Relative paths resolve against the current directory. When no
     path is given, a mounted Kobo's DB is safely snapshotted (via SQLite's
     read-only backup API — the device file is never modified) into
-    <vault>/.imports/kobo/ and read from there; otherwise the existing snapshot
+    <vault>/Data/Imports/kobo/ and read from there; otherwise the existing snapshot
     there is used.
 
     OUTPUT (--csv, --output): with --csv (the default), writes a .zip archive.
@@ -352,10 +354,10 @@ def kobo_export(
     Note, Location in Chapter (%), KoboSpan Block (N), KoboSpan Segment (M),
     Date Created. Rows are ordered by book reading order.
 
-    With --obsidian, writes highlights into existing Obsidian book notes instead
-    (never creating notes — a book with no matching note is skipped and counted);
-    --output is then the vault directory (default: the vault from
-    ~/.config/books/config.toml).
+    With --obsidian, writes highlights into the CSV highlights store instead
+    (resolved to a book_id via the merged Data/books.csv; a book with no catalog
+    match is skipped and counted — run ``merge``/``sync`` first). --output is then
+    the vault directory (default: the vault from ~/.config/books/config.toml).
     """
     explicit = input_path or db
     if explicit is None:

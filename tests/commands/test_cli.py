@@ -14,15 +14,6 @@ from books.cli import CAPABILITIES, app
 runner = CliRunner()
 
 
-def _seed_note(out: Path, stem: str, frontmatter: str) -> Path:
-    """Pre-create a book note (as calibre/goodreads would) so importers match."""
-    books = out / "Books"
-    books.mkdir(parents=True, exist_ok=True)
-    note = books / f"{stem}.md"
-    note.write_text(frontmatter, encoding="utf-8")
-    return note
-
-
 MINIMAL_OPF = """<?xml version='1.0' encoding='utf-8'?>
 <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/" xmlns:opf="http://www.idpf.org/2007/opf">
@@ -65,14 +56,14 @@ def _goodreads_csv(tmp_path: Path) -> Path:
 def test_all_capabilities_registered():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("calibre", "goodreads", "highlighted", "kobo", "readwise",
-                    "render", "sync"):
+    for command in ("calibre", "goodreads", "highlighted", "kobo", "merge",
+                    "readwise", "render", "sync"):
         assert command in result.output
 
 
 def test_capabilities_count_matches_module_list():
     # One command name per registered capability module.
-    assert len(CAPABILITIES) == 9
+    assert len(CAPABILITIES) == 10
 
 
 def test_no_args_shows_help():
@@ -121,23 +112,33 @@ def test_kobo_missing_db_errors(tmp_path):
 # --- End-to-end -------------------------------------------------------------
 
 def test_calibre_end_to_end(tmp_path):
+    from books.core import store
+
     lib = _calibre_library(tmp_path)
     out = tmp_path / "Obsidian"
     result = runner.invoke(app, ["calibre", "--library", str(lib), "--output", str(out)])
     assert result.exit_code == 0, result.output
-    note = out / "Books" / "Napoleon - Andrew Roberts.md"
-    assert note.exists()
-    assert "format: ebook" in note.read_text()
+    # Writes the calibre metadata layer (no note yet — merge + render do that).
+    rows = store.read_layer(out, "calibre")
+    assert len(rows) == 1
+    assert rows[0].title == "Napoleon: A Life"
+    assert rows[0].format == "ebook"
+    assert not (out / "Books").exists()
 
 
 def test_goodreads_end_to_end(tmp_path):
+    from books.core import store
+
     csv_path = _goodreads_csv(tmp_path)
     out = tmp_path / "Obsidian"
     result = runner.invoke(app, ["goodreads", "--csv", str(csv_path), "--output", str(out)])
     assert result.exit_code == 0, result.output
-    note = out / "Books" / "Napoleon - Andrew Roberts.md"
-    assert note.exists()
-    assert "format: physical" in note.read_text()  # Paperback binding
+    # Writes the goodreads metadata layer (Paperback binding -> physical).
+    rows = store.read_layer(out, "goodreads")
+    assert len(rows) == 1
+    assert rows[0].title == "Napoleon: A Life"
+    assert rows[0].format == "physical"
+    assert not (out / "Books").exists()
 
 
 def _kobo_db(tmp_path: Path) -> Path:
@@ -166,19 +167,20 @@ def _kobo_db(tmp_path: Path) -> Path:
 
 
 def test_kobo_obsidian_end_to_end(tmp_path):
+    from books.core import store
+
     db = _kobo_db(tmp_path)
     out = tmp_path / "Obsidian"
-    _seed_note(out, "Dune - Frank Herbert",
-               '---\ntype: book\ntitle: "Dune"\n'
-               'authors: ["[[Frank Herbert]]"]\n---\n\n')
+    # Seed the catalog (as calibre/goodreads + merge would) so kobo can resolve.
+    store.write_books_csv(out, [store.BookRow(
+        book_id="Dune - Frank Herbert", title="Dune",
+        authors=["Frank Herbert"])])
     result = runner.invoke(app, ["kobo", str(db), "--obsidian", "--output", str(out)])
     assert result.exit_code == 0, result.output
-    note = out / "Books" / "Dune - Frank Herbert.md"
-    assert note.exists()
-    note_text = note.read_text()
-    assert "## Highlights" in note_text
-    assert "%% books:highlights:start %%" in note_text
-    assert "Fear is the mind-killer" in note_text
+    rows = store.read_highlights(out, "Dune - Frank Herbert")
+    assert len(rows) == 1
+    assert rows[0].source == "kobo"
+    assert rows[0].text == "Fear is the mind-killer"
 
 
 def _highlighted_csv(tmp_path: Path) -> Path:

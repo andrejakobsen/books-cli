@@ -1,18 +1,13 @@
 #!/usr/bin/env python3
-"""Add Readwise CSV highlights to existing Obsidian book notes.
+"""Add Readwise CSV highlights to the CSV highlights store.
 
-Readwise exports one row per highlight with columns: Highlight, Book Title,
-Book Author, Amazon Book ID, Note, Color, Tags, Location Type, Location,
-Highlighted at, Document tags. Each row maps into the shared source-agnostic
-Highlight model and is embedded under a marker-wrapped "## Highlights" heading of
-the matching book note. It only enriches notes created by the calibre/goodreads
-importers -- it never creates book notes. Books are matched to existing notes by
-Amazon id, then by a strict Author/Title comparison (using a title with any
-"(Series #N)" suffix removed); a book with no matching note is skipped and
-counted. Highlights thus accumulate alongside Calibre/Goodreads data without
-clobbering.
-
-Standard library only.
+Highlights are written into the per-book highlights store for later rendering
+by ``render``; this command never creates book notes itself. Every highlight is
+imported. Books are resolved to a book_id via the merged catalog
+(Data/books.csv) by Amazon id, then by a strict Author/Title comparison (using
+the title with any '(Series #N)' suffix removed); a book with no catalog match
+is skipped and counted, so run ``merge``/``sync`` first. Each source's rows are
+kept separate in the store.
 """
 
 from __future__ import annotations
@@ -102,8 +97,9 @@ def convert(csv_path: Path, output: Path) -> dict:
         amazon = (row.get("Amazon Book ID") or "").strip() or None
         author = (row.get("Book Author") or "").strip()
         key = amazon or f"{title}\x00{author}"
-        group = groups.setdefault(key, {
-            "title": title, "author": author, "amazon": amazon, "rows": []})
+        group = groups.setdefault(
+            key, {"title": title, "author": author, "amazon": amazon, "rows": []}
+        )
         group["rows"].append(row)
 
     # Accumulate highlights per resolved book_id: two groups (e.g. one keyed by
@@ -114,16 +110,15 @@ def convert(csv_path: Path, output: Path) -> dict:
     for group in groups.values():
         authors = [group["author"]] if group["author"] else []
         book_id = catalog.find(
-            BookRef(title=group["title"], authors=authors, amazon=group["amazon"]))
+            BookRef(title=group["title"], authors=authors, amazon=group["amazon"])
+        )
         if book_id is None:
             stats["skipped"] += 1
             continue
-        by_book.setdefault(book_id, []).extend(
-            row_to_highlight(r) for r in group["rows"])
+        by_book.setdefault(book_id, []).extend(row_to_highlight(r) for r in group["rows"])
 
     for book_id, highlights in by_book.items():
-        hl_rows = [store.highlight_to_row(h, "readwise", str(i))
-                   for i, h in enumerate(highlights)]
+        hl_rows = [store.highlight_to_row(h, "readwise", str(i)) for i, h in enumerate(highlights)]
         store.write_highlights(output, book_id, "readwise", hl_rows)
         stats["books"] += 1
         stats["entries"] += len(hl_rows)
@@ -134,16 +129,18 @@ def convert(csv_path: Path, output: Path) -> dict:
 def readwise_to_obsidian(
     csv: Path | None = typer.Option(
         None,
-        "--csv", "-c",
+        "--csv",
+        "-c",
         help="Path to a Readwise CSV export, or a folder of exports (the newest "
-             "*.csv is used). Defaults to <vault>/.imports/readwise. Relative "
-             "paths resolve against the current directory.",
+        "*.csv is used). Defaults to <vault>/Data/Imports/readwise. Relative "
+        "paths resolve against the current directory.",
     ),
     output: Path | None = typer.Option(
         None,
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
 ) -> None:
     """Add Readwise CSV highlights to existing Obsidian book notes.
@@ -166,11 +163,9 @@ def readwise_to_obsidian(
 
     output.mkdir(parents=True, exist_ok=True)
     stats = convert(csv, output)
-    no_note = (f" ({stats['skipped']} skipped — no book)"
-               if stats["skipped"] else "")
+    no_note = f" ({stats['skipped']} skipped — no book)" if stats["skipped"] else ""
     typer.echo(
-        f"Done. {stats['books']} books{no_note}, {stats['entries']} highlights.\n"
-        f"Output: {output}"
+        f"Done. {stats['books']} books{no_note}, {stats['entries']} highlights.\nOutput: {output}"
     )
 
 

@@ -41,7 +41,8 @@ def test_voucher_key_iv_raises_when_not_decrypted():
 def test_annotations_returns_empty_on_404(monkeypatch):
     # A book with no bookmarks/clips returns 404 from the sidecar endpoint;
     # that must be treated as "no annotations", not a fatal error.
-    import httpx
+    import pytest
+    httpx = pytest.importorskip("httpx")  # optional [audible] dependency
 
     class FakeResp:
         status_code = 404

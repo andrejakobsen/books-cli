@@ -1,10 +1,11 @@
 """Integration test: multiple importers compose into one flat book note.
 
-The same book (matched by ISBN) is imported from Calibre (cover + description),
-Goodreads (review), and Highlighted (highlights). The result must be a single
-flat note under Books/ that carries the cover embed (from Covers/), an inline
-'## Review' section, and an inline marker-wrapped '## Highlights' section, in any
-import order.
+The same book (matched by ISBN) is imported from Calibre (cover), Goodreads
+(review), and Highlighted (highlights). After ``merge`` clusters the metadata
+layers and ``render`` writes the notes, the result must be a single flat note
+under Books/ that carries the cover embed (from Data/Covers/), a write-once
+'## Review' section, and a marker-wrapped '## Highlights' section — regardless of
+the order the metadata importers ran.
 """
 
 from pathlib import Path
@@ -12,6 +13,8 @@ from pathlib import Path
 from books.commands import calibre as c2o
 from books.commands import goodreads as gr
 from books.commands import highlighted as hi
+from books.commands import render as rn
+from books.core import store
 
 ISBN13 = "9780141032016"
 
@@ -77,15 +80,13 @@ def _assert_composed(out: Path) -> None:
 
     cover_rel = "Data/Covers/Napoleon - Andrew Roberts.jpg"
     # Cover embed from the flat Data/Covers/ folder.
-    assert f'cover: "[[{cover_rel}]]"' in note
+    assert f"cover: '[[{cover_rel}]]'" in note
     assert f"![[{cover_rel}|150]]" in note
-    # Review and highlights are inline sections in the note itself.
+    # Review and highlights are managed sections in the note body.
     assert "## Review" in note and "A stirring review." in note
     assert "## Highlights" in note
     assert "%% books:highlights:start %%" in note
     assert "A memorable passage." in note
-    # Calibre description survives inline.
-    assert "A great book." in note
 
     # The cover image exists on disk under Data/Covers/.
     assert (out / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
@@ -95,22 +96,27 @@ def test_compose_calibre_then_goodreads_then_highlighted(tmp_path):
     out = tmp_path / "Obsidian"
     c2o.convert(_calibre_library(tmp_path), out)
     gr.convert(_goodreads_csv(tmp_path), out)
-    hi.convert(_highlighted_csv(tmp_path), out)
+    store.merge(out)                              # cluster layers → books.csv
+    hi.convert(_highlighted_csv(tmp_path), out)   # enrich highlights store
+    rn.render(out)                                # write the flat notes
     _assert_composed(out)
 
 
 def test_compose_is_order_independent(tmp_path):
-    # Creators (calibre/goodreads) compose in either order; the highlight
-    # importer only enriches, so it must run after a note exists.
+    # The metadata importers (calibre/goodreads) compose in either order; merge
+    # then render produce the same single note. Highlights are resolved via the
+    # merged catalog, so the highlight importer runs after merge.
     out = tmp_path / "Obsidian"
     gr.convert(_goodreads_csv(tmp_path), out)
     c2o.convert(_calibre_library(tmp_path), out)
+    store.merge(out)
     hi.convert(_highlighted_csv(tmp_path), out)
+    rn.render(out)
     _assert_composed(out)
 
 
-def test_highlights_skipped_when_no_creator_ran(tmp_path):
-    # Without a calibre/goodreads note, the highlight importer creates nothing.
+def test_highlights_skipped_when_no_catalog(tmp_path):
+    # Without a merged books.csv, the highlight importer resolves nothing.
     out = tmp_path / "Obsidian"
     stats = hi.convert(_highlighted_csv(tmp_path), out)
     assert stats["books"] == 0 and stats["skipped"] == 1

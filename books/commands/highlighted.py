@@ -1,13 +1,12 @@
 #!/usr/bin/env python3
-"""Add Highlighted app CSV highlights to existing Obsidian book notes.
+"""Add Highlighted CSV highlights to the CSV highlights store.
 
-Highlighted captures highlights from *physical* books (OCR). This importer maps
-each CSV row into the shared source-agnostic Highlight model and embeds them under
-a marker-wrapped "## Highlights" heading of the matching book note. It only
-enriches notes created by the calibre/goodreads importers -- it never creates book
-notes. Books are matched to existing notes by ISBN, then by a strict Author/Title
-comparison; a book with no matching note is skipped and counted. Highlights thus
-accumulate alongside any Calibre/Goodreads data without clobbering.
+Highlights are written into the per-book highlights store for later rendering
+by ``render``; this command never creates book notes itself. Every highlight is
+imported (regardless of reading status). Books are resolved to a book_id via
+the merged catalog (Data/books.csv) by ISBN, then by a strict Author/Title
+comparison; a book with no catalog match is skipped and counted, so run
+``merge``/``sync`` first. Each source's rows are kept separate in the store.
 
 CSV columns: Highlight, Title, Author, ISBN, Collections, Reading Status,
 Book Added Date, Location, Tags, Note, Date, Favorite. Location is a page number
@@ -46,8 +45,7 @@ def resolve_csv_paths(csv_path: Path) -> list[Path]:
     if csv_path.is_dir():
         paths = sorted(csv_path.glob("*.csv"))
         if not paths:
-            raise typer.BadParameter(
-                f"no CSV files found in {csv_path}", param_hint="--csv")
+            raise typer.BadParameter(f"no CSV files found in {csv_path}", param_hint="--csv")
         return paths
     return [csv_path]
 
@@ -85,8 +83,7 @@ def convert(csv_path: Path, output: Path) -> dict:
         isbn = (row.get("ISBN") or "").strip() or None
         author = (row.get("Author") or "").strip()
         key = isbn or title
-        group = groups.setdefault(
-            key, {"title": title, "author": author, "isbn": isbn, "rows": []})
+        group = groups.setdefault(key, {"title": title, "author": author, "isbn": isbn, "rows": []})
         group["rows"].append(row)
 
     # Accumulate highlights per resolved book_id: two groups (e.g. one keyed by
@@ -96,17 +93,16 @@ def convert(csv_path: Path, output: Path) -> dict:
     by_book: dict[str, list] = {}
     for group in groups.values():
         authors = [group["author"]] if group["author"] else []
-        book_id = catalog.find(
-            BookRef(title=group["title"], authors=authors, isbn=group["isbn"]))
+        book_id = catalog.find(BookRef(title=group["title"], authors=authors, isbn=group["isbn"]))
         if book_id is None:
             stats["skipped"] += 1
             continue
-        by_book.setdefault(book_id, []).extend(
-            row_to_highlight(r) for r in group["rows"])
+        by_book.setdefault(book_id, []).extend(row_to_highlight(r) for r in group["rows"])
 
     for book_id, highlights in by_book.items():
-        hl_rows = [store.highlight_to_row(h, "highlighted", str(i))
-                   for i, h in enumerate(highlights)]
+        hl_rows = [
+            store.highlight_to_row(h, "highlighted", str(i)) for i, h in enumerate(highlights)
+        ]
         store.write_highlights(output, book_id, "highlighted", hl_rows)
         stats["books"] += 1
         stats["entries"] += len(hl_rows)
@@ -117,16 +113,19 @@ def convert(csv_path: Path, output: Path) -> dict:
 def highlighted_to_obsidian(
     csv: Path | None = typer.Option(
         None,
-        "--csv", "-c",
+        "--csv",
+        "-c",
         help="Path to a Highlighted CSV export, or a folder of CSV exports (every "
-             "top-level *.csv is imported). Defaults to <vault>/.imports/highlighted. "
-             "Relative paths resolve against the current directory.",
+        "top-level *.csv is imported). Defaults to "
+        "<vault>/Data/Imports/highlighted. "
+        "Relative paths resolve against the current directory.",
     ),
     output: Path | None = typer.Option(
         None,
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
 ) -> None:
     """Add Highlighted CSV highlights to existing Obsidian book notes.
@@ -170,8 +169,7 @@ def highlighted_to_obsidian(
     files = len(csv_paths)
     files_word = "file" if files == 1 else "files"
     skipped_note = f" ({skipped} skipped)" if skipped else ""
-    no_note = (f" ({totals['skipped']} skipped — no book)"
-               if totals["skipped"] else "")
+    no_note = f" ({totals['skipped']} skipped — no book)" if totals["skipped"] else ""
     typer.echo(
         f"Done. {files} {files_word}{skipped_note}, {totals['books']} books{no_note}, "
         f"{totals['entries']} highlights.\n"

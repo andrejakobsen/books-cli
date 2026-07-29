@@ -58,12 +58,14 @@ uv run books --help          # or just run it via uv without installing
 2. Refresh everything with one command:
 
 ```bash
-books sync             # calibre → goodreads → kobo → highlighted → readwise
+books sync             # calibre → goodreads → merge → kobo → highlighted → readwise → render
 books sync --dry-run   # preview which steps would run, and from where
 ```
 
 Each step is skipped when its source is missing, and a failing step never stops
-the others.
+the others. Under the hood `sync` runs in two phases: the importers write plain
+CSV data into `Data/` (they never touch your notes), `merge` clusters that into a
+single catalog, and `render` turns the catalog into the Markdown notes.
 
 ## Configuration
 
@@ -94,17 +96,25 @@ books kobo           # copies a mounted Kobo's DB in, then exports
 books covers         # fetch missing cover images
 ```
 
+The importers are **CSV writers**: none of them touch your notes. `calibre` and
+`goodreads` write per-source metadata layers under `Data/Sources/`; the highlight
+importers (`kobo`, `highlighted`, `readwise`) write into the per-book highlights
+store under `Data/Highlights/` (resolving each book against the merged catalog).
+`merge` clusters the layers into `Data/books.csv`, and `render` turns the catalog
++ highlights into the actual Markdown notes.
+
 | Command | What it does |
 | --- | --- |
-| **`sync`** | Runs every importer in order. Note-creating importers (`calibre`, `goodreads`) run first to establish book identity; the highlight importers follow and only enrich existing notes. Covers are out of scope — run `covers` separately. |
-| **`calibre`** | Reads a Calibre library — copies covers, extracts `.opf` metadata into YAML, links authors/topics. `--library` defaults to `~/Calibre Library`. |
-| **`goodreads`** | Reads a Goodreads CSV (read books by default, `--shelf all` for everything). Writes each review once into a `## Review` section, never clobbered on re-runs. |
-| **`readwise`** | Reads a Readwise CSV and renders highlights into a `## Highlights` section. |
-| **`kobo`** | Exports Kobo highlights to per-book CSVs in a zip (default), or `--obsidian` to render them into book notes. |
-| **`highlighted`** | Imports highlights from *physical* books via the [Highlighted](https://highlighted.app) app, anchored by page. |
-| **`audible`** | Imports Audible bookmarks & clips, transcribing each clip to text in a `## Highlights` section. Needs the `[audible]` extra + `ffmpeg`; not part of `sync`. See below. |
-| **`covers`** | Finds book notes with a blank cover and fetches one (Apple Books → Google Books → Open Library → Amazon). |
+| **`sync`** | Runs the whole pipeline in order: `calibre` → `goodreads` → `merge` → `kobo` → `highlighted` → `readwise` → `render`. The metadata importers write source layers, `merge` builds the catalog, the highlight importers enrich it, and `render` writes the notes. Covers are out of scope — run `covers` separately. |
+| **`calibre`** | Reads a Calibre library — stages covers and extracts `.opf` metadata into the `calibre` source layer, ready for `merge`. `--library` defaults to `~/Calibre Library`. |
+| **`goodreads`** | Reads a Goodreads CSV (read books by default, `--shelf all` for everything) into the `goodreads` source layer, carrying the review through to the write-once `## Review` section that `render` emits. |
+| **`readwise`** | Reads a Readwise CSV into the highlights store (`readwise` source). |
+| **`kobo`** | Exports Kobo highlights to per-book CSVs in a zip (default), or `--obsidian` to write them into the highlights store (`kobo` source). |
+| **`highlighted`** | Imports highlights from *physical* books via the [Highlighted](https://highlighted.app) app (anchored by page) into the highlights store. |
+| **`merge`** | Clusters the per-source layers under `Data/Sources/` into a single merged catalog at `Data/books.csv`. Run it after the metadata importers and before `render`. |
 | **`render`** | Renders the CSV store (`Data/books.csv` + `Data/Highlights/`) into book notes. Output format is picked by a flag — `--obsidian` (the default and only format today), with room for other formats later. See below. |
+| **`audible`** | Imports Audible bookmarks & clips, transcribing each clip to text in a `## Highlights` section of the *existing* book note. Needs the `[audible]` extra + `ffmpeg`; not part of `sync`. See below. |
+| **`covers`** | Finds book notes with a blank cover and fetches one (Apple Books → Google Books → Open Library → Amazon). |
 
 Point at explicit paths to override the defaults:
 
@@ -113,8 +123,9 @@ books goodreads --csv ~/goodreads_library_export.csv
 books kobo ~/KoboReader.sqlite --obsidian --output ~/Obsidian
 ```
 
-The `--csv` importers accept a single file or a folder. Every book note records
-its `source:` (calibre/goodreads/kobo/highlighted/readwise/audible).
+The `--csv` importers accept a single file or a folder. Highlights carry their
+originating source through the store, so a book fed by several sources shows them
+grouped under per-source subheadings in the rendered note.
 
 ## Audible
 
