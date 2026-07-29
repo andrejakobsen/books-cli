@@ -129,3 +129,25 @@ def test_same_book_different_titles_do_not_merge():
     a = store.BookRow(title="Stalin: Paradoxes of Power", authors=["Stephen Kotkin"])
     b = store.BookRow(title="Stalin: Waiting for Hitler", authors=["Stephen Kotkin"])
     assert store.same_book(a, b) is False
+
+
+def test_assign_book_id_basic_stem_drops_subtitle():
+    used = set()
+    bid = store.assign_book_id("The Deluge: The Great War", "Adam Tooze", used)
+    assert bid == "The Deluge - Adam Tooze"
+
+
+def test_assign_book_id_collision_restores_subtitle():
+    used = set()
+    first = store.assign_book_id("Stalin: Paradoxes of Power", "Stephen Kotkin", used)
+    second = store.assign_book_id("Stalin: Waiting for Hitler, 1929-1941", "Stephen Kotkin", used)
+    assert first == "Stalin - Stephen Kotkin"
+    assert second == "Stalin, Waiting for Hitler, 1929-1941 - Stephen Kotkin"
+
+
+def test_assign_book_id_numeric_suffix_last_resort():
+    used = set()
+    a = store.assign_book_id("Poems", "Anon", used)
+    b = store.assign_book_id("Poems", "Anon", used)
+    assert a == "Poems - Anon"
+    assert b == "Poems - Anon (2)"

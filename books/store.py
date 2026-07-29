@@ -19,7 +19,7 @@ import isbnlib
 from pydantic import BaseModel, Field
 from rapidfuzz import fuzz
 
-from books.obsidian import author_key, norm_amazon, norm_isbn, norm_title
+from books.obsidian import author_key, norm_amazon, norm_isbn, norm_title, safe_filename, strip_subtitle
 
 LIST_SEP = ";"
 
@@ -217,3 +217,34 @@ def same_book(a: BookRow, b: BookRow) -> bool:
     if author_key(a.authors[0]) != author_key(b.authors[0]):
         return False
     return fuzz.partial_ratio(norm_title(a.title), norm_title(b.title)) >= TITLE_MATCH_THRESHOLD
+
+
+def _stem(title: str, author: str) -> str:
+    clean = strip_subtitle(title).strip()
+    base = f"{clean} - {author}".strip() if author else clean
+    return safe_filename(base)
+
+
+def assign_book_id(title: str, author: str, used: set[str]) -> str:
+    """Stable, collision-free book id = the note stem ``<Title> - <Author>``.
+
+    Mirrors ``obsidian.VaultIndex._new_note_path``: subtitle dropped; on collision
+    the subtitle is restored (``:`` -> ``,``); a numeric ``(n)`` suffix is last resort.
+    """
+    clean_stem = _stem(title, author)
+    if clean_stem not in used:
+        used.add(clean_stem)
+        return clean_stem
+
+    full = title.replace(":", ",").strip()
+    full_stem = safe_filename(f"{full} - {author}".strip() if author else full)
+    if full_stem not in used:
+        used.add(full_stem)
+        return full_stem
+
+    n = 2
+    while f"{clean_stem} ({n})" in used:
+        n += 1
+    stem = f"{clean_stem} ({n})"
+    used.add(stem)
+    return stem
