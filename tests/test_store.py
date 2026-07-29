@@ -423,3 +423,10 @@ def test_write_highlights_replaces_only_its_own_source(tmp_path):
 
 def test_read_highlights_missing_returns_empty(tmp_path):
     assert store.read_highlights(tmp_path / "vault", "Nope - Nobody") == []
+
+
+def test_row_to_highlight_sets_source():
+    row = store.HighlightRow(source="readwise", text="t",
+                             location="42", location_kind="percent")
+    h = store.row_to_highlight(row)
+    assert h.source == "readwise"

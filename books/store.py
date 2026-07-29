@@ -452,6 +452,7 @@ def row_to_highlight(row: HighlightRow) -> Highlight:
 
     return Highlight(
         text=row.text,
+        source=row.source or None,
         note=row.note or None,
         chapter_index=chapter_index,
         chapter_title=row.chapter_title or None,
