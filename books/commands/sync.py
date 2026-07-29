@@ -1,16 +1,21 @@
 #!/usr/bin/env python3
-"""`sync` — run every importer in dependency order using default options.
+"""`sync` — run the two-phase import→render pipeline using default options.
 
-One command to refresh the whole vault. Note-creating importers run first to
-establish book identity (`calibre`, then `goodreads`); the highlight enrichers
-(`kobo`, `highlighted`, `readwise`) run afterward and only fill existing notes.
-Covers are out of scope — run `covers` separately.
+One command to regenerate the whole vault from raw imports. The pipeline runs in
+dependency order:
+
+    Phase A (metadata):  calibre → goodreads → merge   (build Data/books.csv)
+    Phase B (highlights): kobo → highlighted → readwise → render
+
+The metadata importers write per-source CSV layers; `merge` clusters them into
+`Data/books.csv` (assigning each book a stable id); the highlight importers
+resolve each book to that id and write the highlights store; `render` turns the
+store into the flat Obsidian notes under `Books/`. Covers are out of scope — run
+`covers` separately.
 
 Each step is skipped when its source is absent, so `sync` imports whatever it
 finds. A step failure is reported but never stops the remaining steps; a colored
 summary is printed at the end.
-
-Standard library only (Typer is the sole runtime dependency).
 """
 
 from __future__ import annotations
@@ -27,8 +32,9 @@ from books.commands import (
     highlighted,
     kobo,
     readwise,
+    render,
 )
-from books.core import config
+from books.core import config, store
 
 
 # --- Detection helpers ------------------------------------------------------
@@ -85,6 +91,29 @@ def _detect_readwise(vault: Path) -> str | None:
     return _imports_label("readwise") if _has_csv(_imports_folder("readwise", vault)) else None
 
 
+def _detect_merge(vault: Path) -> str | None:
+    """Merge runs when source layers exist, or a Phase-A importer will create them.
+
+    Checking the upstream detectors (not just on-disk layers) lets a fresh
+    ``--dry-run`` predict that merge would run after calibre/goodreads.
+    """
+    src = store.sources_dir(vault)
+    if src.is_dir() and any(src.glob("*.csv")):
+        return "Data/Sources"
+    if _detect_calibre(vault) or _detect_goodreads(vault):
+        return "Data/Sources"
+    return None
+
+
+def _detect_render(vault: Path) -> str | None:
+    """Render runs when books.csv exists, or merge will create it."""
+    if store.books_csv_path(vault).is_file():
+        return "Data/books.csv"
+    if _detect_merge(vault):
+        return "Data/books.csv"
+    return None
+
+
 # --- Step runners (call each module's core function directly) ----------------
 
 def _run_calibre(vault: Path) -> dict:
@@ -103,19 +132,26 @@ def _run_kobo(vault: Path) -> dict:
 
 def _run_highlighted(vault: Path) -> dict:
     folder = _imports_folder("highlighted", vault)
-    totals = {"books": 0, "entries": 0, "skipped": 0, "authors": set()}
+    totals = {"books": 0, "entries": 0, "skipped": 0}
     for path in sorted(folder.glob("*.csv")):
         stats = highlighted.convert(path, vault)
         totals["books"] += stats["books"]
         totals["entries"] += stats["entries"]
         totals["skipped"] += stats["skipped"]
-        totals["authors"].update(stats["authors"])
     return totals
 
 
 def _run_readwise(vault: Path) -> dict:
     csv = config.newest_csv(_imports_folder("readwise", vault))
     return readwise.convert(csv, vault)
+
+
+def _run_merge(vault: Path) -> dict:
+    return {"books": len(store.merge(vault))}
+
+
+def _run_render(vault: Path) -> dict:
+    return render.render(vault)
 
 
 # --- Summaries --------------------------------------------------------------
@@ -126,8 +162,8 @@ def _summ_calibre(s: dict) -> str:
 
 
 def _summ_goodreads(s: dict) -> str:
-    return (f"{s.get('created', 0)} created, {s.get('merged', 0)} merged, "
-            f"{s.get('reviews', 0)} reviews, {s.get('skipped', 0)} skipped")
+    return (f"{s.get('books', 0)} books, {s.get('reviews', 0)} reviews, "
+            f"{s.get('skipped', 0)} skipped")
 
 
 def _summ_highlights(s: dict) -> str:
@@ -135,29 +171,53 @@ def _summ_highlights(s: dict) -> str:
     return f"{s.get('books', 0)} books, {s.get('entries', 0)} highlights{skipped}"
 
 
+def _summ_merge(s: dict) -> str:
+    return f"{s.get('books', 0)} books in catalog"
+
+
+def _summ_render(s: dict) -> str:
+    failed = f", {s['failed']} failed" if s.get("failed") else ""
+    return (f"{s.get('notes', 0)} notes, {s.get('highlights', 0)} highlights, "
+            f"{s.get('reviews', 0)} reviews, {s.get('authors', 0)} authors{failed}")
+
+
 # --- Step registry ----------------------------------------------------------
 
 @dataclass(frozen=True)
 class Step:
-    """One importer stage: how to detect its source, run it, summarize it."""
+    """One pipeline stage: how to detect its source, run it, summarize it.
+
+    ``where`` is a human description of the source location, used in the
+    "skipped — no source in ..." message.
+    """
     name: str
     detect: Callable[[Path], "str | None"]
     run: Callable[[Path], dict]
     summarize: Callable[[dict], str]
+    where: str
 
 
 def _steps() -> list[Step]:
-    """Build the ordered step list, resolving runners at call time.
+    """Build the ordered two-phase step list, resolving runners at call time.
 
-    Runners are looked up as module globals (not captured) so tests can
-    monkeypatch ``_run_<name>`` and have it take effect here.
+    Runners/detectors are looked up as module globals via ``_run_<name>`` /
+    ``_detect_<name>`` (not captured here) so tests can monkeypatch them and have
+    it take effect. Order is Phase A (calibre → goodreads → merge) then Phase B
+    (kobo → highlighted → readwise → render).
     """
     return [
-        Step("calibre", _detect_calibre, _run_calibre, _summ_calibre),
-        Step("goodreads", _detect_goodreads, _run_goodreads, _summ_goodreads),
-        Step("kobo", _detect_kobo, _run_kobo, _summ_highlights),
-        Step("highlighted", _detect_highlighted, _run_highlighted, _summ_highlights),
-        Step("readwise", _detect_readwise, _run_readwise, _summ_highlights),
+        Step("calibre", _detect_calibre, _run_calibre, _summ_calibre,
+             "~/Calibre Library"),
+        Step("goodreads", _detect_goodreads, _run_goodreads, _summ_goodreads,
+             _imports_label("goodreads")),
+        Step("merge", _detect_merge, _run_merge, _summ_merge, "Data/Sources"),
+        Step("kobo", _detect_kobo, _run_kobo, _summ_highlights,
+             f"{_imports_label('kobo')} or a mounted Kobo"),
+        Step("highlighted", _detect_highlighted, _run_highlighted,
+             _summ_highlights, _imports_label("highlighted")),
+        Step("readwise", _detect_readwise, _run_readwise, _summ_highlights,
+             _imports_label("readwise")),
+        Step("render", _detect_render, _run_render, _summ_render, "Data/books.csv"),
     ]
 
 
@@ -228,9 +288,9 @@ def run_sync(vault: Path, *, dry_run: bool = False) -> list[StepResult]:
     for step in _steps():
         source = step.detect(vault)
         if source is None:
-            _skip(step.name, f"no source in {_imports_label(step.name)}")
+            _skip(step.name, f"no source in {step.where}")
             results.append(StepResult(step.name, "skipped",
-                                      f"skipped ({_imports_label(step.name)})"))
+                                      f"skipped ({step.where})"))
             continue
         if dry_run:
             _plan(step.name, source)
@@ -266,12 +326,13 @@ def sync(
         help="Show which steps would run (and from which source) without writing anything.",
     ),
 ) -> None:
-    """Run all importers in order using default options.
+    """Run the two-phase import→render pipeline using default options.
 
-    Runs calibre → goodreads → kobo → highlighted → readwise, skipping any step
-    whose source is absent. calibre/goodreads create book notes; the highlight
-    importers only enrich existing notes. Covers are not included — run `covers`
-    separately. A step that fails is reported but does not stop the others.
+    Phase A builds the catalog (calibre → goodreads → merge); Phase B writes the
+    highlights and renders the notes (kobo → highlighted → readwise → render).
+    Any step whose source is absent is skipped. Covers are not included — run
+    `covers` separately. A step that fails is reported but does not stop the
+    others.
     """
     vault = config.resolve_vault(output)
     run_sync(vault, dry_run=dry_run)

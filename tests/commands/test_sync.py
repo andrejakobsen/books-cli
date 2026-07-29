@@ -78,7 +78,8 @@ def _seed_all_sources(vault: Path, monkeypatch):
 
 def _stub_runs(monkeypatch, order, *, failing=None):
     """Replace each step's run fn with a recorder; optionally raise for one."""
-    for name in ("calibre", "goodreads", "kobo", "highlighted", "readwise"):
+    for name in ("calibre", "goodreads", "merge", "kobo", "highlighted",
+                 "readwise", "render"):
         def make(n):
             def run(vault):
                 order.append(n)
@@ -96,23 +97,26 @@ def test_runs_in_dependency_order(tmp_path, monkeypatch):
     order = []
     _stub_runs(monkeypatch, order)
     results = sync.run_sync(vault)
-    assert order == ["calibre", "goodreads", "kobo", "highlighted", "readwise"]
+    assert order == ["calibre", "goodreads", "merge", "kobo", "highlighted",
+                     "readwise", "render"]
     assert all(r.status == "ran" for r in results)
 
 
 def test_skips_steps_without_sources(tmp_path, monkeypatch):
     vault = tmp_path / "Vault"
     vault.mkdir()
-    # Only goodreads has a source.
+    # Only goodreads has a source; merge + render still run off its layer.
     monkeypatch.setattr(sync, "_calibre_library", lambda: vault / "nolib")
     monkeypatch.setattr(sync.kobo, "KOBO_DEVICE_DB", vault / "nodev.sqlite")
     _make_csv(sync._imports_folder("goodreads", vault))
     order = []
     _stub_runs(monkeypatch, order)
     results = sync.run_sync(vault)
-    assert order == ["goodreads"]
+    assert order == ["goodreads", "merge", "render"]
     by_name = {r.name: r.status for r in results}
     assert by_name["goodreads"] == "ran"
+    assert by_name["merge"] == "ran"
+    assert by_name["render"] == "ran"
     assert by_name["readwise"] == "skipped"
     assert by_name["calibre"] == "skipped"
 
@@ -125,7 +129,8 @@ def test_continue_on_error(tmp_path, monkeypatch):
     _stub_runs(monkeypatch, order, failing="goodreads")
     results = sync.run_sync(vault)
     # Every detected step still attempted, despite goodreads failing.
-    assert order == ["calibre", "goodreads", "kobo", "highlighted", "readwise"]
+    assert order == ["calibre", "goodreads", "merge", "kobo", "highlighted",
+                     "readwise", "render"]
     by_name = {r.name: r for r in results}
     assert by_name["goodreads"].status == "failed"
     assert "boom" in by_name["goodreads"].error
@@ -183,12 +188,15 @@ def test_sync_real_run_idempotent(tmp_path, monkeypatch):
     results = sync.run_sync(vault)
     status = {r.name: r.status for r in results}
     assert status["goodreads"] == "ran" and status["highlighted"] == "ran"
+    assert status["merge"] == "ran" and status["render"] == "ran"
 
     note = vault / "Books" / "Stalin - Stephen Kotkin.md"
     assert note.exists()
     text = note.read_text()
-    assert 'goodreads: "https://www.goodreads.com/book/show/3"' in text  # created
-    assert "## Highlights" in text                                        # enriched
+    # render writes the goodreads URL authoritatively from the merged catalog…
+    assert "goodreads: https://www.goodreads.com/book/show/3" in text
+    assert "highlighted: true" in text  # the highlight importer's rows flipped it
+    assert "## Highlights" in text      # …and rendered the highlights section
 
     before = {p: p.read_text() for p in vault.rglob("*.md")}
     sync.run_sync(vault)  # second full run must change nothing
