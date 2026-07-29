@@ -1,7 +1,8 @@
 # Follow-up: covers & audible → CSV writers
 
 **Date:** 2026-07-29
-**Status:** Deferred (not in the "importers become CSV writers" core-five pass)
+**Status:** SUPERSEDED by `docs/superpowers/specs/2026-07-29-covers-audible-to-csv-design.md`
+(kept as the original scoping note; the linked design is the implementation-ready spec)
 **Reference:** `docs/superpowers/specs/2026-07-29-importers-to-csv-writers-design.md`
 
 The core-five pass converts calibre/goodreads/kobo/highlighted/readwise into CSV
