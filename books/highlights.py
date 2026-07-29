@@ -31,6 +31,7 @@ class Highlight:
     date: str | None = None
     tags: list[str] = field(default_factory=list)
     links: list[str] = field(default_factory=list)
+    source: str | None = None          # provenance (kobo | readwise | ...) for grouping
 
 
 def sanitize_tag(raw: str | None) -> str | None:
@@ -248,53 +249,75 @@ def _quote_lines(text: str, prefix: str) -> list[str]:
             for ln in text.split("\n")]
 
 
+def _callout(h: Highlight, anchor: str, chapter_prefix: str) -> str:
+    """Render one highlight as a single expanded ``[!quote]+`` callout block."""
+    title_parts = [p for p in (_label(h, chapter_prefix),) if p]
+    if h.links:
+        title_parts.append(", ".join(wikilink(name) for name in h.links))
+    title = " · ".join(title_parts)
+    lines = ["> [!quote]+" + (f" {title}" if title else "")]
+    lines += _quote_lines(h.text, ">")
+    if h.note and h.note.strip():
+        lines.append(">")
+        lines += _quote_lines(h.note, ">>")
+    if h.tags:
+        lines.append(">")
+        lines.append("> " + " ".join(f"#{t}" for t in h.tags))
+    lines.append(f"^{anchor}")
+    return "\n".join(lines)
+
+
 def render_highlights(highlights: list[Highlight],
                       chapter_label: str | None = None) -> str:
-    """Render a list of highlights as an Obsidian ``Highlights.md`` body.
+    """Render a list of highlights as an Obsidian ``## Highlights`` body.
 
-    Highlights are first sorted into reading order (see :func:`sort_key`) so
-    output is always ordered by chapter + ``%`` (or by page for physical books),
-    regardless of the caller's input order; this also makes the chapter grouping
-    below robust against scattered input.
+    Highlights are sorted into reading order (see :func:`sort_key`) before
+    rendering, so output is always ordered by chapter + ``%`` (or by page for
+    physical books) regardless of input order; this also makes chapter grouping
+    robust against scattered input.
 
-    When any highlight carries a ``chapter_title`` the output is *grouped*: a
-    ``### {title}`` header is emitted at each chapter change (``###`` because the
-    block sits under a ``## Highlights`` section). Each callout's locator always
-    keeps the chapter, prefixed by ``chapter_label`` when given (Kobo passes
-    ``"Kobo ch."`` → ``Kobo ch. 12 · 42%``) or ``"ch."`` otherwise.
+    **Source grouping:** when the input mixes *two or more* distinct
+    ``Highlight.source`` values the output is split into per-source groups, each
+    introduced by a small ``### <Source>`` header (sources in alphabetical
+    order), with the usual chapter subheaders and reading-order sort applied
+    *within* each group. When all highlights share one source (or none carry a
+    source) no source header is emitted and single-source output is unchanged.
 
-    Each highlight is a single expanded ``[!quote]`` callout (one block anchor
-    mirroring the locator, e.g. ``^ch12-42``). The title line carries the locator
-    plus the ``@links`` as comma-separated ``[[wikilinks]]``. The body holds the
-    quoted text, then the author's note as a nested blockquote (``>> ...``), then
-    the ``#tags`` on a trailing line.
+    When any highlight in a group carries a ``chapter_title`` that group is
+    *chapter-grouped*: a ``### {title}`` header is emitted at each chapter change.
+    Each callout's locator keeps the chapter, prefixed by ``chapter_label`` when
+    given (else ``"ch."``). Block anchors are unique across the whole section.
     """
-    highlights = sorted(highlights, key=sort_key)
-    anchors = build_anchors(highlights)
-    grouped = any(h.chapter_title for h in highlights)
     chapter_prefix = chapter_label or "ch."
+    distinct_sources = sorted({h.source for h in highlights if h.source})
+    if len(distinct_sources) > 1:
+        ordered_groups = [
+            (src, sorted([h for h in highlights if (h.source or "") == src],
+                         key=sort_key))
+            for src in distinct_sources
+        ]
+    else:
+        ordered_groups = [(None, sorted(highlights, key=sort_key))]
+
+    # Anchors are computed over the full, final-order sequence so block ids are
+    # unique across every source group.
+    flat = [h for _src, group in ordered_groups for h in group]
+    anchors = build_anchors(flat)
+    anchor_by_id = {id(h): a for h, a in zip(flat, anchors)}
+
     blocks: list[str] = []
-    prev_key = None
-    for h, anchor in zip(highlights, anchors):
-        if grouped:
-            key = _chapter_key(h)
-            if key != prev_key:
-                header = _chapter_header(h)
-                if header:
-                    blocks.append(header)
-                prev_key = key
-        title_parts = [p for p in (_label(h, chapter_prefix),) if p]
-        if h.links:
-            title_parts.append(", ".join(wikilink(name) for name in h.links))
-        title = " · ".join(title_parts)
-        lines = ["> [!quote]+" + (f" {title}" if title else "")]
-        lines += _quote_lines(h.text, ">")
-        if h.note and h.note.strip():
-            lines.append(">")
-            lines += _quote_lines(h.note, ">>")
-        if h.tags:
-            lines.append(">")
-            lines.append("> " + " ".join(f"#{t}" for t in h.tags))
-        lines.append(f"^{anchor}")
-        blocks.append("\n".join(lines))
+    for src, group in ordered_groups:
+        if src is not None:
+            blocks.append(f"### {src.title()}")
+        grouped = any(h.chapter_title for h in group)
+        prev_key = None
+        for h in group:
+            if grouped:
+                key = _chapter_key(h)
+                if key != prev_key:
+                    header = _chapter_header(h)
+                    if header:
+                        blocks.append(header)
+                    prev_key = key
+            blocks.append(_callout(h, anchor_by_id[id(h)], chapter_prefix))
     return "\n\n".join(blocks) + "\n"

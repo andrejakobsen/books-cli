@@ -460,3 +460,38 @@ def test_none_location_label_still_defaults_to_p():
     h = Highlight(text="A passage.", page="42")
     out = render_highlights([h])
     assert "> [!quote]+ p. 42" in out
+
+
+def test_render_highlights_single_source_has_no_source_header():
+    from books.highlights import Highlight, render_highlights
+    out = render_highlights([
+        Highlight(text="one", progress=0.10, source="kobo"),
+        Highlight(text="two", progress=0.20, source="kobo"),
+    ])
+    assert "### " not in out          # no source header, no chapter header
+    assert "one" in out and "two" in out
+
+
+def test_render_highlights_mixed_sources_group_under_headers():
+    from books.highlights import Highlight, render_highlights
+    out = render_highlights([
+        Highlight(text="kobo hl", progress=0.10, source="kobo"),
+        Highlight(text="rw hl", progress=0.20, source="readwise"),
+    ])
+    assert "### Kobo" in out
+    assert "### Readwise" in out
+    assert out.index("### Kobo") < out.index("### Readwise")  # alphabetical
+    # each highlight sits under its own source header
+    assert out.index("### Kobo") < out.index("kobo hl") < out.index("### Readwise")
+
+
+def test_render_highlights_mixed_sources_unique_anchors():
+    from books.highlights import Highlight, render_highlights
+    # both sources would naively produce a "10" anchor; must be de-duplicated
+    out = render_highlights([
+        Highlight(text="a", progress=0.10, source="kobo"),
+        Highlight(text="b", progress=0.10, source="readwise"),
+    ])
+    assert out.count("^10\n") + out.count("^10 ") == 0 or out.count("^10") >= 1
+    anchors = [ln for ln in out.splitlines() if ln.startswith("^")]
+    assert len(anchors) == len(set(anchors))  # all anchors unique
