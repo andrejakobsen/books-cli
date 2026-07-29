@@ -177,6 +177,8 @@ uv sync            # install deps (incl. dev)
 uv run pytest -q   # run the tests
 ```
 
-Add a capability by creating `books/<feature>.py` with a
+Add a capability by creating `books/commands/<feature>.py` with a
 `register(app: typer.Typer)` function, then adding it to `CAPABILITIES` in
-`books/cli.py`.
+`books/cli.py`. Format-agnostic building blocks (config, paths, the CSV store,
+the highlight model + parsing) live under `books/core/`; everything
+Obsidian/markdown-specific lives under `books/renderers/obsidian/`.
