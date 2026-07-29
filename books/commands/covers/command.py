@@ -1,4 +1,4 @@
-"""`covers` command: find blank-cover notes, pick a cover, write it into the note."""
+"""`covers` command: find cover-less catalog books and write a `covers` store layer."""
 
 from __future__ import annotations
 
@@ -129,6 +129,9 @@ def run(vault, *, interactive, dry_run, limit,
     if book_id is not None:
         missing = [m for m in all_missing if m.book_id == book_id]
         scanned = 1
+        if not missing:
+            print(f"no cover-less book with book_id {book_id!r} "
+                  "(unknown id, or it already has a cover)")
     else:
         missing = all_missing
         scanned = len(store.read_books_csv(vault))
@@ -211,7 +214,7 @@ def covers_command(
 ) -> None:
     """Fetch covers for catalog books missing one, into the ``covers`` layer.
 
-    Reads Data/books.csv for 'type: book' rows whose 'cover' is blank (and which
+    Reads Data/books.csv for catalog rows whose 'cover' is blank (and which
     have no Data/Covers/<book_id>.jpg yet) and fetches a cover from Apple Books,
     then Google Books, then Open Library, then Amazon (only when the row has an
     'amazon' ASIN). The image is staged under Data/Sources/_covers/covers/ and a
