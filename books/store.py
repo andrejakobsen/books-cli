@@ -209,6 +209,25 @@ def canonical_isbn(isbn: str | None) -> str | None:
     return c or norm_isbn(isbn)
 
 
+def _has_subtitle(title: str) -> bool:
+    return strip_subtitle(title).strip().casefold() != (title or "").strip().casefold()
+
+
+def title_similar(t1: str, t2: str) -> bool:
+    """Subtitle-aware fuzzy title match with the symmetric ``fuzz.ratio``.
+
+    When both titles carry a subtitle, compare them in full (differing subtitles
+    separate distinct volumes); otherwise compare the subtitle-stripped bases (a
+    bare title merges with the subtitled edition of the same book). Never uses
+    ``partial_ratio`` -- it would merge "Dune"/"Dune Messiah" and the like.
+    """
+    if _has_subtitle(t1) and _has_subtitle(t2):
+        left, right = norm_title(t1), norm_title(t2)
+    else:
+        left, right = norm_title(strip_subtitle(t1)), norm_title(strip_subtitle(t2))
+    return fuzz.ratio(left, right) >= TITLE_MATCH_THRESHOLD
+
+
 def same_book(a: BookRow, b: BookRow) -> bool:
     """True when two rows denote the same book.
 
@@ -225,7 +244,7 @@ def same_book(a: BookRow, b: BookRow) -> bool:
         return False
     if author_key(a.authors[0]) != author_key(b.authors[0]):
         return False
-    return fuzz.partial_ratio(norm_title(a.title), norm_title(b.title)) >= TITLE_MATCH_THRESHOLD
+    return title_similar(a.title, b.title)
 
 
 def _stem(title: str, author: str) -> str:
@@ -354,11 +373,10 @@ class Catalog:
             if key in self._by_ta:
                 return self._by_ta[key]
             akey = author_key(ref.authors[0])
-            nt = norm_title(ref.title)
             for r in self.rows:
                 if not r.authors or author_key(r.authors[0]) != akey:
                     continue
-                if fuzz.partial_ratio(nt, norm_title(r.title)) >= TITLE_MATCH_THRESHOLD:
+                if title_similar(ref.title, r.title):
                     return r.book_id
         return None
 

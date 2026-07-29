@@ -120,16 +120,28 @@ def test_same_book_matches_on_amazon_when_no_isbn():
     assert store.same_book(a, b) is True
 
 
-def test_same_book_fuzzy_title_author_fallback():
+def test_same_book_bare_title_merges_with_subtitled_edition():
     a = store.BookRow(title="The Deluge: The Great War", authors=["Adam Tooze"])
     b = store.BookRow(title="The Deluge", authors=["Tooze, Adam"])
     assert store.same_book(a, b) is True
 
 
-def test_same_book_different_titles_do_not_merge():
+def test_same_book_distinct_subtitled_volumes_do_not_merge():
     a = store.BookRow(title="Stalin: Paradoxes of Power", authors=["Stephen Kotkin"])
     b = store.BookRow(title="Stalin: Waiting for Hitler", authors=["Stephen Kotkin"])
     assert store.same_book(a, b) is False
+
+
+def test_same_book_bare_sequel_titles_do_not_merge():
+    a = store.BookRow(title="Dune", authors=["Frank Herbert"])
+    b = store.BookRow(title="Dune Messiah", authors=["Frank Herbert"])
+    assert store.same_book(a, b) is False
+
+
+def test_same_book_bare_title_merges_with_subtitled_same_book():
+    a = store.BookRow(title="1984", authors=["George Orwell"])
+    b = store.BookRow(title="1984: A Novel", authors=["George Orwell"])
+    assert store.same_book(a, b) is True
 
 
 def test_assign_book_id_basic_stem_drops_subtitle():
