@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from books import store
 
 
@@ -43,3 +45,15 @@ def test_highlightrow_csv_roundtrip():
     assert back.tags == ["war", "peace"]
     assert back.links == ["Trotsky"]
     assert back.location_kind == "page"
+
+
+def test_path_helpers(tmp_path):
+    vault = tmp_path / "vault"
+    assert store.data_dir(vault) == vault / "Data"
+    assert store.sources_dir(vault) == vault / "Data" / "sources"
+    assert store.layer_path(vault, "calibre") == vault / "Data" / "sources" / "calibre.csv"
+    assert store.books_csv_path(vault) == vault / "Data" / "books.csv"
+    assert store.highlights_dir(vault) == vault / "Data" / "Highlights"
+    assert store.highlight_path(vault, "The Deluge - Adam Tooze") == (
+        vault / "Data" / "Highlights" / "The Deluge - Adam Tooze.csv"
+    )

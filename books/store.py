@@ -12,6 +12,8 @@ book is assigned a stable ``book_id`` (the note stem ``<Title> - <Author>``).
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import BaseModel, Field
 
 LIST_SEP = ";"
@@ -111,3 +113,33 @@ class HighlightRow(BaseModel):
             else:
                 data[col] = raw
         return cls(**data)
+
+
+DATA_DIRNAME = "Data"
+SOURCES_DIRNAME = "sources"
+HIGHLIGHTS_DIRNAME = "Highlights"
+BOOKS_CSV = "books.csv"
+
+
+def data_dir(vault: Path) -> Path:
+    return vault / DATA_DIRNAME
+
+
+def sources_dir(vault: Path) -> Path:
+    return data_dir(vault) / SOURCES_DIRNAME
+
+
+def layer_path(vault: Path, source: str) -> Path:
+    return sources_dir(vault) / f"{source}.csv"
+
+
+def books_csv_path(vault: Path) -> Path:
+    return data_dir(vault) / BOOKS_CSV
+
+
+def highlights_dir(vault: Path) -> Path:
+    return data_dir(vault) / HIGHLIGHTS_DIRNAME
+
+
+def highlight_path(vault: Path, book_id: str) -> Path:
+    return highlights_dir(vault) / f"{book_id}.csv"
