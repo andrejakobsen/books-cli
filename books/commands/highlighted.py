@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Add Highlighted CSV highlights to the CSV highlights store.
+"""Add Highlighted app CSV highlights to the CSV highlights store.
 
-Highlights are written into the per-book highlights store for later rendering
-by ``render``; this command never creates book notes itself. Every highlight is
-imported (regardless of reading status). Books are resolved to a book_id via
-the merged catalog (Data/books.csv) by ISBN, then by a strict Author/Title
-comparison; a book with no catalog match is skipped and counted, so run
-``merge``/``sync`` first. Each source's rows are kept separate in the store.
+Highlighted captures highlights from *physical* books (OCR). This importer maps
+each CSV row into the shared source-agnostic Highlight model and writes them to
+the per-book highlights store (Data/Highlights/<book_id>.csv, source "highlighted").
+Each book is resolved to a book_id via the merged catalog (Data/books.csv); a book
+with no catalog match is skipped and counted, so run ``merge``/``sync`` first. The
+store keeps each source's rows separate, so highlights accumulate alongside any
+other source without clobbering; ``render`` later turns the store into the notes.
 
 CSV columns: Highlight, Title, Author, ISBN, Collections, Reading Status,
 Book Added Date, Location, Tags, Note, Date, Favorite. Location is a page number

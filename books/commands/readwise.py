@@ -1,13 +1,18 @@
 #!/usr/bin/env python3
 """Add Readwise CSV highlights to the CSV highlights store.
 
-Highlights are written into the per-book highlights store for later rendering
-by ``render``; this command never creates book notes itself. Every highlight is
-imported. Books are resolved to a book_id via the merged catalog
-(Data/books.csv) by Amazon id, then by a strict Author/Title comparison (using
-the title with any '(Series #N)' suffix removed); a book with no catalog match
-is skipped and counted, so run ``merge``/``sync`` first. Each source's rows are
-kept separate in the store.
+Readwise exports one row per highlight with columns: Highlight, Book Title,
+Book Author, Amazon Book ID, Note, Color, Tags, Location Type, Location,
+Highlighted at, Document tags. Each row maps into the shared source-agnostic
+Highlight model and is written to the per-book highlights store
+(Data/Highlights/<book_id>.csv, source "readwise"). Each book is resolved to a
+book_id via the merged catalog (Data/books.csv) by Amazon id, then by a strict
+Author/Title comparison (using a title with any "(Series #N)" suffix removed); a
+book with no catalog match is skipped and counted, so run ``merge``/``sync``
+first. The store keeps each source's rows separate; ``render`` turns the store
+into the notes.
+
+Standard library only.
 """
 
 from __future__ import annotations
