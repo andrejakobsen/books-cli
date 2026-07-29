@@ -51,8 +51,9 @@ def write_stub(hub_dir: Path, name: str, note_type: str) -> None:
 def cover_path(note_path: Path) -> Path:
     """The flat cover-image path for a book note: ``vault/Covers/<stem>.jpg``.
 
-    Keyed to the note's own filename stem (which VaultIndex already keeps unique),
-    so the cover file matches its note one-to-one.
+    Keyed to the note's own filename stem (kept unique by the naming/collision
+    logic in ``books/core/naming.py`` via ``store.assign_book_id``), so the cover
+    file matches its note one-to-one.
     """
     vault = note_path.parents[1]
     return vault / COVERS_DIRNAME / f"{note_path.stem}.jpg"

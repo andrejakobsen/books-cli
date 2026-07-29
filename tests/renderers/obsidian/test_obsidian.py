@@ -140,110 +140,6 @@ def test_property_order_uses_topics_not_genres():
     assert "notes" not in ob.BOOK_PROPERTY_ORDER
 
 
-def test_vaultindex_creates_new_note_with_stub(tmp_path):
-    idx = ob.VaultIndex(tmp_path)
-    ref = ob.BookRef(title="Napoleon: A Life", authors=["Andrew Roberts"], isbn=None)
-    bn = idx.find_or_create(ref)
-    assert bn.created is True
-    # Filename drops the subtitle after ':' and appends '- <Author>'...
-    assert bn.note_path == tmp_path / "Books" / "Napoleon - Andrew Roberts.md"
-    text = bn.note_path.read_text()
-    assert "type: book" in text
-    assert 'title: "Napoleon: A Life"' in text
-    assert "[[Andrew Roberts]]" in text
-    # The book note no longer carries a personal-notes wikilink.
-    assert "notes:" not in text
-
-
-def test_vaultindex_matches_existing_by_title_author(tmp_path):
-    books = tmp_path / "Books"
-    books.mkdir(parents=True)
-    note = books / "Napoleon A Life.md"
-    note.write_text(
-        '---\ntype: book\ntitle: "Napoleon - A Life"\n'
-        'authors: ["[[Andrew Roberts]]"]\n---\nBody.\n', encoding="utf-8")
-    idx = ob.VaultIndex(tmp_path)
-    bn = idx.find_or_create(
-        ob.BookRef(title="Napoleon: A Life", authors=["Andrew Roberts"], isbn=None))
-    assert bn.created is False
-    assert bn.note_path == note
-
-
-def test_vaultindex_disambiguates_same_title_different_book(tmp_path):
-    idx = ob.VaultIndex(tmp_path)
-    a = idx.find_or_create(ob.BookRef(title="Selected Poems", authors=["W. H. Auden"]))
-    b = idx.find_or_create(ob.BookRef(title="Selected Poems", authors=["Emily Dickinson"]))
-    assert a.created and b.created
-    # Author is always in the filename, so same-title different-author never collide.
-    assert a.note_path == tmp_path / "Books" / "Selected Poems - W. H. Auden.md"
-    assert b.note_path == tmp_path / "Books" / "Selected Poems - Emily Dickinson.md"
-
-
-def test_new_note_filename_strips_subtitle_and_appends_author(tmp_path):
-    idx = ob.VaultIndex(tmp_path)
-    bn = idx.find_or_create(
-        ob.BookRef(title="The Deluge: The Great War and the Remaking of Global Order",
-                   authors=["Adam Tooze"]))
-    assert bn.note_path.name == "The Deluge - Adam Tooze.md"
-
-
-def test_new_note_filename_without_author_uses_title_only(tmp_path):
-    idx = ob.VaultIndex(tmp_path)
-    bn = idx.find_or_create(ob.BookRef(title="Beowulf: A New Translation"))
-    assert bn.note_path.name == "Beowulf.md"
-
-
-def test_new_note_filename_collision_keeps_subtitle_colon_as_comma(tmp_path):
-    # Two Kotkin "Stalin" volumes both declutter to "Stalin - Stephen Kotkin".
-    # The first claims the clean name; the colliding second keeps its subtitle,
-    # with the illegal ':' rendered as ','.
-    idx = ob.VaultIndex(tmp_path)
-    a = idx.find_or_create(ob.BookRef(
-        title="Stalin: Paradoxes of Power, 1878-1928",
-        authors=["Stephen Kotkin"], isbn="111"))
-    b = idx.find_or_create(ob.BookRef(
-        title="Stalin: Waiting for Hitler, 1929-1941",
-        authors=["Stephen Kotkin"], isbn="222"))
-    assert a.note_path.name == "Stalin - Stephen Kotkin.md"
-    assert b.note_path.name == "Stalin, Waiting for Hitler, 1929-1941 - Stephen Kotkin.md"
-
-
-def test_new_note_filename_counter_when_full_title_also_collides(tmp_path):
-    # Three authorless books with the same full title: short name, then
-    # colon-as-comma full name, then a numeric suffix as last resort. (Authorless
-    # so title/author matching never fuses them into one note.)
-    idx = ob.VaultIndex(tmp_path)
-    a = idx.find_or_create(ob.BookRef(title="Poems: Selected"))
-    b = idx.find_or_create(ob.BookRef(title="Poems: Selected"))
-    c = idx.find_or_create(ob.BookRef(title="Poems: Selected"))
-    assert a.note_path.name == "Poems.md"
-    assert b.note_path.name == "Poems, Selected.md"
-    assert c.note_path.name == "Poems, Selected (2).md"
-
-
-def test_vaultindex_find_returns_none_when_no_match(tmp_path):
-    # find() is match-only: no existing note means None and nothing is created.
-    idx = ob.VaultIndex(tmp_path)
-    bn = idx.find(ob.BookRef(title="Napoleon: A Life", authors=["Andrew Roberts"]))
-    assert bn is None
-    assert not (tmp_path / "Books").exists()
-
-
-def test_vaultindex_find_returns_existing_note(tmp_path):
-    books = tmp_path / "Books"
-    books.mkdir(parents=True)
-    note = books / "Napoleon A Life.md"
-    note.write_text(
-        '---\ntype: book\ntitle: "Napoleon - A Life"\n'
-        'authors: ["[[Andrew Roberts]]"]\n---\nBody.\n', encoding="utf-8")
-    idx = ob.VaultIndex(tmp_path)
-    bn = idx.find(
-        ob.BookRef(title="Napoleon: A Life", authors=["Andrew Roberts"]))
-    assert bn is not None
-    assert bn.created is False
-    assert bn.note_path == note
-
-
 def test_source_in_property_order():
     from books.renderers import obsidian as ob
     assert "source" in ob.BOOK_PROPERTY_ORDER
@@ -266,21 +162,6 @@ def test_norm_amazon_uppercases_and_strips():
 def test_norm_amazon_empty_is_none():
     assert ob.norm_amazon("") is None
     assert ob.norm_amazon(None) is None
-
-
-def test_vaultindex_matches_existing_note_by_amazon(tmp_path):
-    vault = tmp_path / "Obsidian"
-    books = vault / "Books"
-    books.mkdir(parents=True)
-    (books / "Stalin.md").write_text(
-        '---\ntype: book\ntitle: "Stalin"\namazon: "B00INIXPYE"\n---\n\nBody.\n',
-        encoding="utf-8")
-    index = ob.VaultIndex(vault)
-    dest = index.find_or_create(
-        ob.BookRef(title="Totally Different Title", authors=["Someone Else"],
-                   amazon="b00inixpye"))
-    assert dest.created is False
-    assert dest.note_path.name == "Stalin.md"
 
 
 def test_property_order_includes_flags_after_status():
@@ -315,11 +196,3 @@ def test_non_overwrite_key_still_never_overwrites():
     note = '---\ntype: book\ntitle: "Keep"\n---\n'
     out = ob.update_frontmatter(note, {"title": ob.yaml_quote("New")})
     assert 'title: "Keep"' in out
-
-
-def test_new_stub_carries_flag_defaults(tmp_path):
-    idx = ob.VaultIndex(tmp_path)
-    bn = idx.find_or_create(ob.BookRef(title="A Book", authors=["An Author"]))
-    text = bn.note_path.read_text(encoding="utf-8")
-    assert "highlighted: false" in text
-    assert "reviewed: false" in text
