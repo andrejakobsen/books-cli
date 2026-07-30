@@ -209,6 +209,32 @@ def test_sync_real_run_idempotent(tmp_path, monkeypatch):
     assert before == after
 
 
+# --- Summary rendering ------------------------------------------------------
+
+
+def test_result_row_maps_status_to_glyph_and_cell():
+    ran = sync._result_row(sync.StepResult("render", "ran", "5 notes"))
+    assert ran == ("[green]✓[/green]", "5 notes")
+
+    skipped = sync._result_row(sync.StepResult("kobo", "skipped", "skipped — no source in x"))
+    assert skipped[0] == "[yellow]⊘[/yellow]"
+    assert "[dim]" in skipped[1]
+
+    planned = sync._result_row(sync.StepResult("merge", "planned", "would run from y"))
+    assert planned[0] == "[cyan]•[/cyan]"
+    assert "[dim]" in planned[1]
+
+    failed = sync._result_row(sync.StepResult("goodreads", "failed", "failed", error="boom"))
+    assert failed[0] == "[red]✗[/red]"
+    assert "boom" in failed[1] and "[red]" in failed[1]
+
+
+def test_result_row_escapes_markup_in_payload():
+    # Brackets in error/summary text must not be interpreted as Rich markup.
+    failed = sync._result_row(sync.StepResult("x", "failed", "failed", error="bad [tag] here"))
+    assert r"\[tag]" in failed[1]
+
+
 # --- CLI wiring -------------------------------------------------------------
 
 

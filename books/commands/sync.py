@@ -25,6 +25,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import typer
+from rich.markup import escape
 
 from books.commands import (
     calibre,
@@ -33,7 +34,7 @@ from books.commands import (
     kobo,
     readwise,
 )
-from books.core import config, store
+from books.core import config, store, ui
 from books.renderers import get_renderer
 
 # --- Detection helpers ------------------------------------------------------
@@ -263,47 +264,51 @@ class StepResult:
     error: str | None = None
 
 
-# --- Colored output ---------------------------------------------------------
+# --- Rich output ------------------------------------------------------------
 
 
 def _header(name: str, source: str) -> None:
-    typer.secho(f"▶ {name}", fg=typer.colors.CYAN, bold=True, nl=False)
-    typer.secho(f"  ({source})", fg=typer.colors.BRIGHT_BLACK)
-
-
-def _ok(summary: str) -> None:
-    typer.secho(f"  ✓ {summary}", fg=typer.colors.GREEN)
-
-
-def _skip(name: str, reason: str) -> None:
-    typer.secho(f"⊘ {name}", fg=typer.colors.YELLOW, bold=True, nl=False)
-    typer.secho(f"  skipped — {reason}", fg=typer.colors.BRIGHT_BLACK)
-
-
-def _fail(error: str) -> None:
-    typer.secho(f"  ✗ failed — {error}", fg=typer.colors.RED, bold=True)
+    ui.console.print(f"[cyan]▶[/cyan] [bold]{escape(name)}[/bold] [dim]({escape(source)})[/dim]")
 
 
 def _plan(name: str, source: str) -> None:
-    typer.secho(f"• {name}", fg=typer.colors.CYAN, bold=True, nl=False)
-    typer.secho(f"  would run from {source}", fg=typer.colors.BRIGHT_BLACK)
+    ui.console.print(
+        f"[cyan]•[/cyan] [bold]{escape(name)}[/bold] [dim]would run from {escape(source)}[/dim]"
+    )
 
 
-def _print_summary(results: list[StepResult]) -> None:
+def _result_row(r: StepResult) -> tuple[str, str]:
+    """Map a ``StepResult`` to its (glyph, result-cell) pair for the summary table.
+
+    Both returned strings are Rich markup (glyph is colored; the result cell may
+    carry `[dim]`/`[red]` styling). Dynamic payloads (summary/error) are escaped.
+    """
+    if r.status == "failed":
+        return "[red]✗[/red]", f"[red]failed — {escape(r.error or '')}[/red]"
+    if r.status == "skipped":
+        return "[yellow]⊘[/yellow]", f"[dim]{escape(r.summary)}[/dim]"
+    if r.status == "planned":
+        return "[cyan]•[/cyan]", f"[dim]{escape(r.summary)}[/dim]"
+    # "ran"
+    return "[green]✓[/green]", escape(r.summary)
+
+
+def _print_summary(results: list[StepResult], *, dry_run: bool = False) -> None:
     ran = sum(1 for r in results if r.status == "ran")
     skipped = sum(1 for r in results if r.status == "skipped")
     failed = sum(1 for r in results if r.status == "failed")
-    typer.secho("\nSummary", bold=True)
+
+    table = ui.summary_table("Sync (dry run)" if dry_run else "Sync")
+    table.add_column("", width=2)
+    table.add_column("Step", style="cyan", no_wrap=True)
+    table.add_column("Result")
     for r in results:
-        if r.status == "failed":
-            glyph, color = "✗", typer.colors.RED
-        elif r.status == "skipped":
-            glyph, color = "⊘", typer.colors.YELLOW
-        else:
-            glyph, color = "✓", typer.colors.GREEN
-        typer.secho(f"  {glyph} {r.name:<12} {r.summary}", fg=color)
-    tally = f"{ran} ran, {skipped} skipped, {failed} failed"
-    typer.secho(tally, fg=(typer.colors.RED if failed else typer.colors.GREEN), bold=True)
+        glyph, result = _result_row(r)
+        table.add_row(glyph, r.name, result)
+    ui.console.print(table)
+
+    tally = f"{ran} ok · {skipped} skipped · {failed} failed"
+    (ui.error if failed else ui.success)(tally)
 
 
 # --- Orchestration ----------------------------------------------------------
@@ -323,8 +328,7 @@ def run_sync(vault: Path, *, dry_run: bool = False) -> list[StepResult]:
     for step in _steps():
         source = step.detect(vault)
         if source is None:
-            _skip(step.name, f"no source in {step.where}")
-            results.append(StepResult(step.name, "skipped", f"skipped ({step.where})"))
+            results.append(StepResult(step.name, "skipped", f"skipped — no source in {step.where}"))
             continue
         if dry_run:
             _plan(step.name, source)
@@ -335,15 +339,12 @@ def run_sync(vault: Path, *, dry_run: bool = False) -> list[StepResult]:
             stats = step.run(vault)
         except Exception as exc:  # continue-on-error
             message = str(exc) or exc.__class__.__name__
-            _fail(message)
             results.append(StepResult(step.name, "failed", "failed", error=message))
             continue
         summary = step.summarize(stats)
-        _ok(summary)
         results.append(StepResult(step.name, "ran", summary))
 
-    if not dry_run:
-        _print_summary(results)
+    _print_summary(results, dry_run=dry_run)
     return results
 
 
