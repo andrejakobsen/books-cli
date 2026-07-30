@@ -203,6 +203,7 @@ audible = [
     { name = "faster-whisper" },
     { name = "openai" },
     { name = "pydub" },
+    { name = "questionary" },
     { name = "speechrecognition" },
 ]
 
@@ -223,6 +224,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.6" },
     { name = "pydub", marker = "extra == 'audible'", specifier = ">=0.25" },
     { name = "python-frontmatter", specifier = ">=1.1" },
+    { name = "questionary", marker = "extra == 'audible'", specifier = ">=2.0" },
     { name = "rapidfuzz", specifier = ">=3.6" },
     { name = "rich", specifier = ">=13" },
     { name = "ruamel-yaml", specifier = ">=0.18" },

@@ -16,6 +16,32 @@ class LibraryBook:
 
 
 @dataclass
+class Candidate:
+    """A library book prepared for selection: its catalog match + fetched clips.
+
+    Built once by :func:`books.commands.audible.command.build_candidates` so the
+    picker and :func:`run` share a single ``annotations`` fetch. ``book_id`` is the
+    resolved catalog id (None for an audiobook-only book with no calibre/goodreads
+    match); ``cached`` is True when a per-book transcription cache already exists.
+    """
+
+    book: LibraryBook
+    annotations: list[Annotation] = field(default_factory=list)
+    book_id: str | None = None
+    cached: bool = False
+
+    @property
+    def in_library(self) -> bool:
+        """True when this book matches the merged catalog (has a book_id)."""
+        return self.book_id is not None
+
+    @property
+    def clip_count(self) -> int:
+        """Number of Audible annotations (bookmarks/clips/notes) on this book."""
+        return len(self.annotations)
+
+
+@dataclass
 class Annotation:
     """A single Audible bookmark, clip, or note.
 
