@@ -65,6 +65,7 @@ def test_all_capabilities_registered():
         "merge",
         "readwise",
         "render",
+        "reset",
         "sync",
     ):
         assert command in result.output
@@ -72,7 +73,7 @@ def test_all_capabilities_registered():
 
 def test_capabilities_count_matches_module_list():
     # One command name per registered capability module.
-    assert len(CAPABILITIES) == 10
+    assert len(CAPABILITIES) == 11
 
 
 def test_no_args_shows_help():

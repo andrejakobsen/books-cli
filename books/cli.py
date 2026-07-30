@@ -23,6 +23,7 @@ from books.commands import (
     merge,
     readwise,
     render,
+    reset,
     sync,
 )
 
@@ -37,6 +38,7 @@ CAPABILITIES = (
     merge,
     readwise,
     render,
+    reset,
     sync,
 )
 
