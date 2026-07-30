@@ -117,9 +117,7 @@ def test_confirm_reads_from_injected_stream():
 
 
 def test_prompt_choice_validates_and_returns():
-    got = ui.prompt_choice(
-        "pick", choices=["y", "n"], default="y", stream=io.StringIO("n\n")
-    )
+    got = ui.prompt_choice("pick", choices=["y", "n"], default="y", stream=io.StringIO("n\n"))
     assert got == "n"
 ```
 
@@ -238,9 +236,7 @@ def prompt_choice(
     stream: IO[str] | None = None,
 ) -> str:
     """Ask a validated single-choice question (re-asks on invalid input)."""
-    return Prompt.ask(
-        question, choices=choices, default=default, console=console, stream=stream
-    )
+    return Prompt.ask(question, choices=choices, default=default, console=console, stream=stream)
 
 
 def confirm(question: str, default: bool = False, stream: IO[str] | None = None) -> bool:
@@ -358,9 +354,7 @@ def _terminal_prompt(cand: Candidate) -> str:
     fmt = f" · {cand.fmt}" if cand.fmt else ""
     body = f"[cyan]{cand.source}[/cyan]  {cand.label}[dim]{fmt}[/dim]\n[dim]{cand.image_url}[/dim]"
     ui.console.print(ui.panel(body, title="candidate", style="blue"))
-    ans = ui.prompt_choice(
-        "Use this cover?", choices=["y", "n", "s", "q"], default="y"
-    )
+    ans = ui.prompt_choice("Use this cover?", choices=["y", "n", "s", "q"], default="y")
     return {"y": "accept", "n": "next", "s": "skip", "q": "quit"}.get(ans, "next")
 ```
 
