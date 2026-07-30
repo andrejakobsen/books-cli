@@ -54,8 +54,8 @@ The bar mechanics are fine; the granularity is wrong for long-running work.
 
 ```python
 class ProgressBar:
-    def advance(self, n: int = 1) -> None: ...   # advance the task by n
-    def describe(self, text: str) -> None: ...   # update the task description
+    def advance(self, n: int = 1) -> None: ...  # advance the task by n
+    def describe(self, text: str) -> None: ...  # update the task description
 ```
 
 Determinate bars (`total is not None`) gain a `MofNCompleteColumn` so the bar
@@ -68,8 +68,8 @@ handle:
 
 ```python
 class StepProgress:
-    def advance(self, n: int = 1) -> None: ...   # overall (books) bar +n
-    def status(self, text: str) -> None: ...     # rewrite the per-item status line
+    def advance(self, n: int = 1) -> None: ...  # overall (books) bar +n
+    def status(self, text: str) -> None: ...  # rewrite the per-item status line
 ```
 
 Rendered as a rich `Live` wrapping a `Group` of:
