@@ -5,8 +5,8 @@ from books.commands.covers.command import (
     _terminal_prompt,
     books_missing_cover,
     pick_cover,
-    register,
     run,
+    run_import,
 )
 from books.commands.covers.images import (
     default_fetch_bytes,
@@ -50,6 +50,6 @@ __all__ = [
     "normalize_author",
     "openlibrary_candidates",
     "pick_cover",
-    "register",
     "run",
+    "run_import",
 ]

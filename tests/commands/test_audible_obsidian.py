@@ -5,11 +5,11 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from books.cli import app
 from books.commands.audible import client as ac
 from books.commands.audible import command as ao
 from books.commands.audible import models
 from books.core import store
+from books.core.config import AudibleConfig
 
 runner = CliRunner()
 
@@ -18,12 +18,6 @@ FIXTURES = Path(__file__).parent / "fixtures"
 
 def _seed_catalog(vault, rows):
     store.write_books_csv(vault, rows)
-
-
-def test_command_is_registered():
-    result = runner.invoke(app, ["audible", "--help"])
-    assert result.exit_code == 0, result.output
-    assert "audible" in result.output.lower()
 
 
 def test_format_timestamp_always_has_hours():
@@ -810,11 +804,10 @@ def test_dry_run_shows_cost_for_openai(tmp_path):
     assert "$" in "\n".join(lines)  # openai backend -> cost shown
 
 
-def test_cli_enriches_book_end_to_end(monkeypatch, tmp_path):
+def test_run_import_enriches_book_end_to_end(monkeypatch, tmp_path):
     from books.core import config, store
 
     out, book, anns = _catalog_and_library(tmp_path)
-    monkeypatch.setattr(config, "resolve_vault", lambda output=None: out)
     monkeypatch.setattr(
         config, "resolve_imports", lambda name, output=None: out / "Data" / "Imports" / name
     )
@@ -823,38 +816,16 @@ def test_cli_enriches_book_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr(ao, "_build_cutter", lambda: FakeCutter())
     monkeypatch.setattr(ao, "_build_downloader", lambda client: FakeDownloader())
 
-    result = runner.invoke(app, ["audible", "--all"])
-    assert result.exit_code == 0, result.output
+    stats = ao.run_import(out, AudibleConfig(select="all"))
     hl = store.read_highlights(out, "Stalin - Stephen Kotkin")
     assert hl and hl[0].text == "transcribed text"
-    assert "1 book" in result.output
+    assert stats["books"] == 1
 
 
-def test_cli_off_tty_without_all_errors(tmp_path, monkeypatch):
-    out, book, anns = _catalog_and_library(tmp_path)
-    monkeypatch.setattr(ao, "_build_client", lambda quality="normal": FakeClient([book], anns))
-    # CliRunner is not a tty; no --all/--asin -> clean error, nothing built.
-    result = runner.invoke(app, ["audible", "-o", str(out)])
-    assert result.exit_code != 0
-    assert "--all" in result.output or "--asin" in result.output
-
-
-def test_cli_all_flag_runs_without_picker(tmp_path, monkeypatch):
-    out, book, anns = _catalog_and_library(tmp_path)
-    monkeypatch.setattr(ao, "_build_client", lambda quality="normal": FakeClient([book], anns))
-    monkeypatch.setattr(ao, "_build_transcriber", lambda kind, model: _fake_transcriber)
-    monkeypatch.setattr(ao, "_build_cutter", lambda: FakeCutter())
-    monkeypatch.setattr(ao, "_build_downloader", lambda client: FakeDownloader())
-    result = runner.invoke(app, ["audible", "-o", str(out), "--all"])
-    assert result.exit_code == 0, result.output
-    assert store.read_highlights(out, "Stalin - Stephen Kotkin")  # highlights written
-
-
-def test_cli_dry_run_builds_no_heavy_adapters(monkeypatch, tmp_path):
+def test_run_import_dry_run_builds_no_heavy_adapters(monkeypatch, tmp_path):
     from books.core import config
 
     out, book, anns = _catalog_and_library(tmp_path)
-    monkeypatch.setattr(config, "resolve_vault", lambda output=None: out)
     monkeypatch.setattr(
         config, "resolve_imports", lambda name, output=None: out / "Data" / "Imports" / name
     )
@@ -867,9 +838,9 @@ def test_cli_dry_run_builds_no_heavy_adapters(monkeypatch, tmp_path):
     monkeypatch.setattr(ao, "_build_cutter", _boom)
     monkeypatch.setattr(ao, "_build_downloader", _boom)
 
-    result = runner.invoke(app, ["audible", "--dry-run"])
-    assert result.exit_code == 0, result.output
-    assert "[dry-run]" in result.output
+    # Dry-run must not build any heavy adapter; returns the estimate stats.
+    stats = ao.run_import(out, AudibleConfig(select="all"), dry_run=True)
+    assert "est_seconds" in stats
 
 
 def test_run_asin_preserves_other_audible_layer_rows(tmp_path):

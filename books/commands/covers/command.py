@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-import typer
 from rich.markup import escape
 
 from books.commands.covers.images import (
@@ -17,7 +16,7 @@ from books.commands.covers.sources import (
     MissingBook,
     iter_candidates,
 )
-from books.core import config, store, ui
+from books.core import store, ui
 
 
 def books_missing_cover(vault: Path) -> list[MissingBook]:
@@ -185,89 +184,20 @@ def run(vault, *, interactive, dry_run, limit, fetch_json, fetch_bytes, prompt, 
     return stats
 
 
-def covers_command(
-    output: Path | None = typer.Option(
-        None,
-        "--output",
-        "-o",
-        help="Obsidian vault. Defaults to the vault from your config file "
-        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
-    ),
-    book: str | None = typer.Option(
-        None,
-        "--book",
-        "-b",
-        help="Fetch a cover for a single catalog book by its book_id (the "
-        "'<Title> - <Author>' stem in Data/books.csv). Interactive by default.",
-    ),
-    interactive: bool | None = typer.Option(
-        None,
-        "--interactive/--no-interactive",
-        help="Confirm each candidate: accept / next / skip book / quit. "
-        "Defaults on for a single --book, off for a full scan.",
-    ),
-    dry_run: bool = typer.Option(
-        False,
-        "--dry-run",
-        help="Report the chosen cover per book without writing anything.",
-    ),
-    limit: int | None = typer.Option(
-        None,
-        "--limit",
-        help="Process at most this many books missing a cover (ignored with --book).",
-    ),
-) -> None:
-    """Fetch covers for catalog books missing one, into the ``covers`` layer.
+def run_import(vault, cfg, *, dry_run: bool = False) -> dict:
+    """Run the covers fetch using values from the ``[covers]`` config section.
 
-    Reads Data/books.csv for catalog rows whose 'cover' is blank (and which
-    have no Data/Covers/<book_id>.jpg yet) and fetches a cover from Apple Books,
-    then Google Books, then Open Library, then Amazon (only when the row has an
-    'amazon' ASIN). The image is staged under Data/Sources/_covers/covers/ and a
-    'covers' layer row is written (with any learned ISBN); run 'merge' then
-    'render' to fold it in and materialize Data/Covers/<book_id>.jpg. By default
-    the best match is written automatically; use --interactive to approve each,
-    or --dry-run to preview. Pass --book <book_id> for a single book.
+    *cfg* is a :class:`books.core.config.CoversConfig`. ``limit == 0`` means no
+    limit. Always a full scan (no single-book targeting from ``import``).
     """
-    vault = config.resolve_vault(output)
-    if not store.books_csv_path(vault).is_file():
-        raise typer.BadParameter(
-            f"no books.csv under {store.data_dir(vault)} — run the importers + merge first",
-            param_hint="--output",
-        )
-
-    if interactive is None:
-        interactive = book is not None
-
-    stats = run(
+    limit = None if cfg.limit <= 0 else cfg.limit
+    return run(
         vault,
-        interactive=interactive,
+        interactive=cfg.interactive,
         dry_run=dry_run,
         limit=limit,
         fetch_json=default_fetch_json,
         fetch_bytes=default_fetch_bytes,
         prompt=_terminal_prompt,
-        book_id=book,
+        book_id=None,
     )
-    bs = stats["by_source"]
-    errored_by_source = stats.get("errored", {})
-    table = ui.summary_table("Covers")
-    table.add_column("Source")
-    table.add_column("Fetched", justify="right")
-    table.add_column("Errored", justify="right")
-    for src in ("apple", "google", "openlibrary", "amazon"):
-        table.add_row(src, str(bs.get(src, 0)), str(errored_by_source.get(src, 0)))
-    ui.console.print(table)
-
-    ui.info(
-        f"Scanned {stats['scanned']} books · {stats['missing']} missing covers · "
-        f"{stats['fetched']} fetched · {stats['not_found']} not found"
-    )
-    errored = {src: n for src, n in errored_by_source.items() if n}
-    if errored:
-        detail = ", ".join(f"{src} {n}" for src, n in errored.items())
-        ui.warn(f"source errors (rate-limited / unreachable, not 'no match'): {detail}")
-
-
-def register(app: typer.Typer) -> None:
-    """Register this capability's command(s) on the shared Typer app."""
-    app.command("covers")(covers_command)

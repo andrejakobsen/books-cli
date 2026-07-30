@@ -14,9 +14,7 @@ from __future__ import annotations
 import typer
 
 from books.commands import (
-    audible,
     calibre,
-    covers,
     export,
     goodreads,
     highlighted,
@@ -29,9 +27,7 @@ from books.commands import (
 
 # Modules that expose a register(app) function. Add new capabilities here.
 CAPABILITIES = (
-    audible,
     calibre,
-    covers,
     export,
     goodreads,
     highlighted,

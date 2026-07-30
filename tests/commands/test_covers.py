@@ -785,68 +785,6 @@ def test_run_single_book_only_processes_that_book(tmp_path):
     assert stems == ["A - Ann"]
 
 
-def test_cli_covers_dry_run(tmp_path, monkeypatch):
-    from typer.testing import CliRunner
-
-    from books.cli import app
-
-    _seed_catalog(tmp_path, [store.BookRow(book_id="A - Ann", title="A", authors=["Ann"])])
-    monkeypatch.setattr(covers.command, "default_fetch_json", lambda url: GOOGLE_VOLUME)
-    monkeypatch.setattr(
-        covers.command, "default_fetch_bytes", lambda url: (_png(200, 300), "image/jpeg")
-    )
-
-    result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path), "--dry-run"])
-    assert result.exit_code == 0, result.output
-    assert "missing" in result.output.lower()
-    assert store.read_layer(tmp_path, "covers") == []
-
-
-def test_cli_covers_errors_without_catalog(tmp_path):
-    from typer.testing import CliRunner
-
-    from books.cli import app
-
-    result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path)])
-    assert result.exit_code != 0
-    assert "books.csv" in result.output.lower()
-
-
-def test_cli_covers_single_book_by_id(tmp_path, monkeypatch):
-    from typer.testing import CliRunner
-
-    from books.cli import app
-
-    _seed_catalog(
-        tmp_path,
-        [
-            store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
-            store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
-        ],
-    )
-    monkeypatch.setattr(
-        covers.command,
-        "default_fetch_json",
-        lambda url: GOOGLE_VOLUME if "googleapis" in url else {"docs": []},
-    )
-    monkeypatch.setattr(
-        covers.command, "default_fetch_bytes", lambda url: (_png(200, 300), "image/jpeg")
-    )
-    monkeypatch.setattr(covers.command, "_terminal_prompt", lambda c: "accept")
-
-    result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path), "-b", "A - Ann"])
-    assert result.exit_code == 0, result.output
-    stems = [Path(r.cover).stem for r in store.read_layer(tmp_path, "covers")]
-    assert stems == ["A - Ann"]
-
-
-def test_cli_covers_registered():
-    from books.cli import app
-
-    names = {c.name for c in app.registered_commands}
-    assert "covers" in names
-
-
 def test_apple_books_query_uses_title_and_author_not_isbn():
     book = covers.MissingBook(
         book_id="x", title="The  Deluge", authors=["Adam Tooze"], isbn="9781847374530", amazon=None
@@ -985,3 +923,31 @@ def test_covers_merge_render_materializes_cover(tmp_path):
     first = (tmp_path / "Books" / f"{row.book_id}.md").read_bytes()
     render.render(tmp_path)
     assert (tmp_path / "Books" / f"{row.book_id}.md").read_bytes() == first
+
+
+def test_covers_run_import_maps_config(tmp_path, monkeypatch):
+    from books.commands.covers import command as covers_cmd
+    from books.core.config import CoversConfig
+
+    captured = {}
+
+    def fake_run(vault, **kw):
+        captured.update(kw)
+        return {
+            "by_source": {},
+            "errored": {},
+            "scanned": 0,
+            "missing": 0,
+            "fetched": 0,
+            "not_found": 0,
+        }
+
+    monkeypatch.setattr(covers_cmd, "run", fake_run)
+
+    cfg = CoversConfig(interactive=True, limit=0)
+    covers_cmd.run_import(tmp_path, cfg, dry_run=True)
+
+    assert captured["interactive"] is True
+    assert captured["dry_run"] is True
+    assert captured["limit"] is None  # 0 → no limit
+    assert captured["book_id"] is None

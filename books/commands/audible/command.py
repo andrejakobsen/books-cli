@@ -31,8 +31,6 @@ import json
 import tempfile
 from pathlib import Path
 
-import typer
-
 from books.commands.audible.models import Annotation, Candidate, Chapter
 from books.commands.audible.select import select_books
 from books.core import config, store, ui
@@ -487,127 +485,55 @@ def _build_downloader(client):
     return _AudibleDownloader()
 
 
-def audible_command(
-    transcriber: str = typer.Option(
-        "local",
-        "--transcriber",
-        "-t",
-        help="Speech-to-text backend: 'local' (faster-whisper, no key, offline), "
-        "'openai' (needs OPENAI_API_KEY), or 'google' (free, lower quality).",
-    ),
-    model: str = typer.Option(
-        "small", "--model", help="Whisper model size for the local/openai backends."
-    ),
-    clip_window: int = typer.Option(
-        30,
-        "--clip-window",
-        help="Seconds of audio to transcribe for a point bookmark that has no end "
-        "position (the window ends at the mark). Clips use their own length.",
-    ),
-    quality: str = typer.Option(
-        "normal",
-        "--quality",
-        help="Audiobook download quality: 'normal' (smallest/fastest, ample for "
-        "transcription), 'high', or 'best'. Only affects download size — clips "
-        "are transcribed to text either way.",
-    ),
-    limit: int | None = typer.Option(
-        None, "--limit", help="Process at most this many matched books."
-    ),
-    all_books: bool = typer.Option(
-        False,
-        "--all",
-        help="Transcribe every book in your Audible library (skip the interactive "
-        "picker). Required when there is no interactive terminal.",
-    ),
-    asin: str | None = typer.Option(
-        None, "--asin", help="Only process the book with this Audible ASIN."
-    ),
-    output: Path | None = typer.Option(
-        None,
-        "--output",
-        "-o",
-        help="Output Obsidian vault. Defaults to the vault from your config file "
-        "(~/.config/books/config.toml).",
-    ),
-    dry_run: bool = typer.Option(
-        False,
-        "--dry-run",
-        help="Show which books match and how many clips would be transcribed "
-        "(still logs in to read your library), without downloading audio, "
-        "transcribing, or writing.",
-    ),
-) -> None:
-    """Import Audible bookmarks & clips into the CSV store.
+def run_import(vault: Path, cfg, *, dry_run: bool = False) -> dict:
+    """Run the audible import using values from the ``[audible]`` config section.
 
-    Authenticates to your Audible account (prompting on first run and caching the
-    auth), then for each library book that matches the merged catalog (by ASIN,
-    then title/author) fetches its bookmarks/clips, downloads the audiobook, and
-    cuts + transcribes each new clip. Matched books' clips are written as per-book
-    highlights (source 'audible') and an 'audible' metadata layer with
-    'format: audiobook'; run 'merge' + 'render' afterward to surface them in the
-    notes. A book with no catalog match is skipped and counted (run
-    calibre/goodreads/merge first). Transcriptions are cached, so re-runs only
-    download books with new clips.
+    *cfg* is a :class:`books.core.config.AudibleConfig`. Behavioral defaults not
+    exposed in config (model, quality, clip window, per-book limit) keep their
+    prior CLI defaults. The interactive picker is used unless ``select == "all"``
+    or there is no interactive terminal (off-tty falls back to processing all).
     """
-    from books.commands.audible.client import AudibleClient
-
-    if quality not in AudibleClient.QUALITY_CHOICES:
-        raise typer.BadParameter(
-            f"--quality must be one of {', '.join(AudibleClient.QUALITY_CHOICES)}"
-        )
-
-    vault = config.resolve_vault(output)
-    cache_dir = config.resolve_imports("audible", output) / "cache"
-    show_cost = transcriber == "openai"
-
-    client = _build_client(quality)
+    cache_dir = config.resolve_imports("audible", vault) / "cache"
+    show_cost = cfg.transcriber == "openai"
+    client = _build_client("normal")
 
     if dry_run:
-        stats = run(
+        return run(
             vault,
             client=client,
             downloader=None,
             cutter=None,
             transcriber=None,
             cache_dir=cache_dir,
-            clip_window=clip_window,
-            limit=limit,
-            asin=asin,
+            clip_window=30,
+            limit=None,
+            asin=None,
             dry_run=True,
             show_cost=show_cost,
             echo=ui.info,
         )
-        secs = stats["est_seconds"]
-        cost = (
-            f" (~${secs * COST_PER_SECOND:.2f} @ ${COST_PER_SECOND:.5f}/sec)" if show_cost else ""
-        )
-        ui.info(
-            f"Dry run: {stats['matched']} matched, {stats['new']} new (audiobook-only). "
-            f"Estimated transcription: ~{secs / 60:.1f} min{cost}."
-        )
-        return
 
-    # Choose which books to process. --asin and --all skip the picker; otherwise an
-    # interactive terminal is required (no surprise bulk transcription runs).
-    interactive = not (asin or all_books)
-    if interactive and not ui.console.is_terminal:
-        raise typer.BadParameter("No interactive terminal — pass --all or --asin.")
-
+    interactive = cfg.select != "all" and ui.console.is_terminal
     catalog = store.Catalog(vault)
     with ui.progress("Fetching annotations from Audible…") as prog:
-        candidates = build_candidates(client, catalog, cache_dir, asin, describe=prog.describe)
+        candidates = build_candidates(client, catalog, cache_dir, None, describe=prog.describe)
 
     selected = select_books(candidates) if interactive else candidates
     if not selected:
-        ui.info("No books selected.")
-        return
+        return {
+            "books": 0,
+            "new": 0,
+            "entries": 0,
+            "downloaded": 0,
+            "transcribed": 0,
+            "failed": 0,
+        }
 
-    transcribe_fn = _build_transcriber(transcriber, model)
+    transcribe_fn = _build_transcriber(cfg.transcriber, "small")
     cutter = _build_cutter()
     downloader = _build_downloader(client)
 
-    stats = run(
+    return run(
         vault,
         selected=selected,
         client=client,
@@ -615,22 +541,7 @@ def audible_command(
         cutter=cutter,
         transcriber=transcribe_fn,
         cache_dir=cache_dir,
-        clip_window=clip_window,
-        limit=limit,
+        clip_window=30,
+        limit=None,
         echo=ui.info,
     )
-
-    books_word = "book" if stats["books"] == 1 else "books"
-    fail = f", {stats['failed']} failed" if stats.get("failed") else ""
-    ui.info(
-        f"Done. {stats['books']} {books_word} written, "
-        f"{stats['new']} new (audiobook-only, staged for the next merge/render), "
-        f"{stats['entries']} clips, {stats['downloaded']} downloaded, "
-        f"{stats['transcribed']} transcribed{fail}.\n"
-        f"Output: {vault}"
-    )
-
-
-def register(app: typer.Typer) -> None:
-    """Register this capability's command(s) on the shared Typer app."""
-    app.command("audible")(audible_command)
