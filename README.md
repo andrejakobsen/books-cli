@@ -101,6 +101,7 @@ The commands fall into a few groups that mirror the pipeline.
 | **`kobo`** | Imports Kobo highlights & notes. Reads a mounted device (snapshotted read-only) or a `*.sqlite` in `Data/Imports/kobo`; override with `--db`. |
 | **`highlighted`** | Imports highlights from *physical* books via the [Highlighted](https://highlighted.app) app (imports every CSV in the folder). |
 | **`readwise`** | Imports Readwise highlights (newest CSV in the folder). |
+| **`audible`** | Imports Audible bookmarks & clips, transcribed to text. Needs the `[audible]` extra + `ffmpeg`, and runs outside `sync`. See [Audible](#audible). |
 
 **Render**
 
@@ -113,7 +114,6 @@ The commands fall into a few groups that mirror the pipeline.
 | Command | What it does |
 | --- | --- |
 | **`covers`** | Finds catalog books with no cover and fetches one (Apple Books → Google Books → Open Library → Amazon). |
-| **`audible`** | Imports Audible bookmarks & clips, transcribed to text. Needs the `[audible]` extra + `ffmpeg`. See [Audible](#audible). |
 
 All importers are **CSV writers** — they never touch your notes. Because the
 highlight importers resolve each book against the merged catalog, run `merge`
