@@ -245,6 +245,16 @@ def _clip_seconds(anns, clip_window: int) -> float:
 COST_PER_SECOND = 0.00028
 
 
+def _audiobook_layer_row(book) -> store.BookRow:
+    """The ``audible`` metadata layer row for a library book (``format: audiobook``)."""
+    return store.BookRow(
+        title=book.title,
+        authors=list(book.authors),
+        amazon=book.asin,
+        format="audiobook",
+    )
+
+
 def build_candidates(client, catalog, cache_dir, asin=None, describe=lambda _s: None):
     """Fetch every library book's annotations once and tag it for selection.
 
@@ -282,23 +292,27 @@ def run(
     transcriber,
     cache_dir,
     clip_window,
+    selected=None,
     limit=None,
     asin=None,
     dry_run=False,
+    show_cost=True,
     echo=lambda *_: None,
 ) -> dict:
-    """Import Audible clips into the CSV store. All heavy I/O is injected.
+    """Import the *selected* Audible books' clips into the CSV store.
 
-    Resolves each library book to a book_id via the merged catalog
-    (Data/books.csv); an unmatched book is skipped and counted. For a matched book
-    with transcribed clips, writes per-book highlights (source ``audible``) and an
-    ``audible`` metadata layer row (``format: audiobook``). ``merge`` + ``render``
-    later surface them. In *dry_run* mode nothing is written.
+    *selected* is the list of :class:`Candidate` to process (from the picker or
+    ``--all``); when None, every library book is built + processed (equivalent to
+    ``--all``, used by direct callers/tests). A matched book (``book_id`` set) writes
+    highlights + an ``audible`` layer row; an audiobook-only book writes a layer row
+    only, so a later ``merge``/``render`` creates its note and the next run writes its
+    highlights from cache. All heavy I/O is injected. In *dry_run* nothing is written.
     """
     vault.mkdir(parents=True, exist_ok=True)
     catalog = store.Catalog(vault)
     stats = {
         "books": 0,
+        "new": 0,
         "entries": 0,
         "skipped": 0,
         "downloaded": 0,
@@ -307,34 +321,25 @@ def run(
         "est_seconds": 0.0,
     }
 
-    library = client.library()
-    if asin:
-        library = [b for b in library if b.asin == asin]
-
     if dry_run:
-        return _run_dry(library, catalog, cache_dir, stats, client, clip_window, limit, echo)
+        candidates = selected or build_candidates(client, catalog, cache_dir, asin)
+        return _run_dry(candidates, cache_dir, stats, clip_window, limit, show_cost, echo)
 
     # One-time upgrade of an old monolithic cache.json into per-book files.
     migrate_legacy_cache(cache_dir)
 
-    # Preserve other audiobooks' layer rows across partial (--asin/--limit) runs.
+    if selected is None:
+        selected = build_candidates(client, catalog, cache_dir, asin)
+    if limit is not None:
+        selected = selected[:limit]
+
+    # Preserve other audiobooks' layer rows across partial (picker/--asin) runs.
     layer = {r.amazon: r for r in store.read_layer(vault, "audible") if r.amazon}
 
-    # Pre-pass: resolve matches locally (no network) so the bar counts matched books.
-    matched: list = []
-    for book in library:
-        ref = BookRef(title=book.title, authors=book.authors, amazon=book.asin)
-        book_id = catalog.find(ref)
-        if book_id is None:
-            stats["skipped"] += 1
-            continue
-        matched.append((book, book_id))
-    if limit is not None:
-        matched = matched[:limit]
-
-    total_books = len(matched)
+    total_books = len(selected)
     with ui.nested_progress(f"Importing audiobooks · 0/{total_books} books") as prog:
-        for idx, (book, book_id) in enumerate(matched, start=1):
+        for idx, cand in enumerate(selected, start=1):
+            book, book_id, annotations = cand.book, cand.book_id, cand.annotations
             authors = ", ".join(book.authors) or "?"
             label = f"{book.title} — {authors}"
             # Overall status tracks book count; the per-book bar tracks its clips.
@@ -344,7 +349,6 @@ def run(
             # title, a license/voucher error, a network hiccup, a bad transcribe)
             # is counted and skipped so it never aborts the whole run.
             try:
-                annotations = client.annotations(book.asin)
                 if not annotations:
                     continue
 
@@ -380,16 +384,19 @@ def run(
                             prog.advance()
                     save_book_cache(cache_dir, book.asin, book_cache)
 
+                if book_id is None:
+                    # Audiobook-only: stage via a layer row (format: audiobook) so a
+                    # later merge creates the note; its highlights land on the next
+                    # (now-matched) run, served from cache.
+                    layer[book.asin] = _audiobook_layer_row(book)
+                    stats["new"] += 1
+                    continue
+
                 rows = book_highlight_rows(clips, valid_ids={a.id for a in annotations})
                 if not rows:
                     continue
                 store.write_highlights(vault, book_id, "audible", rows)
-                layer[book.asin] = store.BookRow(
-                    title=book.title,
-                    authors=list(book.authors),
-                    amazon=book.asin,
-                    format="audiobook",
-                )
+                layer[book.asin] = _audiobook_layer_row(book)
                 stats["books"] += 1
                 stats["entries"] += len(rows)
             except Exception as exc:  # noqa: BLE001 — continue-on-error per book

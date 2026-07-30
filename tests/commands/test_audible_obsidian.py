@@ -378,25 +378,60 @@ def test_run_writes_highlights_and_audible_layer(tmp_path):
     assert layer[0].format == "audiobook"
 
 
-def test_run_skips_unmatched_without_download(tmp_path):
+def test_run_unmatched_writes_layer_and_caches_no_highlights(tmp_path):
     out = tmp_path / "V"
     out.mkdir(parents=True)
-    _seed_catalog(out, [])  # empty catalog -> no match
-    book = models.LibraryBook(asin="B0X", title="Unknown", authors=["Nobody"])
-    client = FakeClient([book], {"B0X": [models.Annotation(id="a1", start_ms=0, end_ms=10)]})
+    _seed_catalog(out, [])  # empty catalog -> the book is audiobook-only ("new")
+    book = models.LibraryBook(asin="B0NEW", title="Audio Only", authors=["Narrator"])
+    anns = {"B0NEW": [models.Annotation(id="a1", start_ms=0, end_ms=10_000, note="Hi")]}
+    down = FakeDownloader()
+    cache_dir = out / "Data" / "Imports" / "audible" / "cache"
+    stats = ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=down,
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_dir=cache_dir,
+        clip_window=30,
+    )
+    # Audiobook-only book IS transcribed + cached now, and staged via a layer row...
+    assert stats["new"] == 1 and stats["books"] == 0
+    assert down.calls == ["B0NEW"]
+    assert ao.load_book_cache(cache_dir, "B0NEW")["clips"]  # transcription cached
+    layer = store.read_layer(out, "audible")
+    assert [r.amazon for r in layer] == ["B0NEW"] and layer[0].format == "audiobook"
+    # ...but no highlights are written this run (no book_id exists yet).
+    assert store.read_highlights(out, "Audio Only - Narrator") == []
+
+
+def test_run_processes_only_selected_candidates(tmp_path):
+    out, book, anns = _catalog_and_library(tmp_path)
+    other = models.LibraryBook(asin="B0OTHER", title="Other", authors=["X"])
+    library = [book, other]
+    annotations = {**anns, "B0OTHER": [models.Annotation(id="o1", start_ms=0, end_ms=5)]}
+    client = FakeClient(library, annotations)
+    cache_dir = out / "Data" / "Imports" / "audible" / "cache"
+    # Select ONLY the matched Stalin book; Other must be untouched.
+    selected = [
+        c
+        for c in ao.build_candidates(client, store.Catalog(out), cache_dir)
+        if c.book.asin == "B0STALIN"
+    ]
     down = FakeDownloader()
     stats = ao.run(
         out,
+        selected=selected,
         client=client,
         downloader=down,
         cutter=FakeCutter(),
         transcriber=_fake_transcriber,
-        cache_dir=out / "cache",
+        cache_dir=cache_dir,
         clip_window=30,
     )
-    assert stats["skipped"] == 1 and stats["books"] == 0
-    assert down.calls == []
-    assert store.read_layer(out, "audible") == []
+    assert stats["books"] == 1 and stats["new"] == 0
+    assert down.calls == ["B0STALIN"]  # Other never downloaded
+    assert ao.load_book_cache(cache_dir, "B0OTHER") == {}  # Other never cached
 
 
 def test_run_no_highlights_writes_nothing(tmp_path):
