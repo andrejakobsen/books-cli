@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The ``render`` command: turn the merged CSV store into notes for one target.
+"""The ``export`` command: turn the merged CSV store into notes for one target.
 
 This module is a thin CLI dispatcher over the renderer seam. It resolves the
 vault, checks that ``Data/books.csv`` exists, picks a renderer by flag
@@ -23,7 +23,7 @@ from books.renderers import get_renderer
 _FORMAT_FLAGS: tuple[tuple[str, str], ...] = (("obsidian", "obsidian"),)
 
 
-def render_command(
+def export_command(
     output: Path | None = typer.Option(
         None,
         "--output",
@@ -82,4 +82,4 @@ def render_command(
 
 def register(app: typer.Typer) -> None:
     """Register this capability's command(s) on the shared Typer app."""
-    app.command("render")(render_command)
+    app.command("export")(export_command)

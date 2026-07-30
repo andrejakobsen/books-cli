@@ -293,13 +293,13 @@ def test_render_command_renders_vault(tmp_path):
     vault = tmp_path / "vault"
     store.write_layer(vault, "calibre", [store.BookRow(title="X", authors=["A"], format="ebook")])
     store.merge(vault)
-    result = CliRunner().invoke(app, ["render", "--output", str(vault)])
+    result = CliRunner().invoke(app, ["export", "--output", str(vault)])
     assert result.exit_code == 0, result.output
     assert (vault / "Books" / "X - A.md").is_file()
 
 
 def test_render_command_errors_without_books_csv(tmp_path):
-    result = CliRunner().invoke(app, ["render", "--output", str(tmp_path / "vault")])
+    result = CliRunner().invoke(app, ["export", "--output", str(tmp_path / "vault")])
     assert result.exit_code != 0
 
 
@@ -309,7 +309,7 @@ def test_render_command_rejects_removed_no_obsidian_flag(tmp_path):
     vault = tmp_path / "vault"
     store.write_layer(vault, "calibre", [store.BookRow(title="X", authors=["A"], format="ebook")])
     store.merge(vault)
-    result = CliRunner().invoke(app, ["render", "--no-obsidian", "--output", str(vault)])
+    result = CliRunner().invoke(app, ["export", "--no-obsidian", "--output", str(vault)])
     assert result.exit_code != 0
 
 
@@ -320,7 +320,7 @@ def test_render_command_refresh_deletes_stale_note(tmp_path):
     stale = vault / "Books" / "Gone - Z.md"
     stale.parent.mkdir(parents=True, exist_ok=True)
     stale.write_text("---\ntype: book\ntitle: Gone\n---\n", encoding="utf-8")
-    result = CliRunner().invoke(app, ["render", "--refresh", "--output", str(vault)])
+    result = CliRunner().invoke(app, ["export", "--refresh", "--output", str(vault)])
     assert result.exit_code == 0, result.output
     assert not stale.exists()
     assert (vault / "Books" / "X - A.md").is_file()

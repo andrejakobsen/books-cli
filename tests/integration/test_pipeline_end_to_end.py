@@ -136,7 +136,7 @@ def test_full_pipeline_end_to_end(tmp_path):
 
     # Phase B: highlights → render.
     _run(["kobo", "--db", str(db), "--output", str(vault)])
-    _run(["render", "--output", str(vault)])
+    _run(["export", "--output", str(vault)])
 
     note = vault / "Books" / f"{BOOK_ID}.md"
     assert note.exists()
@@ -172,5 +172,5 @@ def test_full_pipeline_end_to_end(tmp_path):
 
     # Idempotence: a second render produces byte-identical output.
     before = note.read_bytes()
-    _run(["render", "--output", str(vault)])
+    _run(["export", "--output", str(vault)])
     assert note.read_bytes() == before
