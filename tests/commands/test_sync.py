@@ -80,7 +80,7 @@ def _stub_runs(monkeypatch, order, *, failing=None):
     for name in ("calibre", "goodreads", "merge", "kobo", "highlighted", "readwise", "render"):
 
         def make(n):
-            def run(vault):
+            def run(vault, *args, **kwargs):
                 order.append(n)
                 if failing == n:
                     raise RuntimeError(f"boom in {n}")
@@ -151,6 +151,44 @@ def test_dry_run_does_not_execute(tmp_path, monkeypatch):
         if r.name in {"calibre", "goodreads", "kobo", "highlighted", "readwise"}
         and r.status != "skipped"
     )
+
+
+def test_sync_refresh_forwarded_to_render(tmp_path, monkeypatch):
+    vault = tmp_path / "Vault"
+    vault.mkdir()
+    _seed_all_sources(vault, monkeypatch)
+    order = []
+    _stub_runs(monkeypatch, order)
+
+    captured = {}
+
+    def render_run(vault, refresh=False):
+        order.append("render")
+        captured["refresh"] = refresh
+        return {}
+
+    monkeypatch.setattr(sync, "_run_render", render_run)
+    sync.run_sync(vault, refresh=True)
+    assert captured["refresh"] is True
+
+
+def test_sync_refresh_defaults_false(tmp_path, monkeypatch):
+    vault = tmp_path / "Vault"
+    vault.mkdir()
+    _seed_all_sources(vault, monkeypatch)
+    order = []
+    _stub_runs(monkeypatch, order)
+
+    captured = {}
+
+    def render_run(vault, refresh=False):
+        order.append("render")
+        captured["refresh"] = refresh
+        return {}
+
+    monkeypatch.setattr(sync, "_run_render", render_run)
+    sync.run_sync(vault)
+    assert captured["refresh"] is False
 
 
 # --- Real (non-mocked) double run -------------------------------------------

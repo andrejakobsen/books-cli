@@ -156,8 +156,8 @@ def _run_merge(vault: Path) -> dict:
     return {"books": len(store.merge(vault))}
 
 
-def _run_render(vault: Path) -> dict:
-    return get_renderer("obsidian").render(vault)
+def _run_render(vault: Path, refresh: bool = False) -> dict:
+    return get_renderer("obsidian").render(vault, refresh=refresh)
 
 
 # --- Summaries --------------------------------------------------------------
@@ -211,7 +211,7 @@ class Step:
     where: str
 
 
-def _steps() -> list[Step]:
+def _steps(refresh: bool = False) -> list[Step]:
     """Build the ordered two-phase step list, resolving runners at call time.
 
     Runners/detectors are looked up as module globals via ``_run_<name>`` /
@@ -250,7 +250,13 @@ def _steps() -> list[Step]:
             _summ_highlights,
             _imports_label("readwise"),
         ),
-        Step("render", _detect_render, _run_render, _summ_render, "Data/books.csv"),
+        Step(
+            "render",
+            _detect_render,
+            lambda v: _run_render(v, refresh),
+            _summ_render,
+            "Data/books.csv",
+        ),
     ]
 
 
@@ -314,18 +320,19 @@ def _print_summary(results: list[StepResult], *, dry_run: bool = False) -> None:
 # --- Orchestration ----------------------------------------------------------
 
 
-def run_sync(vault: Path, *, dry_run: bool = False) -> list[StepResult]:
+def run_sync(vault: Path, *, dry_run: bool = False, refresh: bool = False) -> list[StepResult]:
     """Run every importer whose source is present, in dependency order.
 
     Returns a ``StepResult`` per step. Failures are recorded and never stop the
     remaining steps. In *dry_run* mode nothing is executed or written; detected
-    steps are reported with status ``planned``.
+    steps are reported with status ``planned``. When *refresh* is set the render
+    step deletes ``Books/`` and ``Authors/`` for a clean rebuild.
     """
     if not dry_run:
         vault.mkdir(parents=True, exist_ok=True)
 
     results: list[StepResult] = []
-    for step in _steps():
+    for step in _steps(refresh):
         source = step.detect(vault)
         if source is None:
             results.append(StepResult(step.name, "skipped", f"skipped — no source in {step.where}"))
@@ -361,6 +368,13 @@ def sync(
         "--dry-run",
         help="Show which steps would run (and from which source) without writing anything.",
     ),
+    refresh: bool = typer.Option(
+        False,
+        "--refresh",
+        help="Delete Books/ and Authors/ before the render step (a clean rebuild). "
+        "Your topics/aliases/cssclasses are cached and restored for books still in "
+        "the catalog. Ignored under --dry-run.",
+    ),
 ) -> None:
     """Run the two-phase import→render pipeline using default options.
 
@@ -371,7 +385,7 @@ def sync(
     others.
     """
     vault = config.resolve_vault(output)
-    run_sync(vault, dry_run=dry_run)
+    run_sync(vault, dry_run=dry_run, refresh=refresh)
 
 
 def register(app: typer.Typer) -> None:
