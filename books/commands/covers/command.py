@@ -85,7 +85,7 @@ def pick_cover(candidates, fetch_bytes, *, interactive, prompt):
 
 def _terminal_prompt(cand: Candidate) -> str:
     """Ask the user about one candidate; map keys to an action string."""
-    fmt = f" · {cand.fmt}" if cand.fmt else ""
+    fmt = f" · {escape(cand.fmt)}" if cand.fmt else ""
     body = (
         f"[cyan]{escape(cand.source)}[/cyan]  {escape(cand.label)}[dim]{fmt}[/dim]\n"
         f"[dim]{escape(cand.image_url)}[/dim]"
