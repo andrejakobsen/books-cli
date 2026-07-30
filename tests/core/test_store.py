@@ -504,3 +504,49 @@ def test_group_and_import_groups_rows_by_key_and_resolves(tmp_path):
     assert stats == {"books": 1, "entries": 2, "skipped": 1}
     got = [r.text for r in store.read_highlights(vault, "X - A")]
     assert got == ["one", "two"]
+
+
+def test_reset_store_deletes_books_csv_and_highlights(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_books_csv(vault, [store.BookRow(title="X", authors=["A"])])
+    store.write_highlights(vault, "X - A", "kobo", [store.HighlightRow(text="hi", source="kobo")])
+    # An orphaned highlight file from a since-changed book_id.
+    store.write_highlights(
+        vault, "Old Id - A", "kobo", [store.HighlightRow(text="stale", source="kobo")]
+    )
+
+    result = store.reset_store(vault)
+
+    assert result == {"books_csv": True, "highlight_files": 2}
+    assert not store.books_csv_path(vault).exists()
+    assert not store.highlights_dir(vault).exists()
+
+
+def test_reset_store_dry_run_deletes_nothing(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_books_csv(vault, [store.BookRow(title="X", authors=["A"])])
+    store.write_highlights(vault, "X - A", "kobo", [store.HighlightRow(text="hi", source="kobo")])
+
+    result = store.reset_store(vault, dry_run=True)
+
+    assert result == {"books_csv": True, "highlight_files": 1}
+    assert store.books_csv_path(vault).exists()
+    assert store.highlights_dir(vault).exists()
+
+
+def test_reset_store_keeps_source_layers(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_layer(vault, "calibre", [store.BookRow(title="X", authors=["A"])])
+    store.write_books_csv(vault, [store.BookRow(title="X", authors=["A"])])
+
+    store.reset_store(vault)
+
+    assert store.layer_path(vault, "calibre").exists()
+
+
+def test_reset_store_noop_when_absent(tmp_path):
+    vault = tmp_path / "vault"
+
+    result = store.reset_store(vault)
+
+    assert result == {"books_csv": False, "highlight_files": 0}

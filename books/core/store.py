@@ -601,3 +601,23 @@ def write_highlights(vault: Path, book_id: str, source: str, rows: list[Highligh
     _write_csv(
         highlight_path(vault, book_id), HIGHLIGHT_COLUMNS, (r.to_csv_dict() for r in combined)
     )
+
+
+def reset_store(vault: Path, *, dry_run: bool = False) -> dict:
+    """Delete the purely-derived store: ``books.csv`` + the ``Highlights/`` dir.
+
+    Source layers under ``Data/Sources/`` and the notes are kept. Returns
+    ``{"books_csv": bool, "highlight_files": int}`` describing what was (or,
+    under *dry_run*, would be) deleted. Idempotent: missing paths yield
+    zeros/false and are not an error.
+    """
+    books_csv = books_csv_path(vault)
+    hl_dir = highlights_dir(vault)
+    had_books = books_csv.is_file()
+    hl_count = len(list(hl_dir.glob("*.csv"))) if hl_dir.is_dir() else 0
+    if not dry_run:
+        if had_books:
+            books_csv.unlink()
+        if hl_dir.is_dir():
+            shutil.rmtree(hl_dir)
+    return {"books_csv": had_books, "highlight_files": hl_count}
