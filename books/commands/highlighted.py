@@ -73,30 +73,23 @@ def convert(csv_path: Path, output: Path) -> dict:
     """
     output.mkdir(parents=True, exist_ok=True)
 
-    # Group rows by book (ISBN when present, else title), preserving CSV order.
-    groups: dict[str, dict] = {}
-    for row in parse_csv(csv_path):
-        title = (row.get("Title") or "").strip()
-        if not title:
-            continue
-        isbn = (row.get("ISBN") or "").strip() or None
+    def _ref(row: dict) -> BookRef:
         author = (row.get("Author") or "").strip()
-        key = isbn or title
-        group = groups.setdefault(key, {"title": title, "author": author, "isbn": isbn, "rows": []})
-        group["rows"].append(row)
-
-    resolved = [
-        (
-            BookRef(
-                title=g["title"],
-                authors=[g["author"]] if g["author"] else [],
-                isbn=g["isbn"],
-            ),
-            [row_to_highlight(r) for r in g["rows"]],
+        return BookRef(
+            title=(row.get("Title") or "").strip(),
+            authors=[author] if author else [],
+            isbn=(row.get("ISBN") or "").strip() or None,
         )
-        for g in groups.values()
-    ]
-    return store.import_highlights(output, "highlighted", resolved)
+
+    # Group rows by book (ISBN when present, else title), preserving CSV order.
+    return store.group_and_import(
+        output,
+        "highlighted",
+        parse_csv(csv_path),
+        key_of=lambda r: (r.get("ISBN") or "").strip() or (r.get("Title") or "").strip(),
+        ref_of=_ref,
+        to_highlight=row_to_highlight,
+    )
 
 
 def highlighted_to_obsidian(
@@ -157,10 +150,10 @@ def highlighted_to_obsidian(
 
     files = len(csv_paths)
     files_word = "file" if files == 1 else "files"
-    skipped_note = f" ({skipped} skipped)" if skipped else ""
-    no_note = f" ({totals['skipped']} skipped — no book)" if totals["skipped"] else ""
+    bad_files_note = f" ({skipped} skipped)" if skipped else ""
+    no_note = store.skipped_note(totals["skipped"])
     typer.echo(
-        f"Done. {files} {files_word}{skipped_note}, {totals['books']} books{no_note}, "
+        f"Done. {files} {files_word}{bad_files_note}, {totals['books']} books{no_note}, "
         f"{totals['entries']} highlights.\n"
         f"Output: {output}"
     )

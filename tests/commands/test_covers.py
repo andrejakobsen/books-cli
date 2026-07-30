@@ -953,7 +953,7 @@ def test_gather_candidates_apple_first():
 
 
 def test_covers_merge_render_materializes_cover(tmp_path):
-    from books.commands import render
+    from books.renderers.obsidian import note as render
 
     # a goodreads-style source layer with one cover-less book
     store.write_layer(tmp_path, "goodreads", [store.BookRow(title="A", authors=["Ann"], isbn="")])

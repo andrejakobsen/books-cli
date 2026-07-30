@@ -437,7 +437,7 @@ def audible_command(
         )
         return
     books_word = "book" if stats["books"] == 1 else "books"
-    skip = f" ({stats['skipped']} skipped — no book match)" if stats["skipped"] else ""
+    skip = store.skipped_note(stats["skipped"])
     fail = f", {stats['failed']} failed" if stats.get("failed") else ""
     typer.echo(
         f"Done. {stats['books']} {books_word}{skip}, {stats['entries']} clips, "

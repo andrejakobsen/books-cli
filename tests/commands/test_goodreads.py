@@ -134,7 +134,9 @@ def test_goodreads_unrated_book_has_empty_rating(tmp_path):
     assert row.shelves == ["wishlist"]
 
 
-def test_goodreads_review_concatenates_private_notes(tmp_path):
+def test_goodreads_keeps_review_and_private_notes_as_separate_data(tmp_path):
+    # The importer is a pure data writer: review and private notes are stored
+    # verbatim in their own columns; the renderer composes the markdown section.
     vault = tmp_path / "vault"
     (tmp_path / "pn.csv").write_text(
         "Title,Author,My Review,Private Notes,Book Id\n"
@@ -143,7 +145,8 @@ def test_goodreads_review_concatenates_private_notes(tmp_path):
     )
     gr.convert(tmp_path / "pn.csv", vault)
     row = store.read_layer(vault, "goodreads")[0]
-    assert row.review == "Great book\n\n### Private Notes\n\nsecret thoughts"
+    assert row.review == "Great book"
+    assert row.private_notes == "secret thoughts"
 
 
 def test_goodreads_skips_titleless_or_authorless(tmp_path):

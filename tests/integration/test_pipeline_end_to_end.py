@@ -135,7 +135,7 @@ def test_full_pipeline_end_to_end(tmp_path):
     assert [r.book_id for r in catalog] == [BOOK_ID]
 
     # Phase B: highlights → render.
-    _run(["kobo", str(db), "--obsidian", "--output", str(vault)])
+    _run(["kobo", "--db", str(db), "--output", str(vault)])
     _run(["render", "--output", str(vault)])
 
     note = vault / "Books" / f"{BOOK_ID}.md"

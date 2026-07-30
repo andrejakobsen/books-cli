@@ -264,6 +264,7 @@ def test_kobo_copies_from_mounted_device(monkeypatch, tmp_path):
     from books.core import config
 
     vault = tmp_path / "Vault"
+    _seed_gatsby_catalog(vault)
     device = tmp_path / "device" / "KoboReader.sqlite"
     device.parent.mkdir(parents=True)
     _make_db(device)
@@ -271,16 +272,18 @@ def test_kobo_copies_from_mounted_device(monkeypatch, tmp_path):
     monkeypatch.setattr(
         config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
     )
+    monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
 
-    out_zip = tmp_path / "out.zip"
     app = typer.Typer()
     ke.register(app)
-    result = CliRunner().invoke(app, ["--output", str(out_zip)])
+    result = CliRunner().invoke(app, ["--output", str(vault)])
 
     assert result.exit_code == 0, result.output
-    assert out_zip.exists()
+    # The device DB is snapshotted into the imports folder and read from there,
+    # and its highlights land in the store (the device file is left intact).
     assert (vault / ".imports" / "kobo" / "KoboReader.sqlite").is_file()
     assert device.is_file()
+    assert len(store.read_highlights(vault, _GATSBY_ID)) == 2
 
 
 def test_safe_copy_db_removes_partial_snapshot_on_failure(tmp_path):
@@ -318,6 +321,7 @@ def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
     from books.core import config
 
     vault = tmp_path / "Vault"
+    _seed_gatsby_catalog(vault)
     folder = vault / ".imports" / "kobo"
     folder.mkdir(parents=True)
     _make_db(folder / "KoboReader.sqlite")
@@ -325,17 +329,17 @@ def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
     monkeypatch.setattr(
         config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
     )
+    monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
 
-    out_zip = tmp_path / "out.zip"
     app = typer.Typer()
     ke.register(app)
-    result = CliRunner().invoke(app, ["--output", str(out_zip)])
+    result = CliRunner().invoke(app, ["--output", str(vault)])
 
     assert result.exit_code == 0, result.output
-    assert out_zip.exists()
+    assert len(store.read_highlights(vault, _GATSBY_ID)) == 2
 
 
-def test_kobo_csv_mode_default_ignores_zip_output_for_imports(monkeypatch, tmp_path):
+def test_kobo_forwards_output_to_imports_resolution(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
 
@@ -343,40 +347,12 @@ def test_kobo_csv_mode_default_ignores_zip_output_for_imports(monkeypatch, tmp_p
     from books.core import config
 
     vault = tmp_path / "Vault"
+    _seed_gatsby_catalog(vault)
     folder = vault / ".imports" / "kobo"
     folder.mkdir(parents=True)
     _make_db(folder / "KoboReader.sqlite")
     monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
-
-    seen = {}
-
-    def fake_resolve_imports(name, output=None):
-        seen["output"] = output
-        return folder
-
-    monkeypatch.setattr(config, "resolve_imports", fake_resolve_imports)
-
-    out_zip = tmp_path / "out.zip"
-    app = typer.Typer()
-    ke.register(app)
-    result = CliRunner().invoke(app, ["--output", str(out_zip)])  # CSV mode (default)
-
-    assert result.exit_code == 0, result.output
-    assert seen["output"] is None  # zip path NOT forwarded as the vault
-
-
-def test_kobo_obsidian_mode_default_forwards_output_for_imports(monkeypatch, tmp_path):
-    import typer
-    from typer.testing import CliRunner
-
-    from books.commands import kobo as ke
-    from books.core import config
-
-    vault = tmp_path / "Vault"
-    folder = vault / ".imports" / "kobo"
-    folder.mkdir(parents=True)
-    _make_db(folder / "KoboReader.sqlite")
-    monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
+    monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
 
     seen = {}
 
@@ -388,10 +364,32 @@ def test_kobo_obsidian_mode_default_forwards_output_for_imports(monkeypatch, tmp
 
     app = typer.Typer()
     ke.register(app)
-    result = CliRunner().invoke(app, ["--obsidian", "--output", str(vault)])
+    result = CliRunner().invoke(app, ["--output", str(vault)])
 
     assert result.exit_code == 0, result.output
-    assert seen["output"] == vault  # vault path forwarded in obsidian mode
+    assert seen["output"] == vault  # --output drives where the DB snapshot is looked up
+
+
+def test_kobo_explicit_db_option(monkeypatch, tmp_path):
+    import typer
+    from typer.testing import CliRunner
+
+    from books.commands import kobo as ke
+    from books.core import config
+
+    vault = tmp_path / "Vault"
+    _seed_gatsby_catalog(vault)
+    db = tmp_path / "elsewhere" / "KoboReader.sqlite"
+    db.parent.mkdir(parents=True)
+    _make_db(db)
+    monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
+
+    app = typer.Typer()
+    ke.register(app)
+    result = CliRunner().invoke(app, ["--db", str(db), "--output", str(vault)])
+
+    assert result.exit_code == 0, result.output
+    assert len(store.read_highlights(vault, _GATSBY_ID)) == 2
 
 
 def test_kobo_default_missing_everything_errors(monkeypatch, tmp_path):

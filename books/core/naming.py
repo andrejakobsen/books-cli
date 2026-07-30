@@ -30,6 +30,16 @@ def strip_subtitle(title: str) -> str:
     return head or (title or "").strip()
 
 
+def stem_for(title: str, author: str) -> str:
+    """Join *title* + *author* into a sanitized note stem: ``<Title> - <Author>``.
+
+    The single place the store/renderer/merge derive a stem from a (title,
+    author) pair, so the CSV ``book_id``, the merge sort key, and the on-disk note
+    filename all agree. Author-less titles collapse to just the title.
+    """
+    return safe_filename(f"{title} - {author}" if author else title)
+
+
 def next_free_stem(title: str, author: str, used_lower: set[str]) -> str:
     """Return a unique note stem for (title, author) given already-used stems.
 
@@ -39,15 +49,11 @@ def next_free_stem(title: str, author: str, used_lower: set[str]) -> str:
     filesystems). The chosen stem is NOT added to used_lower -- the caller does
     that so it can also map the stem to a path/id.
     """
-
-    def stem_for(t: str) -> str:
-        return safe_filename(f"{t} - {author}" if author else t)
-
-    short = stem_for(strip_subtitle(title))
+    short = stem_for(strip_subtitle(title), author)
     if short.lower() not in used_lower:
         return short
 
-    full = stem_for(title.replace(":", ","))
+    full = stem_for(title.replace(":", ","), author)
     if full.lower() not in used_lower:
         return full
 

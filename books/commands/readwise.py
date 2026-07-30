@@ -88,34 +88,32 @@ def convert(csv_path: Path, output: Path) -> dict:
     """
     output.mkdir(parents=True, exist_ok=True)
 
-    # Group rows by book (Amazon id when present, else standardized title),
-    # preserving CSV order.
-    groups: dict[str, dict] = {}
-    for row in parse_csv(csv_path):
+    def _key(row: dict) -> str | None:
         raw_title = (row.get("Book Title") or "").strip()
         if not raw_title:
-            continue
-        title = strip_series(raw_title)
+            return None
         amazon = (row.get("Amazon Book ID") or "").strip() or None
         author = (row.get("Book Author") or "").strip()
-        key = amazon or f"{title}\x00{author}"
-        group = groups.setdefault(
-            key, {"title": title, "author": author, "amazon": amazon, "rows": []}
-        )
-        group["rows"].append(row)
+        return amazon or f"{strip_series(raw_title)}\x00{author}"
 
-    resolved = [
-        (
-            BookRef(
-                title=g["title"],
-                authors=[g["author"]] if g["author"] else [],
-                amazon=g["amazon"],
-            ),
-            [row_to_highlight(r) for r in g["rows"]],
+    def _ref(row: dict) -> BookRef:
+        author = (row.get("Book Author") or "").strip()
+        return BookRef(
+            title=strip_series((row.get("Book Title") or "").strip()),
+            authors=[author] if author else [],
+            amazon=(row.get("Amazon Book ID") or "").strip() or None,
         )
-        for g in groups.values()
-    ]
-    return store.import_highlights(output, "readwise", resolved)
+
+    # Group rows by book (Amazon id when present, else standardized title),
+    # preserving CSV order.
+    return store.group_and_import(
+        output,
+        "readwise",
+        parse_csv(csv_path),
+        key_of=_key,
+        ref_of=_ref,
+        to_highlight=row_to_highlight,
+    )
 
 
 def readwise_to_obsidian(
@@ -156,7 +154,7 @@ def readwise_to_obsidian(
 
     output.mkdir(parents=True, exist_ok=True)
     stats = convert(csv, output)
-    no_note = f" ({stats['skipped']} skipped — no book)" if stats["skipped"] else ""
+    no_note = store.skipped_note(stats["skipped"])
     typer.echo(
         f"Done. {stats['books']} books{no_note}, {stats['entries']} highlights.\nOutput: {output}"
     )

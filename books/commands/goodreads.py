@@ -131,11 +131,6 @@ def _row_from_book(book: GoodreadsBook) -> store.BookRow:
     """Map a parsed Goodreads row to a store ``BookRow`` (all fields verbatim)."""
     isbn = book.isbn13 or book.isbn or ""
     goodreads_url = f"{GOODREADS_BOOK_URL}{book.book_id}" if book.book_id else ""
-    review_parts: list[str] = []
-    if book.review:
-        review_parts.append(book.review)
-    if book.private_notes:
-        review_parts.append(f"### Private Notes\n\n{book.private_notes}")
     return store.BookRow(
         title=book.title,
         authors=list(book.authors),
@@ -150,7 +145,8 @@ def _row_from_book(book: GoodreadsBook) -> store.BookRow:
         goodreads=goodreads_url,
         date_added=book.date_added or "",
         date_read=book.date_read or "",
-        review="\n\n".join(review_parts),
+        review=book.review or "",
+        private_notes=book.private_notes or "",
     )
 
 

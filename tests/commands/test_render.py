@@ -2,8 +2,8 @@ import frontmatter
 from typer.testing import CliRunner
 
 from books.cli import app
-from books.commands import render as R
 from books.core import store
+from books.renderers.obsidian import note as R
 
 
 def test_render_rating_numeric_and_passthrough():
@@ -127,6 +127,27 @@ def test_render_body_review_is_write_once(tmp_path):
     once = R.render_body("", row, note, [])
     twice = R.render_body(once, row, note, [])
     assert twice.count("## Review") == 1
+
+
+def test_render_body_composes_review_with_private_notes(tmp_path):
+    note = tmp_path / "Books" / "X - A.md"
+    row = store.BookRow(
+        book_id="X - A", title="X", authors=["A"], review="Great book", private_notes="secret"
+    )
+    body = R.render_body("", row, note, [])
+    assert "## Review" in body
+    assert "Great book" in body
+    assert "### Private Notes" in body
+    assert "secret" in body
+
+
+def test_render_body_private_notes_only_still_makes_review_section(tmp_path):
+    note = tmp_path / "Books" / "X - A.md"
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"], private_notes="only secret")
+    body = R.render_body("", row, note, [])
+    assert "## Review" in body
+    assert "### Private Notes" in body
+    assert "only secret" in body
 
 
 def test_render_body_mixed_source_groups(tmp_path):
@@ -282,7 +303,9 @@ def test_render_command_errors_without_books_csv(tmp_path):
     assert result.exit_code != 0
 
 
-def test_render_command_no_obsidian_errors(tmp_path):
+def test_render_command_rejects_removed_no_obsidian_flag(tmp_path):
+    # Destination is chosen by --obsidian (future: --notion/--evernote); the old
+    # --no-obsidian toggle is gone, so passing it is an unknown-flag usage error.
     vault = tmp_path / "vault"
     store.write_layer(vault, "calibre", [store.BookRow(title="X", authors=["A"], format="ebook")])
     store.merge(vault)
@@ -357,8 +380,6 @@ def test_render_note_preserves_aliases_across_rerender(tmp_path):
 
 
 def test_render_creates_author_stubs(tmp_path):
-    from books.commands import render as R
-
     vault = tmp_path / "vault"
     store.write_books_csv(
         vault,

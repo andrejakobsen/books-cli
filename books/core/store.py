@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import csv
 import shutil
+from collections.abc import Callable, Iterable
 from pathlib import Path
+from typing import TypeVar
 
 from pydantic import BaseModel, Field
 
@@ -27,7 +29,7 @@ from books.core.matching import (
     norm_title,
     title_similar,
 )
-from books.core.naming import next_free_stem, safe_filename, strip_subtitle
+from books.core.naming import next_free_stem, stem_for, strip_subtitle
 
 LIST_SEP = ";"
 
@@ -54,6 +56,7 @@ METADATA_COLUMNS = (
     "date_added",
     "date_read",
     "review",
+    "private_notes",
     "cover",
 )
 CATALOG_COLUMNS = ("book_id", *METADATA_COLUMNS)
@@ -99,6 +102,7 @@ class BookRow(BaseModel):
     date_added: str = ""
     date_read: str = ""
     review: str = ""
+    private_notes: str = ""
     cover: str = ""
     book_id: str = ""  # populated only in the merged catalog
 
@@ -356,8 +360,7 @@ def merge(vault: Path) -> list[BookRow]:
     def sort_key(merged_and_cluster: tuple[BookRow, list]) -> tuple:
         merged, _raw_cluster = merged_and_cluster
         author = merged.authors[0] if merged.authors else ""
-        clean = strip_subtitle(merged.title).strip()
-        clean_stem = safe_filename(f"{clean} - {author}" if author else clean).lower()
+        clean_stem = stem_for(strip_subtitle(merged.title).strip(), author).lower()
         return (
             clean_stem,
             merged.title.casefold(),
@@ -532,6 +535,56 @@ def import_highlights(
         stats["books"] += 1
         stats["entries"] += len(hl_rows)
     return stats
+
+
+def skipped_note(count: int) -> str:
+    """The shared "N books had no catalog match" suffix for importer summaries.
+
+    Returns a leading-space fragment (e.g. ``" (2 skipped — no book match)"``) so
+    it can be concatenated into a summary line, or ``""`` when nothing was
+    skipped. Keeps every highlight importer's wording identical.
+    """
+    return f" ({count} skipped — no book match)" if count else ""
+
+
+_Row = TypeVar("_Row")
+
+
+def group_and_import(
+    vault: Path,
+    source: str,
+    rows: Iterable[_Row],
+    *,
+    key_of: Callable[[_Row], str | None],
+    ref_of: Callable[[_Row], BookRef],
+    to_highlight: Callable[[_Row], Highlight],
+) -> dict:
+    """Group raw importer rows by book, then resolve + write them to the store.
+
+    Shared *head* of the CSV highlight importers (highlighted, readwise): each
+    importer differs only in how it derives a row's grouping key, its book
+    identity, and its highlight — the rest (group in first-seen order, build one
+    ``BookRef`` per group from its first row, hand off to
+    :func:`import_highlights`) is identical.
+
+    - ``key_of(row)`` -> the grouping key (e.g. ISBN or title); a row whose key
+      is falsy/None is dropped (used to skip untitled rows).
+    - ``ref_of(row)`` -> the group's :class:`BookRef`, built from its first row.
+    - ``to_highlight(row)`` -> the source-agnostic :class:`Highlight` for a row.
+
+    Returns ``import_highlights``' ``{"books", "entries", "skipped"}`` stats.
+    """
+    groups: dict[str, list[_Row]] = {}
+    for row in rows:
+        key = key_of(row)
+        if not key:
+            continue
+        groups.setdefault(key, []).append(row)
+    resolved = [
+        (ref_of(group_rows[0]), [to_highlight(r) for r in group_rows])
+        for group_rows in groups.values()
+    ]
+    return import_highlights(vault, source, resolved)
 
 
 def read_highlights(vault: Path, book_id: str) -> list[HighlightRow]:

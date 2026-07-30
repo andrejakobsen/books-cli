@@ -1,32 +1,22 @@
 #!/usr/bin/env python3
-"""Export Kobo highlights & notes to per-book CSV files inside a zip archive.
+"""Import Kobo highlights & notes into the CSV highlights store.
 
 Reads a KoboReader.sqlite database and, for every book that has highlights or
-notes, writes a CSV containing:
-
-    Book Title, Author, Chapter Number, Chapter, Highlight, Note,
-    Location in Chapter (%), KoboSpan Block (N), KoboSpan Segment (M),
-    Date Created
-
-All CSVs are bundled into a single compressed .zip archive. With --obsidian the
-highlights are instead written into the CSV highlights store, resolved to a
-book_id via the merged catalog (Data/books.csv); a book with no catalog match is
-skipped and counted. Run ``merge`` (or ``sync``) first to build the catalog.
+notes, writes them into the per-book highlights store
+(``Data/Highlights/<book_id>.csv``, source ``kobo``), resolving each book to a
+``book_id`` via the merged catalog (``Data/books.csv``). A book with no catalog
+match is skipped and counted, so run ``merge`` (or ``sync``) first.
 
 Usage:
-    books kobo                        # uses the mounted device or the Data/Imports copy
-    books kobo /path/to/KoboReader.sqlite
-    books kobo -i in.sqlite -o kobo_highlights.zip
-    books kobo --obsidian -o ./Obsidian
+    books kobo                       # uses the mounted device or the Data/Imports copy
+    books kobo --db /path/to/KoboReader.sqlite
+    books kobo -o ./Obsidian
 """
 
 from __future__ import annotations
 
-import csv
-import io
 import re
 import sqlite3
-import zipfile
 from pathlib import Path
 
 import typer
@@ -34,7 +24,6 @@ import typer
 from books.core import config, store
 from books.core.highlights import Highlight, parse_markers
 from books.core.matching import BookRef
-from books.core.naming import safe_filename
 from books.core.paths import resolve_path
 
 KOBO_DEVICE_DB = Path("/Volumes/KOBOeReader/.kobo/KoboReader.sqlite")
@@ -88,7 +77,7 @@ def default_kobo_db(output: Path | None) -> Path:
             return max(sqlites, key=lambda p: p.stat().st_mtime)
     raise typer.BadParameter(
         f"no Kobo device mounted and no KoboReader.sqlite (or *.sqlite) found in {folder}",
-        param_hint="DB",
+        param_hint="--db",
     )
 
 
@@ -133,26 +122,6 @@ ORDER BY book_title,
          m.chapter_progress,
          m.date_created
 """
-
-CSV_HEADER = [
-    "Book Title",
-    "Author",
-    "Chapter Number",
-    "Chapter",
-    "Highlight",
-    "Note",
-    "Location in Chapter (%)",
-    "KoboSpan Block (N)",
-    "KoboSpan Segment (M)",
-    "Date Created",
-]
-
-
-def pct(value: float | None) -> str:
-    """Format a 0.0-1.0 fraction as a whole-number percentage string ("42")."""
-    if value is None:
-        return ""
-    return str(round(float(value) * 100))
 
 
 def parse_container(path: str | None) -> tuple[str, str]:
@@ -211,199 +180,84 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
 
     vault.mkdir(parents=True, exist_ok=True)
 
+    def _ref(r: sqlite3.Row) -> BookRef:
+        author = (r["author"] or "").strip()
+        return BookRef(
+            title=r["book_title"] or "Untitled",
+            authors=[author] if author else [],
+            isbn=(r["isbn"] or "").strip() or None,
+        )
+
     # Group rows by book, preserving the query's reading order.
-    books: dict[str, list] = {}
-    for r in rows:
-        books.setdefault(r["book_title"] or "Untitled", []).append(r)
-
-    resolved = []
-    for title, book_rows in books.items():
-        author = (book_rows[0]["author"] or "").strip()
-        isbn = (book_rows[0]["isbn"] or "").strip() or None
-        ref = BookRef(title=title, authors=[author] if author else [], isbn=isbn)
-        resolved.append((ref, [row_to_highlight(r) for r in book_rows]))
-
-    return store.import_highlights(vault, "kobo", resolved)
+    return store.group_and_import(
+        vault,
+        "kobo",
+        rows,
+        key_of=lambda r: r["book_title"] or "Untitled",
+        ref_of=_ref,
+        to_highlight=row_to_highlight,
+    )
 
 
-def export(db_path: Path, out_path: Path) -> dict:
-    """Export Kobo highlights/notes to per-book CSVs bundled in a zip.
-
-    Returns a stats dict: {"books": int, "entries": int, "files": [(name, count)]}.
-    Raises FileNotFoundError if the database is missing.
-    """
-    if not db_path.is_file():
-        raise FileNotFoundError(db_path)
-
-    # Read-only connection so we never touch the original database.
-    conn = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-    conn.row_factory = sqlite3.Row
-    try:
-        rows = conn.execute(QUERY).fetchall()
-    finally:
-        conn.close()
-
-    if not rows:
-        return {"books": 0, "entries": 0, "files": []}
-
-    # Group rows by book.
-    books: dict[str, list[sqlite3.Row]] = {}
-    for r in rows:
-        title = r["book_title"] or "Untitled"
-        books.setdefault(title, []).append(r)
-
-    # De-duplicate CSV filenames across books with the same title.
-    used_names: set[str] = set()
-    total_entries = 0
-    files: list[tuple[str, int]] = []
-
-    with zipfile.ZipFile(out_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for title, book_rows in books.items():
-            stem = safe_filename(title)[:120]
-            fname = f"{stem}.csv"
-            n = 2
-            while fname.lower() in used_names:
-                fname = f"{stem} ({n}).csv"
-                n += 1
-            used_names.add(fname.lower())
-
-            buf = io.StringIO()
-            writer = csv.writer(buf)
-            writer.writerow(CSV_HEADER)
-            for r in book_rows:
-                block, segment = parse_container(r["container_path"])
-                writer.writerow(
-                    [
-                        r["book_title"],
-                        r["author"],
-                        "" if r["chapter_index"] is None else int(r["chapter_index"]),
-                        r["chapter"],
-                        r["highlight"],
-                        r["note"],
-                        pct(r["chapter_progress"]),
-                        block,
-                        segment,
-                        r["date_created"],
-                    ]
-                )
-                total_entries += 1
-
-            # utf-8-sig so titles with accents open cleanly in Excel.
-            zf.writestr(fname, buf.getvalue().encode("utf-8-sig"))
-            files.append((fname, len(book_rows)))
-
-    return {"books": len(books), "entries": total_entries, "files": files}
-
-
-def kobo_export(
-    db: Path | None = typer.Argument(
+def kobo_import(
+    db: Path | None = typer.Option(
         None,
+        "--db",
+        "-d",
         help="Path to KoboReader.sqlite. Relative paths resolve against the current "
         "directory. When omitted, a mounted Kobo's DB "
         "(/Volumes/KOBOeReader/.kobo/KoboReader.sqlite) is safely copied into "
         "<vault>/Data/Imports/kobo/ and used; otherwise the existing copy there "
         "is used. [default: <vault>/Data/Imports/kobo/KoboReader.sqlite]",
     ),
-    input_path: Path | None = typer.Option(
-        None, "--input", "-i", help="Alternative way to specify the sqlite path."
-    ),
     output: Path | None = typer.Option(
         None,
         "--output",
         "-o",
-        help="Output path. CSV mode: a .zip [default: ./kobo_highlights.zip]. "
-        "Obsidian mode: a vault directory "
-        "[default: the vault from ~/.config/books/config.toml]. "
-        "Relative paths resolve against the current directory.",
-    ),
-    csv_out: bool = typer.Option(
-        True,
-        "--csv",
-        help="Export highlights as per-book CSV files bundled in a zip. This is "
-        "the default output mode; pass --obsidian to write an Obsidian vault "
-        "instead.",
-    ),
-    obsidian: bool = typer.Option(
-        False,
-        "--obsidian",
-        help="Write highlights into the CSV highlights store (resolved to a book "
-        "via the merged Data/books.csv) instead of CSV/zip. In this mode "
-        "--output is the vault directory "
-        "[default: the vault from ~/.config/books/config.toml].",
+        help="Obsidian vault. Defaults to the vault from your config file "
+        "(~/.config/books/config.toml). Relative paths resolve against the "
+        "current directory.",
     ),
 ) -> None:
-    """Export Kobo highlights & notes to per-book CSV files inside a zip archive.
+    """Import Kobo highlights & notes into the CSV highlights store.
 
-    INPUT (DB argument, or --input): a KoboReader.sqlite database (found in the
-    .kobo folder on your Kobo device). Opened read-only, so the original file is
-    never modified. Relative paths resolve against the current directory. When no
-    path is given, a mounted Kobo's DB is safely snapshotted (via SQLite's
+    Reads a KoboReader.sqlite database (found in the .kobo folder on your Kobo
+    device), opened read-only so the original file is never modified. When no
+    --db is given, a mounted Kobo's DB is safely snapshotted (via SQLite's
     read-only backup API — the device file is never modified) into
-    <vault>/Data/Imports/kobo/ and read from there; otherwise the existing snapshot
-    there is used.
+    <vault>/Data/Imports/kobo/ and read from there; otherwise the existing
+    snapshot there is used.
 
-    OUTPUT (--csv, --output): with --csv (the default), writes a .zip archive.
-    Relative paths resolve against the current directory; default:
-    ./kobo_highlights.zip. It contains one CSV per book that has highlights or
-    notes, with columns: Book Title, Author, Chapter Number, Chapter, Highlight,
-    Note, Location in Chapter (%), KoboSpan Block (N), KoboSpan Segment (M),
-    Date Created. Rows are ordered by book reading order.
-
-    With --obsidian, writes highlights into the CSV highlights store instead
-    (resolved to a book_id via the merged Data/books.csv; a book with no catalog
-    match is skipped and counted — run ``merge``/``sync`` first). --output is then
-    the vault directory (default: the vault from ~/.config/books/config.toml).
+    Highlights are written into the per-book highlights store, resolved to a
+    book_id via the merged Data/books.csv (a book with no catalog match is
+    skipped and counted — run ``merge``/``sync`` first). --output selects the
+    vault (default: the vault from ~/.config/books/config.toml).
     """
-    explicit = input_path or db
-    if explicit is None:
-        db_path = default_kobo_db(output if obsidian else None)
-    else:
-        db_path = resolve_path(explicit, Path.cwd())
+    db_path = resolve_path(db, Path.cwd()) if db is not None else default_kobo_db(output)
 
-    if obsidian:
-        vault = config.resolve_vault(output)
-        try:
-            stats = export_obsidian(db_path, vault)
-        except FileNotFoundError as exc:
-            raise typer.BadParameter(f"database not found: {db_path}", param_hint="DB") from exc
-        skipped = stats.get("skipped", 0)
-        skip_note = f" ({skipped} book(s) skipped — no book note)" if skipped else ""
-        if stats["entries"] == 0:
-            if skipped:
-                typer.echo(
-                    f"No highlights written{skip_note}. Import these books with "
-                    f"calibre/goodreads first."
-                )
-            else:
-                typer.echo("No highlights or notes found.")
-            return
-        typer.echo(
-            f"Exported {stats['entries']} highlights from {stats['books']} book(s)"
-            f"{skip_note} -> {vault}"
-        )
-        return
-
-    if not csv_out:
-        raise typer.BadParameter(
-            "CSV is currently the only non-Obsidian output mode; drop --no-csv or pass --obsidian.",
-            param_hint="--csv",
-        )
-
-    out_path = resolve_path(output or Path("kobo_highlights.zip"), Path.cwd())
+    vault = config.resolve_vault(output)
     try:
-        stats = export(db_path, out_path)
+        stats = export_obsidian(db_path, vault)
     except FileNotFoundError as exc:
-        raise typer.BadParameter(f"database not found: {db_path}", param_hint="DB") from exc
+        raise typer.BadParameter(f"database not found: {db_path}", param_hint="--db") from exc
 
+    skipped = stats.get("skipped", 0)
+    skip_note = store.skipped_note(skipped)
     if stats["entries"] == 0:
-        typer.echo("No highlights or notes found.")
+        if skipped:
+            typer.echo(
+                f"No highlights written{skip_note}. Import these books with "
+                f"calibre/goodreads first."
+            )
+        else:
+            typer.echo("No highlights or notes found.")
         return
-
-    for fname, count in stats["files"]:
-        typer.echo(f"  {fname}: {count} entries")
-    typer.echo(f"\nExported {stats['entries']} entries from {stats['books']} book(s) -> {out_path}")
+    typer.echo(
+        f"Imported {stats['entries']} highlights from {stats['books']} book(s)"
+        f"{skip_note} -> {vault}"
+    )
 
 
 def register(app: typer.Typer) -> None:
     """Register this capability's command(s) on the shared Typer app."""
-    app.command("kobo")(kobo_export)
+    app.command("kobo")(kobo_import)

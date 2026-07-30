@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-from books.renderers.obsidian.frontmatter import _split_frontmatter
+from books.renderers.obsidian.frontmatter import split_frontmatter
 
 
 def _marker_pair(marker: str) -> tuple[str, str]:
@@ -55,7 +55,7 @@ def ensure_top_embed(note_text: str, embed: str) -> str:
     if not note_text.startswith("---"):
         body = note_text.lstrip("\n")
         return f"{embed}\n\n{body}" if body else f"{embed}\n"
-    fm_lines, body = _split_frontmatter(note_text)
+    fm_lines, body = split_frontmatter(note_text)
     front = "---\n" + "\n".join(fm_lines) + "\n---\n"
     body = body.lstrip("\n")
     return f"{front}\n{embed}\n\n{body}" if body else f"{front}\n{embed}\n"

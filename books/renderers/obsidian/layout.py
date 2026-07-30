@@ -21,6 +21,16 @@ AUTHORS_DIRNAME = "Authors"
 COVER_WIDTH = 150
 
 
+def cover_link(stem: str) -> str:
+    """The ``cover:`` frontmatter wikilink to a book's materialized cover image."""
+    return f"[[{COVERS_DIRNAME}/{stem}.jpg]]"
+
+
+def cover_embed(stem: str) -> str:
+    """The top-of-body cover embed line for a book note (sized to COVER_WIDTH)."""
+    return f"![[{COVERS_DIRNAME}/{stem}.jpg|{COVER_WIDTH}]]"
+
+
 # --- Filesystem helpers -----------------------------------------------------
 
 

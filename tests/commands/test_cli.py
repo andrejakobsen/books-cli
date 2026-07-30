@@ -111,15 +111,15 @@ def test_goodreads_missing_csv_errors(tmp_path):
     assert result.exit_code != 0
 
 
-def test_kobo_no_csv_mode_rejected(tmp_path):
-    result = runner.invoke(app, ["kobo", "--no-csv", "--output", str(tmp_path / "x.zip")])
+def test_kobo_removed_csv_flag_rejected(tmp_path):
+    # kobo is store-only now; the old --csv/--no-csv toggle is gone.
+    result = runner.invoke(app, ["kobo", "--no-csv", "--output", str(tmp_path / "vault")])
     assert result.exit_code != 0
 
 
 def test_kobo_missing_db_errors(tmp_path):
-    result = runner.invoke(
-        app, ["kobo", str(tmp_path / "KoboReader.sqlite"), "--output", str(tmp_path / "x.zip")]
-    )
+    db = tmp_path / "KoboReader.sqlite"
+    result = runner.invoke(app, ["kobo", "--db", str(db), "--output", str(tmp_path / "out")])
     assert result.exit_code != 0
 
 
@@ -206,7 +206,7 @@ def test_kobo_obsidian_end_to_end(tmp_path):
         out,
         [store.BookRow(book_id="Dune - Frank Herbert", title="Dune", authors=["Frank Herbert"])],
     )
-    result = runner.invoke(app, ["kobo", str(db), "--obsidian", "--output", str(out)])
+    result = runner.invoke(app, ["kobo", "--db", str(db), "--output", str(out)])
     assert result.exit_code == 0, result.output
     rows = store.read_highlights(out, "Dune - Frank Herbert")
     assert len(rows) == 1

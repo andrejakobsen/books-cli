@@ -191,6 +191,15 @@ def _to_row(meta: BookMetadata, cover_rel: str) -> store.BookRow:
 # --- Main conversion -------------------------------------------------------
 
 
+def default_library() -> Path:
+    """The default Calibre library location (``~/Calibre Library``).
+
+    The single source of truth for the default, shared by the ``calibre`` command
+    and ``sync``'s source detection.
+    """
+    return Path.home() / "Calibre Library"
+
+
 def convert(library: Path, output: Path) -> dict:
     """Parse a Calibre library into the ``calibre`` metadata layer CSV.
 
@@ -267,7 +276,7 @@ def calibre_to_obsidian(
     stubs, or topics are written here.
     """
     if library is None:
-        library = Path.home() / "Calibre Library"
+        library = default_library()
     else:
         library = resolve_path(library, Path.home())
     output = config.resolve_vault(output)

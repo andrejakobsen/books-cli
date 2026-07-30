@@ -32,9 +32,9 @@ from books.commands import (
     highlighted,
     kobo,
     readwise,
-    render,
 )
 from books.core import config, store
+from books.renderers import get_renderer
 
 # --- Detection helpers ------------------------------------------------------
 
@@ -56,8 +56,8 @@ def _has_csv(folder: Path) -> bool:
 
 
 def _calibre_library() -> Path:
-    """The default Calibre library (mirrors the `calibre` command)."""
-    return Path.home() / "Calibre Library"
+    """The default Calibre library (delegates to the `calibre` command)."""
+    return calibre.default_library()
 
 
 def _detect_calibre(vault: Path) -> str | None:
@@ -134,9 +134,11 @@ def _run_kobo(vault: Path) -> dict:
 
 
 def _run_highlighted(vault: Path) -> dict:
+    # Highlighted exports one CSV per book, so import every file in the folder
+    # (unlike goodreads/readwise, whose single snapshot uses newest-wins).
     folder = _imports_folder("highlighted", vault)
     totals = {"books": 0, "entries": 0, "skipped": 0}
-    for path in sorted(folder.glob("*.csv")):
+    for path in highlighted.resolve_csv_paths(folder):
         stats = highlighted.convert(path, vault)
         totals["books"] += stats["books"]
         totals["entries"] += stats["entries"]
@@ -154,7 +156,7 @@ def _run_merge(vault: Path) -> dict:
 
 
 def _run_render(vault: Path) -> dict:
-    return render.render(vault)
+    return get_renderer("obsidian").render(vault)
 
 
 # --- Summaries --------------------------------------------------------------

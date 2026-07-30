@@ -461,3 +461,37 @@ def test_row_to_highlight_sets_source():
     row = store.HighlightRow(source="readwise", text="t", location="42", location_kind="percent")
     h = store.row_to_highlight(row)
     assert h.source == "readwise"
+
+
+def test_skipped_note_wording():
+    assert store.skipped_note(0) == ""
+    assert store.skipped_note(1) == " (1 skipped — no book match)"
+    assert store.skipped_note(3) == " (3 skipped — no book match)"
+
+
+def test_group_and_import_groups_rows_by_key_and_resolves(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_books_csv(
+        vault,
+        [store.BookRow(book_id="X - A", title="X", authors=["A"], isbn="9780000000001")],
+    )
+    # Two raw rows for the same book (same key) plus one row for an unknown book.
+    rows = [
+        {"title": "X", "author": "A", "isbn": "9780000000001", "text": "one"},
+        {"title": "X", "author": "A", "isbn": "9780000000001", "text": "two"},
+        {"title": "Unknown", "author": "Z", "isbn": None, "text": "orphan"},
+        {"title": "", "author": "", "isbn": None, "text": "skip-me"},  # no key -> dropped
+    ]
+    stats = store.group_and_import(
+        vault,
+        "highlighted",
+        rows,
+        key_of=lambda r: (r["isbn"] or r["title"]) or None,
+        ref_of=lambda r: BookRef(
+            title=r["title"], authors=[r["author"]] if r["author"] else [], isbn=r["isbn"]
+        ),
+        to_highlight=lambda r: Highlight(text=r["text"]),
+    )
+    assert stats == {"books": 1, "entries": 2, "skipped": 1}
+    got = [r.text for r in store.read_highlights(vault, "X - A")]
+    assert got == ["one", "two"]

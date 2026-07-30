@@ -13,8 +13,8 @@ from pathlib import Path
 from books.commands import calibre as c2o
 from books.commands import goodreads as gr
 from books.commands import highlighted as hi
-from books.commands import render as rn
 from books.core import store
+from books.renderers.obsidian import note as rn
 
 ISBN13 = "9780141032016"
 
