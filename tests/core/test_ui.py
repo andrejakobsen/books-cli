@@ -1,9 +1,11 @@
 import io
 
 from rich.panel import Panel
+from rich.progress import Progress
 from rich.table import Table
 
 from books.core import ui
+from books.core.ui import ProgressBar
 
 
 def _cap(func, *args, **kwargs):
@@ -65,8 +67,22 @@ def test_panel_is_a_panel():
 
 
 def test_progress_disabled_when_not_terminal():
-    with ui.progress("working", total=3) as prog:
-        assert prog.disable is True
+    with ui.progress("working", total=3) as bar:
+        assert bar._prog.disable is True
+
+
+def test_progressbar_advance_and_describe():
+    prog = Progress()
+    task = prog.add_task("init", total=5)
+    bar = ProgressBar(prog, task)
+
+    bar.advance()
+    bar.advance(2)
+    bar.describe("now working")
+
+    t = prog.tasks[0]
+    assert t.completed == 3
+    assert t.description == "now working"
 
 
 def test_confirm_reads_from_injected_stream():

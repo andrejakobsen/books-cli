@@ -18,6 +18,7 @@ from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import (
     BarColumn,
+    MofNCompleteColumn,
     Progress,
     SpinnerColumn,
     TextColumn,
@@ -78,20 +79,36 @@ def panel(body: str, title: str | None = None, style: str = "blue") -> Panel:
     )
 
 
+class ProgressBar:
+    """Thin handle over one rich Progress task (hides the task id)."""
+
+    def __init__(self, prog: Progress, task_id) -> None:
+        self._prog = prog
+        self._task = task_id
+
+    def advance(self, n: int = 1) -> None:
+        """Advance the task by *n* steps."""
+        self._prog.advance(self._task, n)
+
+    def describe(self, text: str) -> None:
+        """Replace the task's description line."""
+        self._prog.update(self._task, description=text)
+
+
 @contextmanager
 def progress(description: str, total: int | None = None):
-    """Yield a started Rich Progress with one task.
+    """Yield a :class:`ProgressBar` handle for one task.
 
-    ``total=None`` renders a spinner; a number renders a determinate bar. The
-    progress is disabled off-tty so tests / pipes render no live frames.
+    ``total=None`` renders a spinner; a number renders a determinate bar with an
+    M/N count. The progress is disabled off-tty so tests / pipes render no frames.
     """
     columns = [SpinnerColumn(), TextColumn("[progress.description]{task.description}")]
     if total is not None:
-        columns += [BarColumn(), TimeRemainingColumn()]
+        columns += [BarColumn(), MofNCompleteColumn(), TimeRemainingColumn()]
     prog = Progress(*columns, console=console, disable=not console.is_terminal)
     with prog:
-        prog.add_task(description, total=total)
-        yield prog
+        task = prog.add_task(description, total=total)
+        yield ProgressBar(prog, task)
 
 
 def prompt_choice(

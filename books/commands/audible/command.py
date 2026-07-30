@@ -234,8 +234,8 @@ def run(
     matched = 0
     with ui.progress("Processing audiobooks", total=len(library)) as prog:
         for book in library:
-            prog.advance(0)
-            prog.update(0, description=f"Processing {escape(book.title)}")
+            prog.advance()
+            prog.describe(f"Processing {escape(book.title)}")
             # Isolate each book: a single failure (an unpublished/undownloadable
             # title, a license/voucher error, a network hiccup, a bad transcribe)
             # is counted and skipped so it never aborts the whole run.
