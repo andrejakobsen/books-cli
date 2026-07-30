@@ -107,9 +107,18 @@ def test_same_book_matches_on_isbn():
     assert store.same_book(a, b) is True
 
 
-def test_same_book_isbn_conflict_is_not_a_match():
+def test_same_book_differing_isbn_falls_back_to_title_author():
+    # Ebook ISBN (calibre) vs hardcover ISBN (goodreads) of the same title:
+    # a differing ISBN is not decisive; title + author still merges them.
     a = store.BookRow(title="X", authors=["A"], isbn="9780000000001")
     b = store.BookRow(title="X", authors=["A"], isbn="9780000000002")
+    assert store.same_book(a, b) is True
+
+
+def test_same_book_differing_isbn_distinct_titles_do_not_merge():
+    # A differing ISBN falling through must not merge genuinely different books.
+    a = store.BookRow(title="X", authors=["A"], isbn="9780000000001")
+    b = store.BookRow(title="Totally Different", authors=["A"], isbn="9780000000002")
     assert store.same_book(a, b) is False
 
 

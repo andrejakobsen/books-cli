@@ -269,15 +269,18 @@ def read_all_layers(vault: Path) -> dict[str, list[BookRow]]:
 def same_book(a: BookRow, b: BookRow) -> bool:
     """True when two rows denote the same book.
 
-    ISBN and Amazon id are authoritative when both sides have them (a conflict
-    means *different* books). Otherwise fall back to same author + fuzzy title.
+    A shared ISBN or Amazon id is a *positive* proof of identity. A differing
+    id is **not** decisive, though: different editions of the same work (e.g. an
+    ebook ISBN from calibre vs the hardcover ISBN from goodreads) carry distinct
+    ISBNs, so a mismatch falls through to same author + fuzzy title (which keeps
+    distinct volumes/sequels apart via subtitle-aware matching).
     """
     ia, ib = canonical_isbn(a.isbn), canonical_isbn(b.isbn)
-    if ia and ib:
-        return ia == ib
+    if ia and ib and ia == ib:
+        return True
     aa, ab = norm_amazon(a.amazon), norm_amazon(b.amazon)
-    if aa and ab:
-        return aa == ab
+    if aa and ab and aa == ab:
+        return True
     if not (a.authors and b.authors):
         return False
     if author_key(a.authors[0]) != author_key(b.authors[0]):
