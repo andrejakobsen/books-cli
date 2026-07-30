@@ -139,7 +139,11 @@ Per-importer settings live in optional `[calibre]`, `[kobo]`, `[audible]`, and
 `[kobo].db` (default: auto-detect a mounted device / the imports folder),
 `[audible].transcriber` (`local`/`openai`/`google`) + `[audible].select`
 (`interactive`/`all`), and `[covers].interactive` + `[covers].limit`. Each key
-falls back to its built-in default when absent or malformed.
+falls back to its built-in default when absent or malformed. With
+`[audible].select = "interactive"` (the default) the arrow-key picker chooses
+which audiobooks to transcribe; run off-tty (no terminal) the audible step is
+**skipped** with a message rather than transcribing the whole library — set
+`select = "all"` to run it unattended.
 
 **The `#tag` / `@link` convention** (parsing in `books/core/highlights.py`, rendering in `books/renderers/obsidian/highlights.py`): highlight annotations
 carry two marker kinds — `#tag` renders as an Obsidian inline tag, `@link` renders as a

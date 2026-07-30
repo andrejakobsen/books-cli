@@ -490,8 +490,10 @@ def run_import(vault: Path, cfg, *, dry_run: bool = False) -> dict:
 
     *cfg* is a :class:`books.core.config.AudibleConfig`. Behavioral defaults not
     exposed in config (model, quality, clip window, per-book limit) keep their
-    prior CLI defaults. The interactive picker is used unless ``select == "all"``
-    or there is no interactive terminal (off-tty falls back to processing all).
+    prior CLI defaults. The interactive picker is used unless ``select == "all"``.
+    Off-tty (no terminal for the picker) with ``select == "interactive"`` the
+    step is skipped with a message — set ``select = "all"`` to run unattended, so
+    a bulk paid transcription never happens by accident.
     """
     cache_dir = config.resolve_imports("audible", vault) / "cache"
     show_cost = cfg.transcriber == "openai"
@@ -513,7 +515,22 @@ def run_import(vault: Path, cfg, *, dry_run: bool = False) -> dict:
             echo=ui.info,
         )
 
-    interactive = cfg.select != "all" and ui.console.is_terminal
+    interactive = cfg.select != "all"
+    if interactive and not ui.console.is_terminal:
+        ui.info(
+            "Audible skipped: no interactive terminal for the picker. "
+            'Set select = "all" under [audible] in your config (or run from a '
+            "terminal) to transcribe the whole matched library unattended."
+        )
+        return {
+            "books": 0,
+            "new": 0,
+            "entries": 0,
+            "downloaded": 0,
+            "transcribed": 0,
+            "failed": 0,
+        }
+
     catalog = store.Catalog(vault)
     with ui.progress("Fetching annotations from Audible…") as prog:
         candidates = build_candidates(client, catalog, cache_dir, None, describe=prog.describe)
