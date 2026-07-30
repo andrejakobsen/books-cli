@@ -53,81 +53,60 @@ The package is organized in three layers with a one-way dependency direction
   import X`.
 - **`books/commands/`** — the CLI capabilities, each exposing `register(app)`.
 
-Eleven capabilities exist today, organized as a **two-phase CSV-store pipeline**
+Three commands exist today: **`import`** (ingest raw sources into the CSV store),
+**`export`** (render the store into notes), and **`reset`** (wipe the derived
+store). The former per-source importers (`calibre`, `goodreads`, `kobo`,
+`highlighted`, `readwise`, `audible`, `covers`) and `merge` are now internal
+modules driven by `import` rather than standalone commands; `render` was renamed
+to `export` and `sync` was absorbed into `import`.
+
+Under the hood the store is built by a **two-phase CSV-store pipeline**
 (see `books/core/store.py`). The source importers are pure **CSV writers** — none of
 them touch the Obsidian notes:
 
-- **Phase A — metadata → catalog.** `calibre` and `goodreads` each write a per-source
-  metadata layer (`Data/Sources/<source>.csv`) via `store.write_layer`; `merge` clusters
-  the layers into the single merged catalog `Data/books.csv` via `store.merge`.
+- **Phase A — metadata → catalog.** The `calibre` and `goodreads` importers each write a
+  per-source metadata layer (`Data/Sources/<source>.csv`) via `store.write_layer`; `import`
+  then clusters the layers into the single merged catalog `Data/books.csv` via `store.merge`
+  (the merge step is injected automatically, so callers never sequence it).
 - **Phase B — highlights → notes.** The three highlight importers (`kobo`, `highlighted`,
   `readwise`) resolve each book to a `book_id` against the merged catalog
   (`store.Catalog(vault).find(BookRef)` — match-only, never creates) and write its
   highlights into `Data/Highlights/<book_id>.csv` via `store.write_highlights` (a book
-  with no catalog match is skipped and counted, so run `merge`/`sync` first). `render`
+  with no catalog match is skipped and counted, so the merge runs first). `export`
   then turns the catalog + highlights into the actual `Books/*.md` notes.
 
-`sync` orchestrates both phases end to end. `audible` and `covers` are two more CSV writers
-that both resolve books via `store.Catalog.find` and enrich the store post-merge (audible
-writes highlights + an `audible` metadata layer; covers stages an image + a `covers`
-metadata layer) — they are run **manually after `merge`** (then re-`merge` + `render` to
-fold them in), and are **not** part of `sync`. `render` is the sole producer of Obsidian
-notes; note creation belongs solely to it.
-- `books/commands/calibre.py` → `calibre` — reads a Calibre library's `metadata.opf` (XML) + `cover.jpg` per book into `store.BookRow`s and writes them to `Data/Sources/calibre.csv` via `store.write_layer`. Covers are staged under `Data/Sources/_covers/calibre/<n>.jpg` and their vault-relative path recorded on the row (materialized into `Data/Covers/` later by `render`). Creates no notes. `--library` defaults to `~/Calibre Library`. Run `merge` then `render` to produce notes.
-- `books/commands/goodreads.py` → `goodreads` — reads a Goodreads CSV export into `store.BookRow`s and writes them to `Data/Sources/goodreads.csv` via `store.write_layer`. Carries the review **and** the private notes through the row as separate plain-data columns (`review`/`private_notes`) so `render` can compose the write-once `## Review` section (private notes under a `### Private Notes` subheading — the markdown layout lives in the renderer, not here), and fills the `goodreads:` field with the book's full Goodreads URL (`https://www.goodreads.com/book/show/<Book Id>`). Rows are written for every book in the export (all shelves); `merge` clusters them with the calibre layer, so a shared book gets both sources' fields. `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/Data/Imports/goodreads`. Creates no notes.
-- `books/commands/merge.py` → `merge` — clusters the per-source layers under `Data/Sources/` into the single merged catalog `Data/books.csv` via `store.merge`. Errors cleanly (`typer.BadParameter`) when no source layer exists yet. Run it after the metadata importers and before `render`.
-- `books/commands/kobo.py` → `kobo` — reads `KoboReader.sqlite` (opened **read-only** via `file:...?mode=ro`) and maps every book's highlights & notes (via the shared `books/core/highlights.py` model) into the highlights store (`Data/Highlights/<book_id>.csv`, source `kobo`) via `store.write_highlights`, resolving each book to a `book_id` via `store.Catalog.find` (unmatched books are skipped and counted). It is a store-only importer — the sole knobs are `--db`/`-d` (the sqlite path, matching the `--csv` convention of the other importers) and `--output`/`-o`; there is no CSV/zip export mode any more. Note markers follow the `#tag` / `@link` convention (parsed via `highlights.parse_markers`). When no `--db` is given, a mounted Kobo (`/Volumes/KOBOeReader/.kobo/KoboReader.sqlite`) is safely snapshotted into `<vault>/Data/Imports/kobo/` via SQLite's read-only backup API (the device file is never modified) and read from there; otherwise the existing copy (or newest `*.sqlite`) in that folder is used.
-- `books/commands/highlighted.py` → `highlighted` — reads a Highlighted app CSV export (highlights from physical books, page-located) and writes them into the highlights store (source `highlighted`) via `store.write_highlights`, resolving each book to a `book_id` via `store.Catalog.find` (unmatched books are skipped and counted). `--csv` accepts a single CSV file or a folder of CSV exports (every top-level `*.csv` is imported in sorted order; a file that fails to parse is skipped and reported), defaulting to `<vault>/Data/Imports/highlighted`. **This folder-imports-all behavior is intentional and differs from goodreads/readwise:** the Highlighted app exports one CSV *per book*, so all files in the folder must be read to see every book, whereas a goodreads/readwise export is a single whole-library snapshot where the newest file supersedes older ones (`newest_csv`). Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
-- `books/commands/readwise.py` → `readwise` — reads a Readwise CSV export and writes highlights into the highlights store (source `readwise`) via `store.write_highlights`, resolving each book to a `book_id` via `store.Catalog.find` by Amazon id then standardized title/author (unmatched books are skipped and counted). A trailing `(Series #N)` suffix is split off the title for grouping/matching (series/amazon/shelves metadata is no longer persisted — this importer writes highlights only). Renders type-aware location labels (`p.`/`loc.`). `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/Data/Imports/readwise`. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
-- `books/commands/audible/` → `audible` — imports **Audible bookmarks & clips** into the
-  CSV store (each library book is matched via `store.Catalog.find` by ASIN as
-  `amazon` then title/author). Which books to import is chosen interactively (an arrow-key
-  `questionary` checkbox picker in `select.py`; books already in the catalog with ≥1 clip
-  start checked, audiobook-only and zero-clip books start unchecked) or with `--all`;
-  off-tty a run requires `--all` or `--asin`. A pre-pass (`build_candidates`) fetches every
-  book's annotations once, up front, so the picker can show each book's status + clip count
-  and `run` never re-fetches. A **selected audiobook-only book** (no catalog match) is still
-  transcribed and cached, and an `audible` layer row is written for it so a later
-  `merge`/`render` creates its note — its highlights land on the next (now-matched) run,
-  served from cache. The dry-run cost estimate is shown only for the `openai` transcriber
-  (local/google are free). `questionary` joins the optional `[audible]` extra. For a matched
-  book
-  it writes per-book highlights (`store.write_highlights`, source `audible`) and a small
-  `audible` metadata layer (`Data/Sources/audible.csv`, carrying `format: audiobook` + the
-  ASIN) via `store.write_layer`; run `merge` + `render` afterward to fold the layer in and
-  render the `## Highlights` section. Authenticates to the Audible cloud (auto-prompt on
-  first run, auth cached at `~/.config/books/audible-auth.json`), fetches each book's
-  annotations, downloads the audiobook, and uses **ffmpeg** to decrypt (AAXC via
-  `-audible_key`/`-audible_iv`) and cut each clip, then transcribes it with a pluggable
-  backend (`--transcriber local|openai|google`, default `local` faster-whisper). Every
-  backend's raw output is passed through `transcribe.clean_transcript` before caching, which
-  trims dangling partial sentences: a short (< 5 word) lowercase leading fragment before the
-  first `.`/`!`/`?` is dropped (a mid-sentence catch), and everything after the last
-  terminator is dropped — each trim is skipped when no terminator exists so a punctuation-less
-  fragment is kept intact. Clips use
-  their own start→end. **The sidecar is de-duplicated** (`annotations_from_sidecar`): making
-  a clip auto-creates a twin `audible.bookmark` at the same position, and a note is stored
-  BOTH on the clip (`metadata.note`) AND as a separate `audible.note` record — so each
-  position is collapsed to **one** annotation. Bookmarks are dropped entirely (twins and
-  lone marks); a clip keeps its `metadata.title`/`metadata.note` (adopting a same-position
-  note record's `text` when it has no `metadata.note`); a standalone note with no clip at
-  its position is kept as a *text-only* annotation (`end == start`, so `run` renders it from
-  its text without downloading/cutting/transcribing). A clip's own **title and note** are
-  merged (title first, then note body) into the highlight's nested blockquote, with their
-  `#tag`/`@link` markers parsed out and pooled (same convention as Kobo). Transcriptions
-  are cached one JSON file per book at `<vault>/Data/Imports/audible/cache/<asin>.json`
-  (keyed by annotation id within the file; a legacy monolithic `cache.json` is split into
-  per-book files on the first run, then removed),
-  so re-runs re-render for free and only download books with new clips; downloaded audio is
-  written to a temp dir and deleted. `book_highlight_rows` renders only ids present in the
-  current run's annotations, so a cache written before this dedup never resurfaces the old
-  duplicate rows. Runs after `merge`; **not** part of `sync`. Lives as a
-  package (`command.py` + `models.py` + `client.py` + `transcribe.py`), with the shared
-  dataclasses (`Annotation`, `Chapter`, `DownloadedAudio`, `LibraryBook`) in `models.py`.
-- `books/commands/sync.py` → `sync` — master orchestrator that runs the full two-phase pipeline in dependency order using each command's default options: `calibre` → `goodreads` → `merge` → `kobo` → `highlighted` → `readwise` → `render` (covers and audible are **not** included). The source-detection steps are skipped when their source is absent (calibre: `~/Calibre Library` exists; goodreads/highlighted/readwise: a `*.csv` in the `Data/Imports/<name>` folder; kobo: a mounted device or a `*.sqlite` in `Data/Imports/kobo`); the `merge` step runs when any source layer exists (or calibre/goodreads were detected, so `--dry-run` predicts it), and `render` runs when `Data/books.csv` exists (or `merge` would run). Each step calls the module's core function directly (`convert`/`export_obsidian`/`store.merge`/`render.render`) — no shelling out. Failures are reported but never stop the remaining steps (continue-on-error); a colored per-step + summary report is printed via `typer.secho`. `--output` overrides the vault; `--dry-run` prints the detection plan (with each step's source location) without writing. `--refresh` is forwarded to the `render` step (a clean rebuild of `Books/`/`Authors/`); it is ignored under `--dry-run` (deletion only runs inside the render step, which dry-run never calls). Creates no notes itself — note creation is delegated to the `render` step.
-- `books/commands/reset.py` → `reset` — deletes the **purely-derived** CSV store so a later `sync` rebuilds it from raw sources: removes `Data/books.csv` (regenerated by `merge`) and the whole `Data/Highlights/` folder (the only store that accumulates orphans, since `store.write_highlights` is keyed by `book_id` and never cleans files for ids that no longer exist — e.g. after a matching change reassigns a `book_id`). Keeps the `Data/Sources/*.csv` layers (they self-replace on re-import; the `audible`/`covers` layers carry network/transcription work and aren't part of `sync`), staged covers, raw imports, and all notes (`Books/`/`Authors/` are `render --refresh`'s job). Via `store.reset_store` (the filesystem logic lives in `core`). `--dry-run` previews the deletion; a real run prints the plan and confirms (`--yes`/`-y` skips the prompt; a non-interactive run without `--yes` errors rather than silently deleting). Typical recovery: `reset` → `sync` → (`audible`/`covers` → `merge` → `render` as needed).
-- `books/commands/render.py` → `render` — the CSV-store renderer (Plan B). Reads the merged catalog (`<vault>/Data/books.csv`) + per-book highlights (`<vault>/Data/Highlights/<book-id>.csv`) built by `books/core/store.py` and writes/updates one flat note per book under `Books/`. Frontmatter is written **authoritatively** from the merged row for every canonical key (`NOTE_PROPERTY_ORDER` = `obsidian.BOOK_PROPERTY_ORDER` minus the retired `source` key), EXCEPT: `topics` (100% user-owned — preserved verbatim, `[]` on a new note, never written from data), `aliases`/`cssclasses` (preserved from the existing note when present, positioned after `topics`), and `highlighted`/`reviewed` (derived booleans — true iff the book has highlights / a review). `type` is always `book`. The body carries the cover embed, a write-once `## Review` (via `obsidian.ensure_section`), and a marker-wrapped `## Highlights` (via `highlights.render_highlights` + `obsidian.render_marked_section`); content outside those managed regions is preserved. The `## Review` body is composed by the renderer (`note.compose_review`) from the store's separate `review` + `private_notes` columns — the review text first, then any private notes under a `### Private Notes` subheading — so the importers stay pure data writers and the markdown layout lives in the renderer; a book with only private notes still counts as `reviewed`. Highlights from ≥2 distinct sources are grouped under small `### <Source>` headers (single-source output is unchanged); a per-highlight `source` flows from the store's `HighlightRow` via `row_to_highlight`. Frontmatter round-trips via **python-frontmatter** (read) + **ruamel.yaml** (write, `allow_unicode`, no wrapping). `render_note` is idempotent (render-twice ⇒ identical bytes); `render(vault)` is continue-on-error per book (a hand-corrupted note is counted and reported, the rest still render). `--output` overrides the vault; the command errors cleanly if no `books.csv` exists yet. `--refresh` does a clean rebuild — it deletes `Books/` and `Authors/` before rendering (removing stale notes/stubs left by dropped or renamed books), first caching each existing note's user-owned `topics`/`aliases`/`cssclasses` (keyed by `book_id`) and restoring them for books still in the catalog; a book dropped from the catalog loses its note and cached props, and a note's manual body text is **not** preserved across a refresh. The output format is selected by a boolean flag (`--obsidian`, default and only format today; future renderers slot in beside it as `--notion`/`--evernote` behind the `books/renderers/base.py` `Renderer` protocol + `books/renderers/get_renderer` registry). `render` is the sole producer of Obsidian notes — the CLI command is a thin dispatcher that resolves the selected renderer and calls `renderer.render(vault)`; the note assembly + write lives in `books/renderers/obsidian/note.py`.
-- `books/commands/covers/` → `covers` — scans the merged catalog (`Data/books.csv`) for books with a blank `cover` (and no materialized `Data/Covers/<book_id>.jpg`) and fetches a cover image. Sources are tried in order — Apple Books (iTunes Search API, queried by title+author against the GB store), then Google Books, then Open Library (paperback editions preferred where `physical_format` is known), then Amazon (only when the book already has an `amazon` ASIN, by building the known cover-image URL — no scraping). When a book carries an ISBN it drives the Google/Open Library lookup directly (Google `isbn:` query / Open Library `/b/isbn/` cover) — the most reliable path, unaffected by Google's title-search rate limiting (Apple is always queried by title+author, since its ISBN-term search is unreliable). Stdlib-only (`urllib`); all network I/O is injected for testing. HTTP fetches retry transient failures (429/5xx) with exponential backoff (`fetch_with_retry`), and a source that errors outright (rate-limited/unreachable) is counted and reported separately from one that merely found no match. Author/title queries are normalized before sending (`normalize_author` collapses whitespace and drops translator/co-author tails like "Plato and Benjamin Jowett" → "Plato"). Fetched images are validated by parsing their pixel dimensions (`image_dimensions`, PNG/GIF/JPEG headers, stdlib) and rejecting anything below `MIN_IMAGE_DIM`, falling back to a byte-size check when dimensions are unparseable. The fetched image is staged under `Data/Sources/_covers/covers/<book_id>.jpg` and a `covers` metadata layer (`Data/Sources/covers.csv`) records the staged path + any learned ISBN (an Apple artwork path often embeds the edition ISBN, backfilled like any other learned ISBN; never overwriting an existing one); run `merge` + `render` afterward to fold it in and materialize `Data/Covers/<book_id>.jpg` + the note embed (at width 150). Runs after `merge`; **not** part of `sync`. Default mode auto-picks the best match; `--interactive` approves each candidate, `--dry-run` previews, `--limit N` caps the run. `--book <book_id>` targets a single catalog book and is interactive by default. Split into a package: `command.py` (scan/select + CLI + store sink), `sources.py` (the per-provider lookups + `Candidate`/`MissingBook` models), and `images.py` (HTTP retry/backoff + image-dimension validation).
+`import` orchestrates both phases end to end (running the configured default set of
+importers with `merge` injected automatically). `audible` and `covers` are two more CSV
+writers that both resolve books via `store.Catalog.find` and enrich the store post-merge
+(audible writes highlights + an `audible` metadata layer; covers stages an image + a
+`covers` metadata layer) — they are **opt-in** (run only when selected via
+`import --audible`/`--covers` or added to `[import].default`), and `import` re-merges after
+them automatically. `export` is the sole producer of Obsidian notes; note creation belongs
+solely to it.
+- `books/commands/import_cmd.py` → `import` — the single ingest command. With no
+  flags it runs the configured default set (out of the box the sync-set:
+  `calibre`, `goodreads`, `kobo`, `highlighted`, `readwise`; change it via
+  `[import].default` in the config, e.g. to add `covers`/`audible`); importer
+  flags (`--calibre` … `--readwise`, plus opt-in `--audible`/`--covers`) select
+  an exact subset. `merge` is injected
+  automatically (before catalog consumers, after layer writers). Each importer
+  detects its own source and is skipped/reported when absent; a failing step
+  never stops the others. Reads per-importer settings from the `[calibre]`,
+  `[kobo]`, `[audible]`, `[covers]` config sections. Stops at the store — run
+  `export` to write notes. `--output` overrides the vault; `--dry-run` prints the
+  plan. The importer cores live in their own modules
+  (`books/commands/{calibre,goodreads,kobo,highlighted,readwise}.py` and the
+  `audible`/`covers` packages, whose `run_import(vault, cfg)` entry points read
+  config); `store.merge` clusters the layers.
+- `books/commands/export.py` → `export` — the CSV-store renderer (formerly
+  `render`). Reads the merged catalog + per-book highlights and writes one flat
+  note per book under `Books/`. `--obsidian` selects the (default, only) format;
+  `--refresh` does a clean rebuild of `Books/`/`Authors/`; `--output` overrides
+  the vault. Note assembly lives in `books/renderers/obsidian/note.py`.
+- `books/commands/reset.py` → `reset` — deletes the purely-derived CSV store
+  (`Data/books.csv` + `Data/Highlights/`) so a later `import` rebuilds it.
+  `--dry-run` previews; `--yes`/`-y` skips the confirm. Recovery flow:
+  `reset` → `import` → `export` (plus `import --audible`/`--covers` as needed).
 
 ### Configuration
 
@@ -151,6 +130,16 @@ transcription cache under `cache/`, not raw CSVs) — so most commands need no i
 single-file CSV importers (goodreads/readwise), `newest_csv(folder)` picks the
 most-recently-modified top-level `*.csv` and `resolve_csv_arg(csv, name, output)` resolves
 an unset/folder/file `--csv` to one CSV (unset → newest in the canonical subfolder).
+
+The `[import].default` list names the importers `books import` runs when given no
+flags (default: the sync-set; add `"covers"`/`"audible"` to include them). Unknown
+names are dropped and an empty/invalid list falls back to the sync-set.
+Per-importer settings live in optional `[calibre]`, `[kobo]`, `[audible]`, and
+`[covers]` config sections: `[calibre].library` (default `~/Calibre Library`),
+`[kobo].db` (default: auto-detect a mounted device / the imports folder),
+`[audible].transcriber` (`local`/`openai`/`google`) + `[audible].select`
+(`interactive`/`all`), and `[covers].interactive` + `[covers].limit`. Each key
+falls back to its built-in default when absent or malformed.
 
 **The `#tag` / `@link` convention** (parsing in `books/core/highlights.py`, rendering in `books/renderers/obsidian/highlights.py`): highlight annotations
 carry two marker kinds — `#tag` renders as an Obsidian inline tag, `@link` renders as a
@@ -195,7 +184,7 @@ It is split by responsibility across `layout.py` (folder constants + hub-stub he
 and `highlights.py` (`render_highlights`). It owns:
 
 - **The flat vault layout.** The note folders live at the top level — `Books/` (the
-  indexed book notes) and `Authors/` (stub/hub notes `render` creates) — while all
+  indexed book notes) and `Authors/` (stub/hub notes `export` creates) — while all
   tool-managed data lives under `Data/`: `Data/Covers/` (flat cover images named
   `<Title> - <Author>.jpg`), `Data/Imports/` (raw import sources), and the CSV store
   (`Data/Sources/`, `Data/Highlights/`, `Data/books.csv`). There is no per-book
@@ -211,10 +200,11 @@ and `highlights.py` (`render_highlights`). It owns:
   The key is `topics` (not `genres`), and `cover` is the last key. `highlighted` and
   `reviewed` are booleans (defaulting to `false`) that flip to `true` when highlights or
   a review are imported, used for filtering the vault on reading progress.
-- **Authoritative frontmatter, at merge not render.** Accumulation now happens in the
-  CSV store: `merge` clusters the per-source layers so Calibre → Goodreads (in either
-  order) build up a single row, and `render` writes each note's canonical frontmatter
-  authoritatively from that row (see `render.py` for the per-key rules: `topics` is
+- **Authoritative frontmatter, at merge not export.** Accumulation now happens in the
+  CSV store: the merge step (`store.merge`, run automatically by `import`) clusters the
+  per-source layers so Calibre → Goodreads (in either order) build up a single row, and
+  `export` writes each note's canonical frontmatter
+  authoritatively from that row (see `export.py` for the per-key rules: `topics` is
   user-owned, `highlighted`/`reviewed` are derived, etc.). The old note-level
   `update_frontmatter` "never overwrite" merge helper has been deleted. `write_if_absent`
   still enforces a write-once rule at the file level (used for hub/stub notes).
@@ -225,7 +215,7 @@ and `highlights.py` (`render_highlights`). It owns:
   outside the markers survive). `ensure_section(text, heading, content)` is write-once:
   it appends a `## heading` section only if that heading is absent (used for `## Review`,
   so a hand-edited review is never clobbered).
-- **Cover materialization**: `render` reads each row's staged cover path and writes the
+- **Cover materialization**: `export` reads each row's staged cover path and writes the
   flat `Data/Covers/<stem>.jpg` file plus the `![[…|150]]` embed (width from `COVER_WIDTH`).
 - **Matching normalization** used to cluster rows for the same book: `norm_title`,
   `norm_isbn`, `author_key` (reduces names to (first, last), handling "Last, First"), and
@@ -234,7 +224,7 @@ and `highlights.py` (`render_highlights`). It owns:
 - **Book identity resolution** (`store.Catalog.find`): every importer resolves a `BookRef`
   to a `book_id` against the merged catalog by ISBN, then Amazon id, then standardized
   (title, author) — match-only, never creating. (The old `VaultIndex` note-resolution class
-  has been deleted; `render` is the sole producer of notes and writes them directly from the
+  has been deleted; `export` is the sole producer of notes and writes them directly from the
   store.)
 - **Flat note filenames** (`books/core/naming.py` — `next_free_stem`/`strip_subtitle`/`stem_for`/`safe_filename`,
   driven via `store.assign_book_id`): new book notes
@@ -248,7 +238,7 @@ and `highlights.py` (`render_highlights`). It owns:
   newly-created notes use this scheme. The note stem also names the book's `Data/Covers/`
   image, keeping the two in lockstep.
 - **Formatting helpers**: `format_rating` (0-5 → star emoji) and `wikilink` (authors and
-  topics become `[[wikilinks]]` for Obsidian's graph). `render` handles its own YAML
+  topics become `[[wikilinks]]` for Obsidian's graph). `export` handles its own YAML
   round-tripping via python-frontmatter + ruamel.yaml, so the old string-level
   `yaml_quote`/`link_list`/`html_to_markdown`/frontmatter-reader helpers are gone.
 
