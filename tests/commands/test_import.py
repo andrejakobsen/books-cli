@@ -65,7 +65,7 @@ def test_selection_from_flags_uses_default_when_empty():
 
 def _stub_runs(monkeypatch, order, *, failing=None):
     def make(name):
-        def run(vault):
+        def run(vault, cfg):
             order.append(name)
             if failing and name == failing:
                 raise RuntimeError(f"{name} boom")
@@ -86,7 +86,7 @@ def _detect_all(monkeypatch):
         "_detect_readwise",
         "_detect_merge",
     ):
-        monkeypatch.setattr(imp, name, lambda v: "src")
+        monkeypatch.setattr(imp, name, lambda v, c: "src")
 
 
 def test_runs_selected_in_dependency_order(tmp_path, monkeypatch):
@@ -98,12 +98,12 @@ def test_runs_selected_in_dependency_order(tmp_path, monkeypatch):
 
 
 def test_skips_steps_without_sources(tmp_path, monkeypatch):
-    monkeypatch.setattr(imp, "_detect_calibre", lambda v: None)
-    monkeypatch.setattr(imp, "_detect_goodreads", lambda v: "src")
-    monkeypatch.setattr(imp, "_detect_kobo", lambda v: None)
-    monkeypatch.setattr(imp, "_detect_highlighted", lambda v: None)
-    monkeypatch.setattr(imp, "_detect_readwise", lambda v: None)
-    monkeypatch.setattr(imp, "_detect_merge", lambda v: "src")
+    monkeypatch.setattr(imp, "_detect_calibre", lambda v, c: None)
+    monkeypatch.setattr(imp, "_detect_goodreads", lambda v, c: "src")
+    monkeypatch.setattr(imp, "_detect_kobo", lambda v, c: None)
+    monkeypatch.setattr(imp, "_detect_highlighted", lambda v, c: None)
+    monkeypatch.setattr(imp, "_detect_readwise", lambda v, c: None)
+    monkeypatch.setattr(imp, "_detect_merge", lambda v, c: "src")
     order = []
     _stub_runs(monkeypatch, order)
     results = imp.run_import(tmp_path, selection=set(imp.SYNC_SET))

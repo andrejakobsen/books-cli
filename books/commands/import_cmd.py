@@ -46,8 +46,7 @@ def _imports_folder(name: str, vault: Path) -> Path:
     return config.resolve_imports(name, vault)
 
 
-def _imports_label(name: str) -> str:
-    cfg = config.load_config()
+def _imports_label(name: str, cfg: config.Config) -> str:
     return f"{cfg.imports}/{name}"
 
 
@@ -55,28 +54,30 @@ def _has_csv(folder: Path) -> bool:
     return folder.is_dir() and any(folder.glob("*.csv"))
 
 
-def _calibre_library() -> Path:
+def _calibre_library(cfg: config.Config) -> Path:
     """The configured Calibre library (``[calibre].library``)."""
-    return config._expand_user(config.load_config().calibre.library)
+    return config._expand_user(cfg.calibre.library)
 
 
-def _kobo_db(vault: Path) -> Path:
+def _kobo_db(vault: Path, cfg: config.Config) -> Path:
     """The Kobo DB path: config override, else auto-detected."""
-    db = config.load_config().kobo.db
+    db = cfg.kobo.db
     return config._expand_user(db) if db else kobo.default_kobo_db(vault)
 
 
-def _detect_calibre(vault: Path) -> str | None:
-    library = _calibre_library()
+def _detect_calibre(vault: Path, cfg: config.Config) -> str | None:
+    library = _calibre_library(cfg)
     return str(library) if library.is_dir() else None
 
 
-def _detect_goodreads(vault: Path) -> str | None:
-    return _imports_label("goodreads") if _has_csv(_imports_folder("goodreads", vault)) else None
+def _detect_goodreads(vault: Path, cfg: config.Config) -> str | None:
+    if _has_csv(_imports_folder("goodreads", vault)):
+        return _imports_label("goodreads", cfg)
+    return None
 
 
-def _kobo_source(vault: Path) -> str | None:
-    override = config.load_config().kobo.db
+def _kobo_source(vault: Path, cfg: config.Config) -> str | None:
+    override = cfg.kobo.db
     if override:
         p = config._expand_user(override)
         return str(p) if p.is_file() else None
@@ -84,58 +85,60 @@ def _kobo_source(vault: Path) -> str | None:
         return "Kobo device"
     folder = _imports_folder("kobo", vault)
     if folder.is_dir() and any(folder.glob("*.sqlite")):
-        return _imports_label("kobo")
+        return _imports_label("kobo", cfg)
     return None
 
 
-def _detect_kobo(vault: Path) -> str | None:
-    return _kobo_source(vault)
+def _detect_kobo(vault: Path, cfg: config.Config) -> str | None:
+    return _kobo_source(vault, cfg)
 
 
-def _detect_highlighted(vault: Path) -> str | None:
-    return (
-        _imports_label("highlighted") if _has_csv(_imports_folder("highlighted", vault)) else None
-    )
+def _detect_highlighted(vault: Path, cfg: config.Config) -> str | None:
+    if _has_csv(_imports_folder("highlighted", vault)):
+        return _imports_label("highlighted", cfg)
+    return None
 
 
-def _detect_readwise(vault: Path) -> str | None:
-    return _imports_label("readwise") if _has_csv(_imports_folder("readwise", vault)) else None
+def _detect_readwise(vault: Path, cfg: config.Config) -> str | None:
+    if _has_csv(_imports_folder("readwise", vault)):
+        return _imports_label("readwise", cfg)
+    return None
 
 
-def _detect_merge(vault: Path) -> str | None:
+def _detect_merge(vault: Path, cfg: config.Config) -> str | None:
     src = store.sources_dir(vault)
     if src.is_dir() and any(src.glob("*.csv")):
         return "Data/Sources"
-    if _detect_calibre(vault) or _detect_goodreads(vault):
+    if _detect_calibre(vault, cfg) or _detect_goodreads(vault, cfg):
         return "Data/Sources"
     return None
 
 
-def _detect_audible(vault: Path) -> str | None:
+def _detect_audible(vault: Path, cfg: config.Config) -> str | None:
     return "Audible cloud"
 
 
-def _detect_covers(vault: Path) -> str | None:
+def _detect_covers(vault: Path, cfg: config.Config) -> str | None:
     return "Data/books.csv" if store.books_csv_path(vault).is_file() else None
 
 
 # --- Step runners -----------------------------------------------------------
 
 
-def _run_calibre(vault: Path) -> dict:
-    return calibre.convert(_calibre_library(), vault)
+def _run_calibre(vault: Path, cfg: config.Config) -> dict:
+    return calibre.convert(_calibre_library(cfg), vault)
 
 
-def _run_goodreads(vault: Path) -> dict:
+def _run_goodreads(vault: Path, cfg: config.Config) -> dict:
     csv = config.newest_csv(_imports_folder("goodreads", vault))
     return goodreads.convert(csv, vault)
 
 
-def _run_kobo(vault: Path) -> dict:
-    return kobo.export_obsidian(_kobo_db(vault), vault)
+def _run_kobo(vault: Path, cfg: config.Config) -> dict:
+    return kobo.export_obsidian(_kobo_db(vault, cfg), vault)
 
 
-def _run_highlighted(vault: Path) -> dict:
+def _run_highlighted(vault: Path, cfg: config.Config) -> dict:
     folder = _imports_folder("highlighted", vault)
     totals = {"books": 0, "entries": 0, "skipped": 0}
     for path in highlighted.resolve_csv_paths(folder):
@@ -146,21 +149,21 @@ def _run_highlighted(vault: Path) -> dict:
     return totals
 
 
-def _run_readwise(vault: Path) -> dict:
+def _run_readwise(vault: Path, cfg: config.Config) -> dict:
     csv = config.newest_csv(_imports_folder("readwise", vault))
     return readwise.convert(csv, vault)
 
 
-def _run_merge(vault: Path) -> dict:
+def _run_merge(vault: Path, cfg: config.Config) -> dict:
     return {"books": len(store.merge(vault))}
 
 
-def _run_audible(vault: Path) -> dict:
-    return audible_cmd.run_import(vault, config.load_config().audible)
+def _run_audible(vault: Path, cfg: config.Config) -> dict:
+    return audible_cmd.run_import(vault, cfg.audible)
 
 
-def _run_covers(vault: Path) -> dict:
-    return covers_cmd.run_import(vault, config.load_config().covers)
+def _run_covers(vault: Path, cfg: config.Config) -> dict:
+    return covers_cmd.run_import(vault, cfg.covers)
 
 
 # --- Summaries --------------------------------------------------------------
@@ -205,13 +208,13 @@ class Step:
     """One pipeline stage: how to detect its source, run it, summarize it."""
 
     name: str
-    detect: Callable[[Path], str | None]
-    run: Callable[[Path], dict]
+    detect: Callable[[Path, config.Config], str | None]
+    run: Callable[[Path, config.Config], dict]
     summarize: Callable[[dict], str]
     where: str
 
 
-def _all_steps() -> dict[str, Step]:
+def _all_steps(cfg: config.Config) -> dict[str, Step]:
     """Every importer step keyed by name (merge handled separately)."""
     return {
         "calibre": Step(
@@ -222,7 +225,7 @@ def _all_steps() -> dict[str, Step]:
             _detect_goodreads,
             _run_goodreads,
             _summ_goodreads,
-            _imports_label("goodreads"),
+            _imports_label("goodreads", cfg),
         ),
         "audible": Step("audible", _detect_audible, _run_audible, _summ_audible, "Audible cloud"),
         "covers": Step("covers", _detect_covers, _run_covers, _summ_covers, "Data/books.csv"),
@@ -231,21 +234,21 @@ def _all_steps() -> dict[str, Step]:
             _detect_kobo,
             _run_kobo,
             _summ_highlights,
-            f"{_imports_label('kobo')} or a mounted Kobo",
+            f"{_imports_label('kobo', cfg)} or a mounted Kobo",
         ),
         "highlighted": Step(
             "highlighted",
             _detect_highlighted,
             _run_highlighted,
             _summ_highlights,
-            _imports_label("highlighted"),
+            _imports_label("highlighted", cfg),
         ),
         "readwise": Step(
             "readwise",
             _detect_readwise,
             _run_readwise,
             _summ_highlights,
-            _imports_label("readwise"),
+            _imports_label("readwise", cfg),
         ),
     }
 
@@ -254,14 +257,16 @@ def _merge_step() -> Step:
     return Step("merge", _detect_merge, _run_merge, _summ_merge, "Data/Sources")
 
 
-def build_steps(selection: set[str]) -> list[Step]:
+def build_steps(selection: set[str], cfg: config.Config | None = None) -> list[Step]:
     """Order the selected importers and inject ``merge`` where needed.
 
     Order: calibre, goodreads, [merge], audible, covers, [merge], kobo,
     highlighted, readwise. A pre-merge runs when any consumer is selected or a
     phase-A layer is written; a post-merge runs when an enricher wrote a layer.
     """
-    steps = _all_steps()
+    if cfg is None:
+        cfg = config.load_config()
+    steps = _all_steps(cfg)
     out: list[Step] = []
     for name in ("calibre", "goodreads"):
         if name in selection:
@@ -334,18 +339,27 @@ def _print_summary(results: list[StepResult], *, dry_run: bool = False) -> None:
 # --- Orchestration ----------------------------------------------------------
 
 
-def run_import(vault: Path, *, selection: set[str], dry_run: bool = False) -> list[StepResult]:
+def run_import(
+    vault: Path,
+    *,
+    selection: set[str],
+    dry_run: bool = False,
+    cfg: config.Config | None = None,
+) -> list[StepResult]:
     """Run the selected importers (with auto-merge) in dependency order.
 
     Returns a ``StepResult`` per step. Failures are recorded and never stop the
-    remaining steps. In *dry_run* mode nothing is executed or written.
+    remaining steps. In *dry_run* mode nothing is executed or written. The
+    config is loaded once here and threaded through every step.
     """
+    if cfg is None:
+        cfg = config.load_config()
     if not dry_run:
         vault.mkdir(parents=True, exist_ok=True)
 
     results: list[StepResult] = []
-    for step in build_steps(selection):
-        source = step.detect(vault)
+    for step in build_steps(selection, cfg):
+        source = step.detect(vault, cfg)
         if source is None:
             results.append(StepResult(step.name, "skipped", f"skipped — no source in {step.where}"))
             continue
@@ -355,7 +369,7 @@ def run_import(vault: Path, *, selection: set[str], dry_run: bool = False) -> li
             continue
         _header(step.name, source)
         try:
-            stats = step.run(vault)
+            stats = step.run(vault, cfg)
         except Exception as exc:  # continue-on-error
             message = str(exc) or exc.__class__.__name__
             results.append(StepResult(step.name, "failed", "failed", error=message))
@@ -421,7 +435,7 @@ def import_command(
         default=set(cfg.import_.default),
     )
     vault = config.resolve_vault(output)
-    run_import(vault, selection=selection, dry_run=dry_run)
+    run_import(vault, selection=selection, dry_run=dry_run, cfg=cfg)
 
 
 def register(app: typer.Typer) -> None:
