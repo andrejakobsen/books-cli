@@ -204,14 +204,24 @@ def _collect_preserved(vault: Path) -> dict[str, dict]:
     return cache
 
 
+def _clear_note_dirs(vault: Path) -> None:
+    """Delete the ``Books/`` and ``Authors/`` folders (no-op when absent)."""
+    for name in (BOOKS_DIRNAME, AUTHORS_DIRNAME):
+        target = vault / name
+        if target.is_dir():
+            shutil.rmtree(target)
+
+
 def render_note(
     vault: Path, row: BookRow, highlights: list, *, preserved: dict | None = None
 ) -> Path:
     """Write/update the flat book note for *row* under ``Books/<book_id>.md``.
 
-    Frontmatter is rebuilt authoritatively (topics preserved from the existing
-    note); the body preserves manual content and managed sections. The result is
-    idempotent: rendering the same row + highlights twice yields identical bytes.
+    Frontmatter is rebuilt authoritatively. User-owned keys (``topics`` + the
+    preserved extras) come from *preserved* when supplied (a refresh caches them
+    before the note is deleted), otherwise from the existing on-disk note. The
+    body preserves manual content and managed sections. The result is idempotent:
+    rendering the same row + highlights twice yields identical bytes.
     """
     note_path = vault / BOOKS_DIRNAME / f"{row.book_id}.md"
     _materialize_cover(row, note_path)
@@ -226,7 +236,7 @@ def render_note(
     return note_path
 
 
-def render(vault: Path) -> dict:
+def render(vault: Path, *, refresh: bool = False) -> dict:
     """Render every book in ``books.csv`` (+ its highlights) into ``Books/``.
 
     Also creates an ``Authors/<name>.md`` stub for each distinct author (the
@@ -234,8 +244,17 @@ def render(vault: Path) -> dict:
     Continue-on-error: a book whose note cannot be rendered (e.g. an existing
     note with hand-corrupted frontmatter) is counted under ``failed`` and
     reported; the remaining books still render.
+
+    When *refresh* is true this is a clean rebuild: each book note's user-owned
+    frontmatter (``topics`` + preserved extras) is cached, the ``Books/`` and
+    ``Authors/`` folders are deleted, and every note is regenerated from the
+    catalog with the cached props restored for books that survive. Notes for
+    books no longer in the catalog (and their author stubs) are dropped.
     """
     stats = {"notes": 0, "highlights": 0, "reviews": 0, "failed": 0, "authors": 0}
+    cache = _collect_preserved(vault) if refresh else {}
+    if refresh:
+        _clear_note_dirs(vault)
     authors_dir = vault / AUTHORS_DIRNAME
     seen_authors: set[str] = set()
     rows = list(store.read_books_csv(vault))
@@ -247,7 +266,7 @@ def render(vault: Path) -> dict:
                     continue
                 highlights = store.read_highlights(vault, row.book_id)
                 try:
-                    render_note(vault, row, highlights)
+                    render_note(vault, row, highlights, preserved=cache.get(row.book_id))
                 except Exception as exc:  # continue-on-error per book
                     stats["failed"] += 1
                     ui.warn(f"{row.book_id}: {exc}")

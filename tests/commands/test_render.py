@@ -430,3 +430,75 @@ def test_render_note_uses_preserved_override(tmp_path):
     assert post["topics"] == ["[[History]]"]
     assert post["aliases"] == ["Alt"]
     assert post["format"] == "ebook"  # still authoritative from the row
+
+
+def test_render_refresh_deletes_stale_notes_and_author_stubs(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_books_csv(
+        vault, [store.BookRow(book_id="X - A", title="X", authors=["Ada Lovelace"])]
+    )
+    # Pre-existing stale files not backed by the current catalog.
+    (vault / "Books").mkdir(parents=True)
+    (vault / "Books" / "Gone - Z.md").write_text(
+        "---\ntype: book\ntitle: Gone\n---\n", encoding="utf-8"
+    )
+    (vault / "Authors").mkdir(parents=True)
+    (vault / "Authors" / "Old Author.md").write_text("---\ntype: author\n---\n", encoding="utf-8")
+    R.render(vault, refresh=True)
+    assert not (vault / "Books" / "Gone - Z.md").exists()  # stale note removed
+    assert not (vault / "Authors" / "Old Author.md").exists()  # stale stub removed
+    assert (vault / "Books" / "X - A.md").is_file()  # catalog book rebuilt
+    assert (vault / "Authors" / "Ada Lovelace.md").is_file()  # its author rebuilt
+
+
+def test_render_refresh_restores_props_for_surviving_books(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_books_csv(
+        vault, [store.BookRow(book_id="X - A", title="X", authors=["A"], format="ebook")]
+    )
+    note = vault / "Books" / "X - A.md"
+    note.parent.mkdir(parents=True)
+    note.write_text(
+        '---\ntype: book\ntitle: X\ntopics:\n- "[[History]]"\n'
+        "aliases:\n- Alt\n---\n\nManual paragraph.\n",
+        encoding="utf-8",
+    )
+    R.render(vault, refresh=True)
+    post = frontmatter.loads(note.read_text(encoding="utf-8"))
+    assert post["topics"] == ["[[History]]"]  # cached + restored
+    assert post["aliases"] == ["Alt"]
+    assert post["format"] == "ebook"  # authoritative from the row
+    assert "Manual paragraph." not in post.content  # body is NOT preserved on refresh
+
+
+def test_render_refresh_drops_props_for_deleted_books(tmp_path):
+    # A note whose book is no longer in the catalog is gone and its cached props
+    # are never restored (nothing to restore them onto).
+    vault = tmp_path / "vault"
+    store.write_books_csv(vault, [store.BookRow(book_id="X - A", title="X", authors=["A"])])
+    gone = vault / "Books" / "Gone - Z.md"
+    gone.parent.mkdir(parents=True)
+    gone.write_text('---\ntype: book\ntitle: Gone\ntopics:\n- "[[Kept]]"\n---\n', encoding="utf-8")
+    R.render(vault, refresh=True)
+    assert not gone.exists()
+    assert not any(p.name == "Gone - Z.md" for p in (vault / "Books").glob("*.md"))
+
+
+def test_render_refresh_noop_when_dirs_absent(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_books_csv(vault, [store.BookRow(book_id="X - A", title="X", authors=["A"])])
+    # No Books/ or Authors/ exist yet; refresh must not raise.
+    R.render(vault, refresh=True)
+    assert (vault / "Books" / "X - A.md").is_file()
+
+
+def test_render_refresh_idempotent(tmp_path):
+    vault = tmp_path / "vault"
+    store.write_books_csv(
+        vault, [store.BookRow(book_id="X - A", title="X", authors=["A"], format="ebook")]
+    )
+    R.render(vault, refresh=True)
+    before = {p: p.read_text(encoding="utf-8") for p in vault.rglob("*.md")}
+    R.render(vault, refresh=True)
+    after = {p: p.read_text(encoding="utf-8") for p in vault.rglob("*.md")}
+    assert before == after
