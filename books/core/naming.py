@@ -11,6 +11,11 @@ import re
 
 _ILLEGAL_FS = re.compile(r'[/\\:*?"<>|\x00-\x1f]')
 
+# A trailing ", <year>" or ", <year>-<year>" is a subtitle (common in history
+# titles, e.g. "The Romanovs, 1613-1917"). Requiring digits keeps place-name
+# commas ("Berlin, Alexanderplatz") intact.
+_TRAILING_DATE_SUBTITLE = re.compile(r",\s*\d{3,4}(?:\s*[-–—]\s*\d{3,4})?\s*$")
+
 
 def safe_filename(name: str) -> str:
     """Make *name* safe to use as a single path segment."""
@@ -23,10 +28,13 @@ def safe_filename(name: str) -> str:
 def strip_subtitle(title: str) -> str:
     """Drop everything after the first ':' (the subtitle), for tidy filenames.
 
-    ``"The Deluge: The Great War..."`` -> ``"The Deluge"``. Falls back to the
-    full (stripped) title when nothing precedes the colon.
+    ``"The Deluge: The Great War..."`` -> ``"The Deluge"``. A trailing
+    comma-delimited date range is also treated as a subtitle
+    (``"The Romanovs, 1613-1917"`` -> ``"The Romanovs"``). Falls back to the
+    full (stripped) title when nothing precedes the subtitle.
     """
     head = (title or "").split(":", 1)[0].strip()
+    head = _TRAILING_DATE_SUBTITLE.sub("", head).strip()
     return head or (title or "").strip()
 
 

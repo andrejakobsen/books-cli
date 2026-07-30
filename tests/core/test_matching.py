@@ -4,7 +4,17 @@ from __future__ import annotations
 
 import pytest
 
-from books.core.matching import author_key
+from books.core.matching import author_key, title_similar
+
+
+def test_title_similar_merges_bare_title_with_comma_date_subtitle():
+    # Goodreads "The Romanovs, 1613-1917" vs Audible "The Romanovs" are one book.
+    assert title_similar("The Romanovs, 1613-1917", "The Romanovs")
+
+
+def test_title_similar_keeps_distinct_date_range_volumes_apart():
+    # Two different date-range volumes both carry a subtitle -> full compare.
+    assert not title_similar("The Second World War, 1939-1945", "The First World War, 1914-1918")
 
 
 @pytest.mark.parametrize(
