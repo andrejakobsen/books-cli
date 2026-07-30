@@ -162,18 +162,57 @@ def test_record_to_highlight_merged_title_note_body_when_no_text():
     assert h.links == ["Person"]  # markers still pooled
 
 
-def test_cache_roundtrip_and_missing(tmp_path):
-    path = tmp_path / "sub" / "cache.json"
-    assert ao.load_cache(path) == {}  # missing file -> {}
-    data = {"B01": {"title": "Stalin", "clips": {"a1": {"text": "hi"}}}}
-    ao.save_cache(path, data)
-    assert ao.load_cache(path) == data
+def test_book_cache_roundtrip_and_missing(tmp_path):
+    cache_dir = tmp_path / "sub" / "cache"
+    assert ao.load_book_cache(cache_dir, "B01") == {}  # missing file -> {}
+    data = {"title": "Stalin", "clips": {"a1": {"text": "hi"}}}
+    ao.save_book_cache(cache_dir, "B01", data)
+    assert ao.book_cache_path(cache_dir, "B01") == cache_dir / "B01.json"
+    assert ao.load_book_cache(cache_dir, "B01") == data
+    # each book is an independent file
+    assert ao.load_book_cache(cache_dir, "B02") == {}
 
 
-def test_load_cache_tolerates_corrupt_file(tmp_path):
-    path = tmp_path / "cache.json"
-    path.write_text("{not json", encoding="utf-8")
-    assert ao.load_cache(path) == {}
+def test_load_book_cache_tolerates_corrupt_file(tmp_path):
+    cache_dir = tmp_path / "cache"
+    ao.save_book_cache(cache_dir, "B01", {"title": "x"})
+    ao.book_cache_path(cache_dir, "B01").write_text("{not json", encoding="utf-8")
+    assert ao.load_book_cache(cache_dir, "B01") == {}
+
+
+def test_migrate_legacy_cache_splits_into_per_book_files(tmp_path):
+    cache_dir = tmp_path / "Data" / "Imports" / "audible" / "cache"
+    legacy = cache_dir.with_suffix(".json")  # .../audible/cache.json
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(
+        json.dumps(
+            {
+                "B01": {"title": "Stalin", "clips": {"a1": {"text": "hi"}}},
+                "B02": {"title": "Peace", "clips": {"a2": {"text": "yo"}}},
+            }
+        ),
+        encoding="utf-8",
+    )
+    ao.migrate_legacy_cache(cache_dir)
+    assert not legacy.exists()  # legacy file removed after the split
+    assert ao.load_book_cache(cache_dir, "B01")["clips"]["a1"]["text"] == "hi"
+    assert ao.load_book_cache(cache_dir, "B02")["clips"]["a2"]["text"] == "yo"
+
+
+def test_migrate_legacy_cache_never_overwrites_existing_and_is_noop_when_absent(tmp_path):
+    cache_dir = tmp_path / "cache"
+    # a per-book file already holds fresher data than the legacy blob
+    ao.save_book_cache(cache_dir, "B01", {"title": "new", "clips": {"a1": {"text": "fresh"}}})
+    legacy = cache_dir.with_suffix(".json")
+    legacy.write_text(
+        json.dumps({"B01": {"title": "old", "clips": {"a1": {"text": "stale"}}}}),
+        encoding="utf-8",
+    )
+    ao.migrate_legacy_cache(cache_dir)
+    assert ao.load_book_cache(cache_dir, "B01")["clips"]["a1"]["text"] == "fresh"
+    assert not legacy.exists()
+    # a second call with no legacy file is a harmless no-op
+    ao.migrate_legacy_cache(cache_dir)
 
 
 def test_uncached_returns_only_new_annotations():
@@ -289,7 +328,7 @@ def _catalog_and_library(tmp_path):
 def test_run_writes_highlights_and_audible_layer(tmp_path):
     out, book, anns = _catalog_and_library(tmp_path)
     client = FakeClient([book], anns)
-    cache_path = out / "Data" / "Imports" / "audible" / "cache.json"
+    cache_dir = out / "Data" / "Imports" / "audible" / "cache"
     down, cut = FakeDownloader(), FakeCutter()
     stats = ao.run(
         out,
@@ -297,7 +336,7 @@ def test_run_writes_highlights_and_audible_layer(tmp_path):
         downloader=down,
         cutter=cut,
         transcriber=_fake_transcriber,
-        cache_path=cache_path,
+        cache_dir=cache_dir,
         clip_window=30,
     )
     assert stats["books"] == 1 and stats["entries"] == 1
@@ -325,7 +364,7 @@ def test_run_skips_unmatched_without_download(tmp_path):
         downloader=down,
         cutter=FakeCutter(),
         transcriber=_fake_transcriber,
-        cache_path=out / "c.json",
+        cache_dir=out / "cache",
         clip_window=30,
     )
     assert stats["skipped"] == 1 and stats["books"] == 0
@@ -355,7 +394,7 @@ def test_run_no_highlights_writes_nothing(tmp_path):
         downloader=FakeDownloader(),
         cutter=FakeCutter(),
         transcriber=lambda path: "",
-        cache_path=out / "c.json",
+        cache_dir=out / "cache",
         clip_window=30,
     )
     assert stats["books"] == 0 and stats["entries"] == 0
@@ -374,7 +413,7 @@ def test_run_replaces_only_audible_highlights(tmp_path):
         downloader=FakeDownloader(),
         cutter=FakeCutter(),
         transcriber=_fake_transcriber,
-        cache_path=out / "c.json",
+        cache_dir=out / "cache",
         clip_window=30,
     )
     hl = store.read_highlights(out, "Stalin - Stephen Kotkin")
@@ -384,7 +423,7 @@ def test_run_replaces_only_audible_highlights(tmp_path):
 
 def test_run_idempotent_uses_cache_no_redownload(tmp_path):
     out, book, anns = _catalog_and_library(tmp_path)
-    cache_path = out / "Data" / "Imports" / "audible" / "cache.json"
+    cache_dir = out / "Data" / "Imports" / "audible" / "cache"
     down1 = FakeDownloader()
     ao.run(
         out,
@@ -392,7 +431,7 @@ def test_run_idempotent_uses_cache_no_redownload(tmp_path):
         downloader=down1,
         cutter=FakeCutter(),
         transcriber=_fake_transcriber,
-        cache_path=cache_path,
+        cache_dir=cache_dir,
         clip_window=30,
     )
     before = store.read_highlights(out, "Stalin - Stephen Kotkin")
@@ -403,7 +442,7 @@ def test_run_idempotent_uses_cache_no_redownload(tmp_path):
         downloader=down2,
         cutter=FakeCutter(),
         transcriber=_fake_transcriber,
-        cache_path=cache_path,
+        cache_dir=cache_dir,
         clip_window=30,
     )
     after = store.read_highlights(out, "Stalin - Stephen Kotkin")
@@ -434,7 +473,7 @@ def test_run_point_bookmark_uses_window_before_mark(tmp_path):
         downloader=FakeDownloader(),
         cutter=cut,
         transcriber=_fake_transcriber,
-        cache_path=out / "c.json",
+        cache_dir=out / "cache",
         clip_window=30,
     )
     # point bookmark: window ends at the mark, starts clip_window seconds earlier
@@ -470,7 +509,7 @@ def test_run_text_only_note_is_not_transcribed(tmp_path):
         downloader=FakeDownloader(),
         cutter=cut,
         transcriber=_fake_transcriber,
-        cache_path=out / "c.json",
+        cache_dir=out / "cache",
         clip_window=30,
     )
     assert cut.calls == []  # never cut a zero-length range
@@ -495,18 +534,17 @@ def test_run_prunes_stale_cache_from_before_the_fix(tmp_path):
             )
         ],
     )
-    cache_path = out / "Data" / "Imports" / "audible" / "cache.json"
-    ao.save_cache(
-        cache_path,
+    cache_dir = out / "Data" / "Imports" / "audible" / "cache"
+    ao.save_book_cache(
+        cache_dir,
+        "B0STALIN",
         {
-            "B0STALIN": {
-                "title": "Stalin",
-                "clips": {
-                    "clip1": {"text": "Real clip.", "start_ms": 1000, "end_ms": 2000},
-                    "twin_bm": {"text": "stale window", "start_ms": 0, "end_ms": 1000},
-                    "dup_note": {"text": "stale note", "start_ms": 1000, "end_ms": 1000},
-                },
-            }
+            "title": "Stalin",
+            "clips": {
+                "clip1": {"text": "Real clip.", "start_ms": 1000, "end_ms": 2000},
+                "twin_bm": {"text": "stale window", "start_ms": 0, "end_ms": 1000},
+                "dup_note": {"text": "stale note", "start_ms": 1000, "end_ms": 1000},
+            },
         },
     )
     book = models.LibraryBook(asin="B0STALIN", title="Stalin", authors=["Stephen Kotkin"])
@@ -519,7 +557,7 @@ def test_run_prunes_stale_cache_from_before_the_fix(tmp_path):
         downloader=down,
         cutter=FakeCutter(),
         transcriber=_fake_transcriber,
-        cache_path=cache_path,
+        cache_dir=cache_dir,
         clip_window=30,
     )
     assert down.calls == []  # clip1 already cached, nothing new to download
@@ -553,7 +591,7 @@ def test_run_real_sidecar_produces_one_highlight_per_annotation(tmp_path):
         downloader=FakeDownloader(),
         cutter=FakeCutter(),
         transcriber=_fake_transcriber,
-        cache_path=out / "c.json",
+        cache_dir=out / "cache",
         clip_window=30,
     )
     hl = store.read_highlights(out, "The Japanese Empire - Author")
@@ -611,7 +649,7 @@ def test_run_continues_when_one_book_fails(tmp_path):
         downloader=BoomDownloader(),
         cutter=FakeCutter(),
         transcriber=_fake_transcriber,
-        cache_path=out / "c.json",
+        cache_dir=out / "cache",
         clip_window=30,
     )
     assert stats["failed"] == 1
@@ -628,15 +666,41 @@ def test_run_dry_run_writes_nothing(tmp_path):
         downloader=down,
         cutter=FakeCutter(),
         transcriber=_fake_transcriber,
-        cache_path=out / "c.json",
+        cache_dir=out / "cache",
         clip_window=30,
         dry_run=True,
     )
     assert down.calls == []
     assert store.read_highlights(out, "Stalin - Stephen Kotkin") == []
     assert store.read_layer(out, "audible") == []
-    assert not (out / "c.json").exists()
+    assert not (out / "cache").exists()
     assert stats["books"] == 0
+
+
+def test_dry_run_reads_legacy_cache_without_migrating(tmp_path):
+    # A not-yet-migrated monolithic cache.json must still count as cached during a
+    # dry run (so nothing is re-estimated), and the dry run must not touch disk.
+    out, book, anns = _catalog_and_library(tmp_path)
+    cache_dir = out / "Data" / "Imports" / "audible" / "cache"
+    legacy = cache_dir.with_suffix(".json")
+    legacy.parent.mkdir(parents=True)
+    legacy.write_text(
+        json.dumps({"B0STALIN": {"title": "Stalin", "clips": {"a1": {"text": "hi"}}}}),
+        encoding="utf-8",
+    )
+    stats = ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=FakeDownloader(),
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_dir=cache_dir,
+        clip_window=30,
+        dry_run=True,
+    )
+    assert stats["est_seconds"] == 0.0  # a1 already cached -> nothing new to transcribe
+    assert legacy.exists()  # dry run never migrates
+    assert not any(cache_dir.glob("*.json"))  # nor writes per-book files
 
 
 def test_cli_enriches_book_end_to_end(monkeypatch, tmp_path):
@@ -720,7 +784,7 @@ def test_run_asin_preserves_other_audible_layer_rows(tmp_path):
         downloader=FakeDownloader(),
         cutter=FakeCutter(),
         transcriber=_fake_transcriber,
-        cache_path=out / "c.json",
+        cache_dir=out / "cache",
         clip_window=30,
         asin="B0STALIN",
     )
@@ -761,7 +825,7 @@ def test_run_reports_per_clip_progress(monkeypatch, tmp_path):
         downloader=FakeDownloader(),
         cutter=FakeCutter(),
         transcriber=_fake_transcriber,
-        cache_path=out / "c.json",
+        cache_dir=out / "cache",
         clip_window=30,
     )
 

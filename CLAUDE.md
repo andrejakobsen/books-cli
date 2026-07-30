@@ -100,7 +100,9 @@ notes; note creation belongs solely to it.
   its text without downloading/cutting/transcribing). A clip's own **title and note** are
   merged (title first, then note body) into the highlight's nested blockquote, with their
   `#tag`/`@link` markers parsed out and pooled (same convention as Kobo). Transcriptions
-  are cached in `<vault>/Data/Imports/audible/cache.json` (keyed by ASIN + annotation id),
+  are cached one JSON file per book at `<vault>/Data/Imports/audible/cache/<asin>.json`
+  (keyed by annotation id within the file; a legacy monolithic `cache.json` is split into
+  per-book files on the first run, then removed),
   so re-runs re-render for free and only download books with new clips; downloaded audio is
   written to a temp dir and deleted. `book_highlight_rows` renders only ids present in the
   current run's annotations, so a cache written before this dedup never resurfaces the old
@@ -128,7 +130,7 @@ that holds raw import sources (grouped under `Data/` with the CSV store); `resol
 joins onto the resolved vault). Most importers default their input to a canonical
 subfolder — `Data/Imports/goodreads`, `Data/Imports/highlighted`,
 `Data/Imports/readwise`, `Data/Imports/kobo`, and `Data/Imports/audible` (which holds the
-transcription `cache.json`, not raw CSVs) — so most commands need no input flag.
+transcription cache under `cache/`, not raw CSVs) — so most commands need no input flag.
 (`calibre` is the exception: `--library` defaults to `~/Calibre Library`.) For the
 single-file CSV importers (goodreads/readwise), `newest_csv(folder)` picks the
 most-recently-modified top-level `*.csv` and `resolve_csv_arg(csv, name, output)` resolves

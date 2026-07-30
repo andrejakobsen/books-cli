@@ -13,9 +13,11 @@ the metadata importers + ``merge`` first to build ``Data/books.csv``; run ``merg
 + ``render`` afterward to fold in the layer and surface the highlights in the actual
 notes. Books match by ASIN (the `amazon` id), then by standardized title/author.
 
-Transcriptions are cached in <vault>/Data/Imports/audible/cache.json (keyed by
-ASIN + annotation id), so re-runs re-render for free and only download a book that
-has new clips; downloaded audio is written to a temp dir and deleted after cutting.
+Transcriptions are cached one JSON file per book at
+<vault>/Data/Imports/audible/cache/<asin>.json (keyed by annotation id within the
+file), so re-runs re-render for free and only download a book that has new clips;
+downloaded audio is written to a temp dir and deleted after cutting. A legacy
+monolithic cache.json is split into per-book files on the first run (then removed).
 
 This is the one capability that needs third-party packages and system ffmpeg (the
 documented exception to the stdlib-only rule). Heavy dependencies are imported
@@ -129,18 +131,54 @@ def record_to_highlight(rec: dict) -> Highlight:
     )
 
 
-def load_cache(path: Path) -> dict:
-    """Load the transcription cache, or {} when missing/corrupt."""
+def book_cache_path(cache_dir: Path, asin: str) -> Path:
+    """The cache file for one book: ``<cache_dir>/<asin>.json``.
+
+    The ASIN is the book's stable key throughout this importer, so it is the
+    natural per-book filename (unique, filesystem-safe, no lookup needed).
+    """
+    return cache_dir / f"{asin}.json"
+
+
+def load_book_cache(cache_dir: Path, asin: str) -> dict:
+    """Load one book's cache record ``{title, clips}``, or {} when missing/corrupt."""
     try:
-        return json.loads(path.read_text(encoding="utf-8"))
+        return json.loads(book_cache_path(cache_dir, asin).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
 
 
-def save_cache(path: Path, data: dict) -> None:
-    """Write the transcription cache as pretty JSON (parents created)."""
+def save_book_cache(cache_dir: Path, asin: str, data: dict) -> None:
+    """Write one book's cache record as pretty JSON (parents created)."""
+    path = book_cache_path(cache_dir, asin)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
+
+
+def load_legacy_cache(cache_dir: Path) -> dict:
+    """Load the pre-split monolithic ``cache.json`` (sibling of *cache_dir*), or {}."""
+    try:
+        data = json.loads(cache_dir.with_suffix(".json").read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def migrate_legacy_cache(cache_dir: Path) -> None:
+    """Split a legacy monolithic ``cache.json`` into per-book ``<asin>.json`` files.
+
+    One-time upgrade: each ASIN keyed in the old ``<...>/audible/cache.json`` is
+    written to its own ``<cache_dir>/<asin>.json`` (an existing per-book file is
+    never overwritten), then the legacy file is removed. A no-op when it is absent,
+    so re-runs cost nothing.
+    """
+    legacy_path = cache_dir.with_suffix(".json")
+    if not legacy_path.exists():
+        return
+    for asin, rec in load_legacy_cache(cache_dir).items():
+        if isinstance(rec, dict) and not book_cache_path(cache_dir, asin).exists():
+            save_book_cache(cache_dir, asin, rec)
+    legacy_path.unlink(missing_ok=True)
 
 
 def uncached(annotations: list[Annotation], clips: dict) -> list[Annotation]:
@@ -213,7 +251,7 @@ def run(
     downloader,
     cutter,
     transcriber,
-    cache_path,
+    cache_dir,
     clip_window,
     limit=None,
     asin=None,
@@ -230,7 +268,6 @@ def run(
     """
     vault.mkdir(parents=True, exist_ok=True)
     catalog = store.Catalog(vault)
-    cache = load_cache(cache_path)
     stats = {
         "books": 0,
         "entries": 0,
@@ -246,7 +283,10 @@ def run(
         library = [b for b in library if b.asin == asin]
 
     if dry_run:
-        return _run_dry(library, catalog, cache, stats, client, clip_window, limit, echo)
+        return _run_dry(library, catalog, cache_dir, stats, client, clip_window, limit, echo)
+
+    # One-time upgrade of an old monolithic cache.json into per-book files.
+    migrate_legacy_cache(cache_dir)
 
     # Preserve other audiobooks' layer rows across partial (--asin/--limit) runs.
     layer = {r.amazon: r for r in store.read_layer(vault, "audible") if r.amazon}
@@ -275,7 +315,8 @@ def run(
                 if not annotations:
                     continue
 
-                book_cache = cache.setdefault(book.asin, {"title": book.title, "clips": {}})
+                book_cache = load_book_cache(cache_dir, book.asin)
+                book_cache.setdefault("title", book.title)
                 clips = book_cache.setdefault("clips", {})
                 new = uncached(annotations, clips)
 
@@ -303,7 +344,7 @@ def run(
                                 text = transcriber(clip_path)
                                 stats["transcribed"] += 1
                             clips[ann.id] = annotation_to_record(ann, text, chapters)
-                    save_cache(cache_path, cache)
+                    save_book_cache(cache_dir, book.asin, book_cache)
 
                 rows = book_highlight_rows(clips, valid_ids={a.id for a in annotations})
                 if not rows:
@@ -327,8 +368,13 @@ def run(
     return stats
 
 
-def _run_dry(library, catalog, cache, stats, client, clip_window, limit, echo) -> dict:
-    """Dry-run path: log matches + estimated transcription, write nothing."""
+def _run_dry(library, catalog, cache_dir, stats, client, clip_window, limit, echo) -> dict:
+    """Dry-run path: log matches + estimated transcription, write nothing.
+
+    Reads per-book caches (falling back to a not-yet-migrated legacy ``cache.json``)
+    to estimate only the *new* clips, but never writes or migrates on disk.
+    """
+    legacy = load_legacy_cache(cache_dir)
     matched = 0
     for book in library:
         ref = BookRef(title=book.title, authors=book.authors, amazon=book.asin)
@@ -351,8 +397,8 @@ def _run_dry(library, catalog, cache, stats, client, clip_window, limit, echo) -
         annotations = client.annotations(book.asin)
         if not annotations:
             continue
-        book_cache = cache.setdefault(book.asin, {"title": book.title, "clips": {}})
-        clips = book_cache.setdefault("clips", {})
+        book_cache = load_book_cache(cache_dir, book.asin) or legacy.get(book.asin, {})
+        clips = book_cache.get("clips", {})
         new = uncached(annotations, clips)
         secs = _clip_seconds(new, clip_window)
         stats["est_seconds"] += secs
@@ -461,7 +507,7 @@ def audible_command(
         )
 
     vault = config.resolve_vault(output)
-    cache_path = config.resolve_imports("audible", output) / "cache.json"
+    cache_dir = config.resolve_imports("audible", output) / "cache"
 
     client = _build_client(quality)
     if dry_run:
@@ -477,7 +523,7 @@ def audible_command(
         downloader=downloader,
         cutter=cutter,
         transcriber=transcribe_fn,
-        cache_path=cache_path,
+        cache_dir=cache_dir,
         clip_window=clip_window,
         limit=limit,
         asin=asin,
