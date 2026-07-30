@@ -92,3 +92,13 @@ def test_confirm_reads_from_injected_stream():
 def test_prompt_choice_validates_and_returns():
     got = ui.prompt_choice("pick", choices=["y", "n"], default="y", stream=io.StringIO("n\n"))
     assert got == "n"
+
+
+def test_nested_progress_offtty_is_noop():
+    # In the pytest process the console is not a terminal, so nested_progress
+    # yields a no-op handle whose methods are safely callable.
+    with ui.nested_progress("Importing", total=2) as prog:
+        prog.status("Book A - downloading")
+        prog.advance()
+        prog.advance(1)
+    # no exception, nothing rendered

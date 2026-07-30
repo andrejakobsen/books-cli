@@ -13,7 +13,8 @@ from contextlib import contextmanager
 from typing import IO
 
 from rich import box
-from rich.console import Console
+from rich.console import Console, Group
+from rich.live import Live
 from rich.markup import escape
 from rich.panel import Panel
 from rich.progress import (
@@ -25,6 +26,7 @@ from rich.progress import (
     TimeRemainingColumn,
 )
 from rich.prompt import Confirm, Prompt
+from rich.spinner import Spinner
 from rich.table import Table
 
 # Generous width so non-tty output (tests, pipes) does not wrap and break
@@ -109,6 +111,56 @@ def progress(description: str, total: int | None = None):
     with prog:
         task = prog.add_task(description, total=total)
         yield ProgressBar(prog, task)
+
+
+class StepProgress:
+    """Handle for a nested display: an overall bar + a live status line."""
+
+    def __init__(self, prog: Progress, task_id, spinner: Spinner) -> None:
+        self._prog = prog
+        self._task = task_id
+        self._spinner = spinner
+
+    def advance(self, n: int = 1) -> None:
+        """Advance the overall (outer) bar by *n*."""
+        self._prog.advance(self._task, n)
+
+    def status(self, text: str) -> None:
+        """Rewrite the per-item status line."""
+        self._spinner.update(text=text)
+
+
+class _NoopStep:
+    """No-op stand-in used off-tty so callers need no branching."""
+
+    def advance(self, n: int = 1) -> None:
+        pass
+
+    def status(self, text: str) -> None:
+        pass
+
+
+@contextmanager
+def nested_progress(description: str, total: int | None):
+    """Yield a :class:`StepProgress`: an overall bar plus a live status line.
+
+    Off-tty (tests/pipes) a :class:`_NoopStep` is yielded and nothing renders.
+    """
+    if not console.is_terminal:
+        yield _NoopStep()
+        return
+    overall = Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        MofNCompleteColumn(),
+        TimeRemainingColumn(),
+        console=console,
+        auto_refresh=False,
+    )
+    task = overall.add_task(description, total=total)
+    spinner = Spinner("dots", text="")
+    with Live(Group(overall, spinner), console=console, refresh_per_second=12):
+        yield StepProgress(overall, task, spinner)
 
 
 def prompt_choice(
