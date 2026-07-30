@@ -23,7 +23,7 @@ from pathlib import Path
 
 import typer
 
-from books.core import config, store
+from books.core import config, store, ui
 from books.core.highlights import Highlight, split_tag_column
 from books.core.matching import BookRef
 
@@ -155,7 +155,7 @@ def readwise_to_obsidian(
     output.mkdir(parents=True, exist_ok=True)
     stats = convert(csv, output)
     no_note = store.skipped_note(stats["skipped"])
-    typer.echo(
+    ui.info(
         f"Done. {stats['books']} books{no_note}, {stats['entries']} highlights.\nOutput: {output}"
     )
 

@@ -21,7 +21,7 @@ from pathlib import Path
 
 import typer
 
-from books.core import config, store
+from books.core import config, store, ui
 from books.core.highlights import Highlight, parse_markers
 from books.core.matching import BookRef
 from books.core.paths import resolve_path
@@ -245,14 +245,14 @@ def kobo_import(
     skip_note = store.skipped_note(skipped)
     if stats["entries"] == 0:
         if skipped:
-            typer.echo(
+            ui.info(
                 f"No highlights written{skip_note}. Import these books with "
                 f"calibre/goodreads first."
             )
         else:
-            typer.echo("No highlights or notes found.")
+            ui.warn("No highlights or notes found.")
         return
-    typer.echo(
+    ui.info(
         f"Imported {stats['entries']} highlights from {stats['books']} book(s)"
         f"{skip_note} -> {vault}"
     )

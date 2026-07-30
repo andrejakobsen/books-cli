@@ -13,7 +13,7 @@ from pathlib import Path
 
 import typer
 
-from books.core import config, store
+from books.core import config, store, ui
 
 
 def merge_command(
@@ -35,7 +35,7 @@ def merge_command(
             param_hint="--output",
         )
     catalog = store.merge(vault)
-    typer.echo(f"Merged {len(catalog)} books -> {store.books_csv_path(vault)}")
+    ui.info(f"Merged {len(catalog)} books -> {store.books_csv_path(vault)}")
 
 
 def register(app: typer.Typer) -> None:

@@ -25,7 +25,7 @@ from pathlib import Path
 
 import typer
 
-from books.core import config, store
+from books.core import config, store, ui
 from books.core.highlights import Highlight, split_tag_column
 from books.core.matching import BookRef
 from books.core.paths import resolve_path
@@ -142,7 +142,7 @@ def highlighted_to_obsidian(
             stats = convert(path, output)
         except Exception as exc:  # noqa: BLE001 - skip and continue on any bad file
             skipped += 1
-            typer.echo(f"Skipped {path.name}: {exc}", err=True)
+            ui.warn(f"Skipped {path.name}: {exc}")
             continue
         totals["books"] += stats["books"]
         totals["entries"] += stats["entries"]
@@ -152,7 +152,7 @@ def highlighted_to_obsidian(
     files_word = "file" if files == 1 else "files"
     bad_files_note = f" ({skipped} skipped)" if skipped else ""
     no_note = store.skipped_note(totals["skipped"])
-    typer.echo(
+    ui.info(
         f"Done. {files} {files_word}{bad_files_note}, {totals['books']} books{no_note}, "
         f"{totals['entries']} highlights.\n"
         f"Output: {output}"

@@ -17,7 +17,7 @@ from pathlib import Path
 
 import typer
 
-from books.core import config, store
+from books.core import config, store, ui
 
 GOODREADS_BOOK_URL = "https://www.goodreads.com/book/show/"
 
@@ -206,7 +206,7 @@ def goodreads_to_obsidian(
 
     output.mkdir(parents=True, exist_ok=True)
     stats = convert(csv, output)
-    typer.echo(
+    ui.info(
         f"Done. {stats['books']} books, {stats['reviews']} reviews, "
         f"{stats['skipped']} skipped.\nOutput: {output}"
     )
