@@ -94,8 +94,24 @@ def test_row_to_highlight_kindle_location():
     assert h.location_label == "loc."
 
 
-def test_row_to_highlight_order_has_no_page():
+def test_row_to_highlight_kindle_offset():
+    # A Kindle character offset is a real position: keep it, labelled like a location.
+    h = rw.row_to_highlight({"Highlight": "x", "Location Type": "offset", "Location": "7764"})
+    assert h.page == "7764"
+    assert h.location_label == "loc."
+
+
+def test_row_to_highlight_order_uses_sequence_label():
+    # "order" is Readwise's per-highlight sequence number (no page/location data);
+    # keep it for reading order, rendered as a "no." marker.
     h = rw.row_to_highlight({"Highlight": "x", "Location Type": "order", "Location": "7"})
+    assert h.page == "7"
+    assert h.location_label == "no."
+
+
+def test_row_to_highlight_unknown_type_has_no_page():
+    # An unrecognized/blank location type records no location.
+    h = rw.row_to_highlight({"Highlight": "x", "Location Type": "", "Location": "0"})
     assert h.page is None
     assert h.location_label is None
 

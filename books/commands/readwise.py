@@ -12,6 +12,11 @@ book with no catalog match is skipped and counted, so run ``merge``/``sync``
 first. The store keeps each source's rows separate; ``render`` turns the store
 into the notes.
 
+Every "Location Type" Readwise emits is mapped to a locator (see
+``_LOCATION_LABELS``): ``page`` -> "p.", ``location``/``offset`` -> "loc."
+(Kindle), and ``order`` -> "no." (Readwise's per-highlight sequence number);
+only an unrecognized/blank type records no location.
+
 Standard library only.
 """
 
@@ -43,20 +48,30 @@ def strip_series(title: str) -> str:
     return (title[: m.start()]).strip()
 
 
+# Readwise "Location Type" -> the display prefix for the location (``page`` uses
+# the Highlight model's default "p." prefix, so it maps to None). A type not in
+# this map (e.g. blank) records no location at all.
+_LOCATION_LABELS: dict[str, str | None] = {
+    "page": None,  # physical page -> default "p." prefix
+    "location": "loc.",  # Kindle location
+    "offset": "loc.",  # Kindle character offset (a real position)
+    "order": "no.",  # Readwise per-highlight sequence number (no page data)
+}
+
+
 def row_to_highlight(row: dict) -> Highlight:
     """Map a Readwise CSV row to a source-agnostic Highlight.
 
-    Location Type drives the location label: "page" -> "p." (default), "location"
-    -> "loc." (Kindle), anything else (e.g. "order") -> no location recorded.
+    Location Type drives the location label (see ``_LOCATION_LABELS``): "page" ->
+    "p." (default), "location"/"offset" -> "loc." (Kindle), "order" -> "no."
+    (Readwise sequence number). An unrecognized/blank type records no location.
     """
     loc_type = (row.get("Location Type") or "").strip().lower()
     location = (row.get("Location") or "").strip() or None
     page: str | None = None
     label: str | None = None
-    if location and loc_type == "page":
-        page = location
-    elif location and loc_type == "location":
-        page, label = location, "loc."
+    if location and loc_type in _LOCATION_LABELS:
+        page, label = location, _LOCATION_LABELS[loc_type]
     links, tags = split_tag_column(row.get("Tags"))
     return Highlight(
         text=(row.get("Highlight") or "").strip(),
