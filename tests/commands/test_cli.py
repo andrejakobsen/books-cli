@@ -59,14 +59,14 @@ def test_all_capabilities_registered():
     assert result.exit_code == 0
     for command in (
         "calibre",
+        "export",
         "goodreads",
         "highlighted",
+        "import",
         "kobo",
         "merge",
         "readwise",
-        "render",
         "reset",
-        "sync",
     ):
         assert command in result.output
 

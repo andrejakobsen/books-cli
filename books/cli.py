@@ -18,11 +18,11 @@ from books.commands import (
     export,
     goodreads,
     highlighted,
+    import_cmd,
     kobo,
     merge,
     readwise,
     reset,
-    sync,
 )
 
 # Modules that expose a register(app) function. Add new capabilities here.
@@ -35,7 +35,7 @@ CAPABILITIES = (
     merge,
     readwise,
     reset,
-    sync,
+    import_cmd,
 )
 
 app = typer.Typer(

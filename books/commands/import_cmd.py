@@ -1,21 +1,15 @@
 #!/usr/bin/env python3
-"""`sync` — run the two-phase import→render pipeline using default options.
+"""`import` — ingest raw sources into the CSV store.
 
-One command to regenerate the whole vault from raw imports. The pipeline runs in
-dependency order:
+One command replaces the per-source importers. With no flags it runs the
+*sync-set* (calibre, goodreads, kobo, highlighted, readwise). Passing importer
+flags runs exactly that subset; ``--audible`` and ``--covers`` are opt-in and
+run only when named. ``merge`` (clustering the source layers into
+``Data/books.csv``) is injected automatically so callers never sequence it.
 
-    Phase A (metadata):  calibre → goodreads → merge   (build Data/books.csv)
-    Phase B (highlights): kobo → highlighted → readwise → render
-
-The metadata importers write per-source CSV layers; `merge` clusters them into
-`Data/books.csv` (assigning each book a stable id); the highlight importers
-resolve each book to that id and write the highlights store; `render` turns the
-store into the flat Obsidian notes under `Books/`. Covers are out of scope — run
-`covers` separately.
-
-Each step is skipped when its source is absent, so `sync` imports whatever it
-finds. A step failure is reported but never stops the remaining steps; a colored
-summary is printed at the end.
+Each importer detects its own source and is skipped (reported, not an error)
+when absent. A step failure is reported but never stops the remaining steps.
+Rendering notes is a separate command (`books export`).
 """
 
 from __future__ import annotations
@@ -34,31 +28,42 @@ from books.commands import (
     kobo,
     readwise,
 )
+from books.commands.audible import command as audible_cmd
+from books.commands.covers import command as covers_cmd
 from books.core import config, store, ui
-from books.renderers import get_renderer
+
+# The out-of-the-box importers run with no flags (overridable via [import].default).
+SYNC_SET = config.DEFAULT_IMPORTERS
+# Importers that resolve against Data/books.csv (need a current catalog first).
+_CONSUMERS = ("audible", "covers", "kobo", "highlighted", "readwise")
+# Importers that write a Data/Sources/<name>.csv layer after the phase-A merge.
+_ENRICHERS = ("audible", "covers")
 
 # --- Detection helpers ------------------------------------------------------
 
 
 def _imports_folder(name: str, vault: Path) -> Path:
-    """The canonical `.imports/<name>` folder inside *vault*."""
     return config.resolve_imports(name, vault)
 
 
 def _imports_label(name: str) -> str:
-    """A friendly source label like `.imports/goodreads`."""
     cfg = config.load_config()
     return f"{cfg.imports}/{name}"
 
 
 def _has_csv(folder: Path) -> bool:
-    """True when *folder* exists and holds a top-level ``*.csv``."""
     return folder.is_dir() and any(folder.glob("*.csv"))
 
 
 def _calibre_library() -> Path:
-    """The default Calibre library (delegates to the `calibre` command)."""
-    return calibre.default_library()
+    """The configured Calibre library (``[calibre].library``)."""
+    return config._expand_user(config.load_config().calibre.library)
+
+
+def _kobo_db(vault: Path) -> Path:
+    """The Kobo DB path: config override, else auto-detected."""
+    db = config.load_config().kobo.db
+    return config._expand_user(db) if db else kobo.default_kobo_db(vault)
 
 
 def _detect_calibre(vault: Path) -> str | None:
@@ -71,7 +76,10 @@ def _detect_goodreads(vault: Path) -> str | None:
 
 
 def _kobo_source(vault: Path) -> str | None:
-    """Kobo source: a mounted device, else a `*.sqlite` in `.imports/kobo`."""
+    override = config.load_config().kobo.db
+    if override:
+        p = config._expand_user(override)
+        return str(p) if p.is_file() else None
     if kobo.KOBO_DEVICE_DB.is_file():
         return "Kobo device"
     folder = _imports_folder("kobo", vault)
@@ -95,11 +103,6 @@ def _detect_readwise(vault: Path) -> str | None:
 
 
 def _detect_merge(vault: Path) -> str | None:
-    """Merge runs when source layers exist, or a Phase-A importer will create them.
-
-    Checking the upstream detectors (not just on-disk layers) lets a fresh
-    ``--dry-run`` predict that merge would run after calibre/goodreads.
-    """
     src = store.sources_dir(vault)
     if src.is_dir() and any(src.glob("*.csv")):
         return "Data/Sources"
@@ -108,16 +111,15 @@ def _detect_merge(vault: Path) -> str | None:
     return None
 
 
-def _detect_render(vault: Path) -> str | None:
-    """Render runs when books.csv exists, or merge will create it."""
-    if store.books_csv_path(vault).is_file():
-        return "Data/books.csv"
-    if _detect_merge(vault):
-        return "Data/books.csv"
-    return None
+def _detect_audible(vault: Path) -> str | None:
+    return "Audible cloud"
 
 
-# --- Step runners (call each module's core function directly) ----------------
+def _detect_covers(vault: Path) -> str | None:
+    return "Data/books.csv" if store.books_csv_path(vault).is_file() else None
+
+
+# --- Step runners -----------------------------------------------------------
 
 
 def _run_calibre(vault: Path) -> dict:
@@ -130,13 +132,10 @@ def _run_goodreads(vault: Path) -> dict:
 
 
 def _run_kobo(vault: Path) -> dict:
-    db = kobo.default_kobo_db(vault)
-    return kobo.export_obsidian(db, vault)
+    return kobo.export_obsidian(_kobo_db(vault), vault)
 
 
 def _run_highlighted(vault: Path) -> dict:
-    # Highlighted exports one CSV per book, so import every file in the folder
-    # (unlike goodreads/readwise, whose single snapshot uses newest-wins).
     folder = _imports_folder("highlighted", vault)
     totals = {"books": 0, "entries": 0, "skipped": 0}
     for path in highlighted.resolve_csv_paths(folder):
@@ -156,8 +155,12 @@ def _run_merge(vault: Path) -> dict:
     return {"books": len(store.merge(vault))}
 
 
-def _run_render(vault: Path, refresh: bool = False) -> dict:
-    return get_renderer("obsidian").render(vault, refresh=refresh)
+def _run_audible(vault: Path) -> dict:
+    return audible_cmd.run_import(vault, config.load_config().audible)
+
+
+def _run_covers(vault: Path) -> dict:
+    return covers_cmd.run_import(vault, config.load_config().covers)
 
 
 # --- Summaries --------------------------------------------------------------
@@ -185,12 +188,13 @@ def _summ_merge(s: dict) -> str:
     return f"{s.get('books', 0)} books in catalog"
 
 
-def _summ_render(s: dict) -> str:
-    failed = f", {s['failed']} failed" if s.get("failed") else ""
-    return (
-        f"{s.get('notes', 0)} notes, {s.get('highlights', 0)} highlights, "
-        f"{s.get('reviews', 0)} reviews, {s.get('authors', 0)} authors{failed}"
-    )
+def _summ_audible(s: dict) -> str:
+    fail = f", {s['failed']} failed" if s.get("failed") else ""
+    return f"{s.get('books', 0)} books, {s.get('entries', 0)} clips{fail}"
+
+
+def _summ_covers(s: dict) -> str:
+    return f"{s.get('fetched', 0)} fetched, {s.get('not_found', 0)} not found"
 
 
 # --- Step registry ----------------------------------------------------------
@@ -198,11 +202,7 @@ def _summ_render(s: dict) -> str:
 
 @dataclass(frozen=True)
 class Step:
-    """One pipeline stage: how to detect its source, run it, summarize it.
-
-    ``where`` is a human description of the source location, used in the
-    "skipped — no source in ..." message.
-    """
+    """One pipeline stage: how to detect its source, run it, summarize it."""
 
     name: str
     detect: Callable[[Path], str | None]
@@ -211,53 +211,73 @@ class Step:
     where: str
 
 
-def _steps(refresh: bool = False) -> list[Step]:
-    """Build the ordered two-phase step list, resolving runners at call time.
-
-    Runners/detectors are looked up as module globals via ``_run_<name>`` /
-    ``_detect_<name>`` (not captured here) so tests can monkeypatch them and have
-    it take effect. Order is Phase A (calibre → goodreads → merge) then Phase B
-    (kobo → highlighted → readwise → render).
-    """
-    return [
-        Step("calibre", _detect_calibre, _run_calibre, _summ_calibre, "~/Calibre Library"),
-        Step(
+def _all_steps() -> dict[str, Step]:
+    """Every importer step keyed by name (merge handled separately)."""
+    return {
+        "calibre": Step(
+            "calibre", _detect_calibre, _run_calibre, _summ_calibre, "~/Calibre Library"
+        ),
+        "goodreads": Step(
             "goodreads",
             _detect_goodreads,
             _run_goodreads,
             _summ_goodreads,
             _imports_label("goodreads"),
         ),
-        Step("merge", _detect_merge, _run_merge, _summ_merge, "Data/Sources"),
-        Step(
+        "audible": Step("audible", _detect_audible, _run_audible, _summ_audible, "Audible cloud"),
+        "covers": Step("covers", _detect_covers, _run_covers, _summ_covers, "Data/books.csv"),
+        "kobo": Step(
             "kobo",
             _detect_kobo,
             _run_kobo,
             _summ_highlights,
             f"{_imports_label('kobo')} or a mounted Kobo",
         ),
-        Step(
+        "highlighted": Step(
             "highlighted",
             _detect_highlighted,
             _run_highlighted,
             _summ_highlights,
             _imports_label("highlighted"),
         ),
-        Step(
+        "readwise": Step(
             "readwise",
             _detect_readwise,
             _run_readwise,
             _summ_highlights,
             _imports_label("readwise"),
         ),
-        Step(
-            "render",
-            _detect_render,
-            lambda v: _run_render(v, refresh),
-            _summ_render,
-            "Data/books.csv",
-        ),
-    ]
+    }
+
+
+def _merge_step() -> Step:
+    return Step("merge", _detect_merge, _run_merge, _summ_merge, "Data/Sources")
+
+
+def build_steps(selection: set[str]) -> list[Step]:
+    """Order the selected importers and inject ``merge`` where needed.
+
+    Order: calibre, goodreads, [merge], audible, covers, [merge], kobo,
+    highlighted, readwise. A pre-merge runs when any consumer is selected or a
+    phase-A layer is written; a post-merge runs when an enricher wrote a layer.
+    """
+    steps = _all_steps()
+    out: list[Step] = []
+    for name in ("calibre", "goodreads"):
+        if name in selection:
+            out.append(steps[name])
+    need_pre = bool(selection & set(_CONSUMERS)) or bool(selection & {"calibre", "goodreads"})
+    if need_pre:
+        out.append(_merge_step())
+    for name in ("audible", "covers"):
+        if name in selection:
+            out.append(steps[name])
+    if selection & set(_ENRICHERS):
+        out.append(_merge_step())
+    for name in ("kobo", "highlighted", "readwise"):
+        if name in selection:
+            out.append(steps[name])
+    return out
 
 
 @dataclass
@@ -284,18 +304,12 @@ def _plan(name: str, source: str) -> None:
 
 
 def _result_row(r: StepResult) -> tuple[str, str]:
-    """Map a ``StepResult`` to its (glyph, result-cell) pair for the summary table.
-
-    Both returned strings are Rich markup (glyph is colored; the result cell may
-    carry `[dim]`/`[red]` styling). Dynamic payloads (summary/error) are escaped.
-    """
     if r.status == "failed":
         return "[red]✗[/red]", f"[red]failed — {escape(r.error or '')}[/red]"
     if r.status == "skipped":
         return "[yellow]⊘[/yellow]", f"[dim]{escape(r.summary)}[/dim]"
     if r.status == "planned":
         return "[cyan]•[/cyan]", f"[dim]{escape(r.summary)}[/dim]"
-    # "ran"
     return "[green]✓[/green]", escape(r.summary)
 
 
@@ -304,7 +318,7 @@ def _print_summary(results: list[StepResult], *, dry_run: bool = False) -> None:
     skipped = sum(1 for r in results if r.status == "skipped")
     failed = sum(1 for r in results if r.status == "failed")
 
-    table = ui.summary_table("Sync (dry run)" if dry_run else "Sync")
+    table = ui.summary_table("Import (dry run)" if dry_run else "Import")
     table.add_column("", width=2)
     table.add_column("Step", style="cyan", no_wrap=True)
     table.add_column("Result")
@@ -320,19 +334,17 @@ def _print_summary(results: list[StepResult], *, dry_run: bool = False) -> None:
 # --- Orchestration ----------------------------------------------------------
 
 
-def run_sync(vault: Path, *, dry_run: bool = False, refresh: bool = False) -> list[StepResult]:
-    """Run every importer whose source is present, in dependency order.
+def run_import(vault: Path, *, selection: set[str], dry_run: bool = False) -> list[StepResult]:
+    """Run the selected importers (with auto-merge) in dependency order.
 
     Returns a ``StepResult`` per step. Failures are recorded and never stop the
-    remaining steps. In *dry_run* mode nothing is executed or written; detected
-    steps are reported with status ``planned``. When *refresh* is set the render
-    step deletes ``Books/`` and ``Authors/`` for a clean rebuild.
+    remaining steps. In *dry_run* mode nothing is executed or written.
     """
     if not dry_run:
         vault.mkdir(parents=True, exist_ok=True)
 
     results: list[StepResult] = []
-    for step in _steps(refresh):
+    for step in build_steps(selection):
         source = step.detect(vault)
         if source is None:
             results.append(StepResult(step.name, "skipped", f"skipped — no source in {step.where}"))
@@ -348,14 +360,32 @@ def run_sync(vault: Path, *, dry_run: bool = False, refresh: bool = False) -> li
             message = str(exc) or exc.__class__.__name__
             results.append(StepResult(step.name, "failed", "failed", error=message))
             continue
-        summary = step.summarize(stats)
-        results.append(StepResult(step.name, "ran", summary))
+        results.append(StepResult(step.name, "ran", step.summarize(stats)))
 
     _print_summary(results, dry_run=dry_run)
     return results
 
 
-def sync(
+def _selection_from_flags(flags: dict[str, bool], default: set[str]) -> set[str]:
+    """Chosen importers, or the configured *default* set when no flag is set."""
+    chosen = {name for name, on in flags.items() if on}
+    return chosen or set(default)
+
+
+def import_command(
+    calibre_: bool = typer.Option(False, "--calibre", help="Import the Calibre library."),
+    goodreads_: bool = typer.Option(False, "--goodreads", help="Import the Goodreads export."),
+    kobo_: bool = typer.Option(False, "--kobo", help="Import Kobo highlights."),
+    highlighted_: bool = typer.Option(
+        False, "--highlighted", help="Import Highlighted app exports."
+    ),
+    readwise_: bool = typer.Option(False, "--readwise", help="Import the Readwise export."),
+    audible_: bool = typer.Option(
+        False, "--audible", help="Import Audible clips (opt-in; needs cloud auth)."
+    ),
+    covers_: bool = typer.Option(
+        False, "--covers", help="Fetch missing covers (opt-in; hits the network)."
+    ),
     output: Path | None = typer.Option(
         None,
         "--output",
@@ -368,32 +398,38 @@ def sync(
         "--dry-run",
         help="Show which steps would run (and from which source) without writing anything.",
     ),
-    refresh: bool = typer.Option(
-        False,
-        "--refresh",
-        help="Delete Books/ and Authors/ before the render step (a clean rebuild). "
-        "Your topics/aliases/cssclasses are cached and restored for books still in "
-        "the catalog. Ignored under --dry-run.",
-    ),
 ) -> None:
-    """Run the two-phase import→render pipeline using default options.
+    """Ingest raw sources into the CSV store.
 
-    Phase A builds the catalog (calibre → goodreads → merge); Phase B writes the
-    highlights and renders the notes (kobo → highlighted → readwise → render).
-    Any step whose source is absent is skipped. Covers are not included — run
-    `covers` separately. A step that fails is reported but does not stop the
-    others.
+    With no flag the configured default set runs (out of the box: calibre,
+    goodreads, kobo, highlighted, readwise — set `[import].default` in your
+    config to change it); flags select an exact subset. `--audible`/`--covers`
+    run only when named or added to the default. `merge` runs automatically.
+    Rendering notes is a separate command (`books export`).
     """
+    cfg = config.load_config()
+    selection = _selection_from_flags(
+        {
+            "calibre": calibre_,
+            "goodreads": goodreads_,
+            "kobo": kobo_,
+            "highlighted": highlighted_,
+            "readwise": readwise_,
+            "audible": audible_,
+            "covers": covers_,
+        },
+        default=set(cfg.import_.default),
+    )
     vault = config.resolve_vault(output)
-    run_sync(vault, dry_run=dry_run, refresh=refresh)
+    run_import(vault, selection=selection, dry_run=dry_run)
 
 
 def register(app: typer.Typer) -> None:
-    app.command("sync")(sync)
+    app.command("import")(import_command)
 
 
 def main() -> None:
-    typer.run(sync)
+    typer.run(import_command)
 
 
 if __name__ == "__main__":
