@@ -12,9 +12,7 @@ from __future__ import annotations
 import shutil
 from pathlib import Path
 
-import typer
-
-from books.core import store
+from books.core import store, ui
 from books.core.store import BookRow, row_to_highlight
 from books.renderers.obsidian.format import format_rating, wikilink
 from books.renderers.obsidian.frontmatter import (
@@ -209,24 +207,27 @@ def render(vault: Path) -> dict:
     stats = {"notes": 0, "highlights": 0, "reviews": 0, "failed": 0, "authors": 0}
     authors_dir = vault / AUTHORS_DIRNAME
     seen_authors: set[str] = set()
-    for row in store.read_books_csv(vault):
-        if not row.book_id:
-            continue
-        highlights = store.read_highlights(vault, row.book_id)
-        try:
-            render_note(vault, row, highlights)
-        except Exception as exc:  # continue-on-error per book
-            stats["failed"] += 1
-            typer.secho(f"  ! {row.book_id}: {exc}", fg=typer.colors.YELLOW)
-            continue
-        stats["notes"] += 1
-        stats["highlights"] += len(highlights)
-        if compose_review(row.review, row.private_notes):
-            stats["reviews"] += 1
-        for author in row.authors:
-            if author and author not in seen_authors:
-                write_stub(authors_dir, author, "author")
-                seen_authors.add(author)
+    rows = list(store.read_books_csv(vault))
+    with ui.progress("Rendering notes", total=len(rows)) as prog:
+        for row in rows:
+            prog.advance(0)
+            if not row.book_id:
+                continue
+            highlights = store.read_highlights(vault, row.book_id)
+            try:
+                render_note(vault, row, highlights)
+            except Exception as exc:  # continue-on-error per book
+                stats["failed"] += 1
+                ui.warn(f"{row.book_id}: {exc}")
+                continue
+            stats["notes"] += 1
+            stats["highlights"] += len(highlights)
+            if compose_review(row.review, row.private_notes):
+                stats["reviews"] += 1
+            for author in row.authors:
+                if author and author not in seen_authors:
+                    write_stub(authors_dir, author, "author")
+                    seen_authors.add(author)
     stats["authors"] = len(seen_authors)
     return stats
 

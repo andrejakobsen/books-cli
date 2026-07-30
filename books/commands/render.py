@@ -14,7 +14,7 @@ from pathlib import Path
 
 import typer
 
-from books.core import config, store
+from books.core import config, store, ui
 from books.renderers import get_renderer
 
 # CLI flag name -> registered renderer name. One entry per output target; the
@@ -66,7 +66,7 @@ def render_command(
     vault.mkdir(parents=True, exist_ok=True)
     stats = renderer.render(vault)
     suffix = f" ({stats['failed']} failed)" if stats.get("failed") else ""
-    typer.echo(
+    ui.info(
         f"Done. {stats['notes']} notes, {stats['highlights']} highlights, "
         f"{stats['reviews']} reviews, {stats['authors']} authors{suffix}.\n"
         f"Output: {vault}"
