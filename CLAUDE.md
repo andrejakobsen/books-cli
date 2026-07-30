@@ -80,8 +80,18 @@ notes; note creation belongs solely to it.
 - `books/commands/highlighted.py` → `highlighted` — reads a Highlighted app CSV export (highlights from physical books, page-located) and writes them into the highlights store (source `highlighted`) via `store.write_highlights`, resolving each book to a `book_id` via `store.Catalog.find` (unmatched books are skipped and counted). `--csv` accepts a single CSV file or a folder of CSV exports (every top-level `*.csv` is imported in sorted order; a file that fails to parse is skipped and reported), defaulting to `<vault>/Data/Imports/highlighted`. **This folder-imports-all behavior is intentional and differs from goodreads/readwise:** the Highlighted app exports one CSV *per book*, so all files in the folder must be read to see every book, whereas a goodreads/readwise export is a single whole-library snapshot where the newest file supersedes older ones (`newest_csv`). Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
 - `books/commands/readwise.py` → `readwise` — reads a Readwise CSV export and writes highlights into the highlights store (source `readwise`) via `store.write_highlights`, resolving each book to a `book_id` via `store.Catalog.find` by Amazon id then standardized title/author (unmatched books are skipped and counted). A trailing `(Series #N)` suffix is split off the title for grouping/matching (series/amazon/shelves metadata is no longer persisted — this importer writes highlights only). Renders type-aware location labels (`p.`/`loc.`). `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/Data/Imports/readwise`. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
 - `books/commands/audible/` → `audible` — imports **Audible bookmarks & clips** into the
-  CSV store (enrich-only: each library book is matched via `store.Catalog.find` by ASIN as
-  `amazon` then title/author; unmatched books are skipped and counted). For a matched book
+  CSV store (each library book is matched via `store.Catalog.find` by ASIN as
+  `amazon` then title/author). Which books to import is chosen interactively (an arrow-key
+  `questionary` checkbox picker in `select.py`; books already in the catalog with ≥1 clip
+  start checked, audiobook-only and zero-clip books start unchecked) or with `--all`;
+  off-tty a run requires `--all` or `--asin`. A pre-pass (`build_candidates`) fetches every
+  book's annotations once, up front, so the picker can show each book's status + clip count
+  and `run` never re-fetches. A **selected audiobook-only book** (no catalog match) is still
+  transcribed and cached, and an `audible` layer row is written for it so a later
+  `merge`/`render` creates its note — its highlights land on the next (now-matched) run,
+  served from cache. The dry-run cost estimate is shown only for the `openai` transcriber
+  (local/google are free). `questionary` joins the optional `[audible]` extra. For a matched
+  book
   it writes per-book highlights (`store.write_highlights`, source `audible`) and a small
   `audible` metadata layer (`Data/Sources/audible.csv`, carrying `format: audiobook` + the
   ASIN) via `store.write_layer`; run `merge` + `render` afterward to fold the layer in and
