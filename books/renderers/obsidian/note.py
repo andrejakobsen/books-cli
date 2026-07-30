@@ -290,8 +290,8 @@ class ObsidianRenderer:
 
     name = "obsidian"
 
-    def render(self, vault: Path) -> dict:
-        return render(vault)
+    def render(self, vault: Path, *, refresh: bool = False) -> dict:
+        return render(vault, refresh=refresh)
 
 
 # Re-export the schema constant expected by callers/tests via this module.

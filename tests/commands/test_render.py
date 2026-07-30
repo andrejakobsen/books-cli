@@ -502,3 +502,17 @@ def test_render_refresh_idempotent(tmp_path):
     R.render(vault, refresh=True)
     after = {p: p.read_text(encoding="utf-8") for p in vault.rglob("*.md")}
     assert before == after
+
+
+def test_obsidian_renderer_forwards_refresh(tmp_path):
+    from books.renderers import get_renderer
+
+    vault = tmp_path / "vault"
+    store.write_books_csv(vault, [store.BookRow(book_id="X - A", title="X", authors=["A"])])
+    (vault / "Books").mkdir(parents=True)
+    (vault / "Books" / "Gone - Z.md").write_text(
+        "---\ntype: book\ntitle: Gone\n---\n", encoding="utf-8"
+    )
+    get_renderer("obsidian").render(vault, refresh=True)
+    assert not (vault / "Books" / "Gone - Z.md").exists()  # refresh took effect
+    assert (vault / "Books" / "X - A.md").is_file()
