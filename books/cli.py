@@ -14,34 +14,22 @@ from __future__ import annotations
 import typer
 
 from books.commands import (
-    calibre,
     export,
-    goodreads,
-    highlighted,
     import_cmd,
-    kobo,
-    merge,
-    readwise,
     reset,
 )
 
 # Modules that expose a register(app) function. Add new capabilities here.
 CAPABILITIES = (
-    calibre,
     export,
-    goodreads,
-    highlighted,
-    kobo,
-    merge,
-    readwise,
-    reset,
     import_cmd,
+    reset,
 )
 
 app = typer.Typer(
     no_args_is_help=True,
     add_completion=True,
-    help="Tools for books & reading data (Calibre -> Obsidian, Kobo highlights).",
+    help="Tools for books & reading data: import sources into a store, export notes.",
 )
 
 for _module in CAPABILITIES:

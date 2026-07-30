@@ -2,9 +2,10 @@
 
 Builds synthetic sources for a single book (a Calibre library with a cover, a
 Goodreads CSV carrying a review, and a Kobo sqlite with one highlight) and runs
-the whole pipeline the way `sync` does:
+the whole pipeline the way `import` does (calling the importer cores directly),
+then `export`:
 
-    calibre → goodreads → merge → kobo → render
+    calibre → goodreads → merge → kobo → export
 
 then asserts the fully-rendered note: authoritative frontmatter, a materialized
 cover + embed, an ``Authors/`` stub, the write-once ``## Review`` (from
@@ -20,6 +21,7 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from books.cli import app
+from books.commands import calibre, goodreads, kobo
 from books.core import store
 
 runner = CliRunner()
@@ -125,17 +127,18 @@ def test_full_pipeline_end_to_end(tmp_path):
     gr = _goodreads_csv(tmp_path)
     db = _kobo_db(tmp_path)
 
-    # Phase A: metadata layers → merged catalog.
-    _run(["calibre", "--library", str(lib), "--output", str(vault)])
-    _run(["goodreads", "--csv", str(gr), "--output", str(vault)])
-    _run(["merge", "--output", str(vault)])
+    # Phase A: metadata layers → merged catalog (importer cores called directly,
+    # as `books import` does internally).
+    calibre.convert(lib, vault)
+    goodreads.convert(gr, vault)
+    store.merge(vault)
 
     # One merged book with the expected id.
     catalog = store.read_books_csv(vault)
     assert [r.book_id for r in catalog] == [BOOK_ID]
 
-    # Phase B: highlights → render.
-    _run(["kobo", "--db", str(db), "--output", str(vault)])
+    # Phase B: highlights → export.
+    kobo.export_obsidian(db, vault)
     _run(["export", "--output", str(vault)])
 
     note = vault / "Books" / f"{BOOK_ID}.md"

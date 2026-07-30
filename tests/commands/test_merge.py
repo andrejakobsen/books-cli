@@ -1,7 +1,15 @@
+import typer
 from typer.testing import CliRunner
 
-from books.cli import app
+from books.commands import merge
 from books.core import store
+
+
+def _invoke(args):
+    """Invoke the (now-unregistered) merge command via a local Typer app."""
+    local = typer.Typer()
+    merge.register(local)
+    return CliRunner().invoke(local, args)
 
 
 def test_merge_command_builds_books_csv(tmp_path):
@@ -16,7 +24,7 @@ def test_merge_command_builds_books_csv(tmp_path):
         ],
     )
 
-    result = CliRunner().invoke(app, ["merge", "--output", str(vault)])
+    result = _invoke(["--output", str(vault)])
     assert result.exit_code == 0, result.output
 
     rows = store.read_books_csv(vault)
@@ -25,5 +33,5 @@ def test_merge_command_builds_books_csv(tmp_path):
 
 
 def test_merge_command_errors_without_layers(tmp_path):
-    result = CliRunner().invoke(app, ["merge", "--output", str(tmp_path / "vault")])
+    result = _invoke(["--output", str(tmp_path / "vault")])
     assert result.exit_code != 0

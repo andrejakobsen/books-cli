@@ -6,12 +6,19 @@ import pytest
 import typer
 from typer.testing import CliRunner
 
-from books.cli import app
 from books.commands import highlighted
 from books.commands import highlighted as hi
 from books.core import store
 
 runner = CliRunner()
+
+
+def _invoke(args):
+    """Invoke the (now-unregistered) highlighted command via a local Typer app."""
+    local = typer.Typer()
+    hi.register(local)
+    return runner.invoke(local, args)
+
 
 HEADER = (
     "Highlight,Title,Author,ISBN,Collections,Reading Status,"
@@ -234,7 +241,7 @@ def test_cli_folder_imports_all_and_sums(tmp_path):
             ),
         ],
     )
-    result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
+    result = _invoke(["-c", str(src), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "2 files" in result.output
     # books/entries summed across both files
@@ -256,7 +263,7 @@ def test_cli_folder_same_book_last_file_wins(tmp_path):
     )
     out = tmp_path / "Obsidian"
     seed_stalin(out)
-    result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
+    result = _invoke(["-c", str(src), "-o", str(out)])
     assert result.exit_code == 0, result.output
     rows = store.read_highlights(out, "Stalin - Stephen Kotkin")
     # last file (b.csv) wins: its highlight is present, the earlier file's is gone
@@ -273,7 +280,7 @@ def test_cli_folder_skips_bad_csv(tmp_path):
     (src / "bad.csv").write_bytes(b"\xff\xfe\x00not a valid utf-8 csv\x00")
     out = tmp_path / "Obsidian"
     seed_stalin(out)
-    result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
+    result = _invoke(["-c", str(src), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "1 skipped" in result.output
     assert len(store.read_highlights(out, "Stalin - Stephen Kotkin")) == 2
@@ -283,7 +290,7 @@ def test_cli_single_file_shows_one_file(tmp_path):
     csv = write_csv(tmp_path)
     out = tmp_path / "Obsidian"
     seed_stalin(out)
-    result = runner.invoke(app, ["highlighted", "-c", str(csv), "-o", str(out)])
+    result = _invoke(["-c", str(csv), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "1 file" in result.output
     assert "authors" not in result.output  # folder-mode echo drops authors
@@ -294,7 +301,7 @@ def test_cli_empty_folder_errors(tmp_path):
     src = tmp_path / "empty"
     src.mkdir()
     out = tmp_path / "Obsidian"
-    result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
+    result = _invoke(["-c", str(src), "-o", str(out)])
     assert result.exit_code != 0
 
 
