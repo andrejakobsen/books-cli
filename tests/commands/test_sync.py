@@ -191,6 +191,24 @@ def test_sync_refresh_defaults_false(tmp_path, monkeypatch):
     assert captured["refresh"] is False
 
 
+def test_sync_refresh_is_noop_under_dry_run(tmp_path, monkeypatch):
+    # --refresh must not delete/write anything when combined with --dry-run:
+    # the render step never runs, so no deletion can occur.
+    vault = tmp_path / "Vault"
+    vault.mkdir()
+    _seed_all_sources(vault, monkeypatch)
+    # A pre-existing note that a real refresh would delete.
+    (vault / "Books").mkdir(parents=True)
+    (vault / "Books" / "Keep - Me.md").write_text(
+        "---\ntype: book\ntitle: Keep\n---\n", encoding="utf-8"
+    )
+    order = []
+    _stub_runs(monkeypatch, order)
+    sync.run_sync(vault, dry_run=True, refresh=True)
+    assert order == []  # nothing executed
+    assert (vault / "Books" / "Keep - Me.md").exists()  # dry-run deleted nothing
+
+
 # --- Real (non-mocked) double run -------------------------------------------
 
 
