@@ -43,7 +43,7 @@ def test_collect_preserved_extracts_user_owned_keys(tmp_path):
     books = vault / "Books"
     books.mkdir(parents=True)
     (books / "X - A.md").write_text(
-        "---\ntype: book\ntitle: X\ntopics:\n- \"[[History]]\"\n"
+        '---\ntype: book\ntitle: X\ntopics:\n- "[[History]]"\n'
         "aliases:\n- Alt\ncssclasses:\n- book\n---\n\nManual.\n",
         encoding="utf-8",
     )
@@ -69,9 +69,7 @@ def test_render_note_uses_preserved_override(tmp_path):
     # existing note carried them.
     vault = tmp_path / "vault"
     row = store.BookRow(book_id="X - A", title="X", authors=["A"], format="ebook")
-    path = R.render_note(
-        vault, row, [], preserved={"topics": ["[[History]]"], "aliases": ["Alt"]}
-    )
+    path = R.render_note(vault, row, [], preserved={"topics": ["[[History]]"], "aliases": ["Alt"]})
     post = frontmatter.loads(path.read_text(encoding="utf-8"))
     assert post["topics"] == ["[[History]]"]
     assert post["aliases"] == ["Alt"]
@@ -187,9 +185,7 @@ def test_render_refresh_deletes_stale_notes_and_author_stubs(tmp_path):
         "---\ntype: book\ntitle: Gone\n---\n", encoding="utf-8"
     )
     (vault / "Authors").mkdir(parents=True)
-    (vault / "Authors" / "Old Author.md").write_text(
-        "---\ntype: author\n---\n", encoding="utf-8"
-    )
+    (vault / "Authors" / "Old Author.md").write_text("---\ntype: author\n---\n", encoding="utf-8")
     R.render(vault, refresh=True)
     assert not (vault / "Books" / "Gone - Z.md").exists()  # stale note removed
     assert not (vault / "Authors" / "Old Author.md").exists()  # stale stub removed
@@ -205,7 +201,7 @@ def test_render_refresh_restores_props_for_surviving_books(tmp_path):
     note = vault / "Books" / "X - A.md"
     note.parent.mkdir(parents=True)
     note.write_text(
-        "---\ntype: book\ntitle: X\ntopics:\n- \"[[History]]\"\n"
+        '---\ntype: book\ntitle: X\ntopics:\n- "[[History]]"\n'
         "aliases:\n- Alt\n---\n\nManual paragraph.\n",
         encoding="utf-8",
     )
@@ -224,9 +220,7 @@ def test_render_refresh_drops_props_for_deleted_books(tmp_path):
     store.write_books_csv(vault, [store.BookRow(book_id="X - A", title="X", authors=["A"])])
     gone = vault / "Books" / "Gone - Z.md"
     gone.parent.mkdir(parents=True)
-    gone.write_text(
-        "---\ntype: book\ntitle: Gone\ntopics:\n- \"[[Kept]]\"\n---\n", encoding="utf-8"
-    )
+    gone.write_text('---\ntype: book\ntitle: Gone\ntopics:\n- "[[Kept]]"\n---\n', encoding="utf-8")
     R.render(vault, refresh=True)
     assert not gone.exists()
     assert not any(p.name == "Gone - Z.md" for p in (vault / "Books").glob("*.md"))
@@ -436,13 +430,15 @@ Expected: FAIL (`No such option: --refresh`, non-zero exit).
 In `books/commands/render.py`, add a new parameter to `render_command` (after the `obsidian` parameter, before the closing `) -> None:`):
 
 ```python
-    refresh: bool = typer.Option(
+refresh: bool = (
+    typer.Option(
         False,
         "--refresh",
         help="Delete Books/ and Authors/ before rendering (a clean rebuild that "
         "removes stale notes/stubs). Your topics/aliases/cssclasses are cached and "
         "restored for books still in the catalog.",
     ),
+)
 ```
 
 Then change the render call from:
@@ -581,19 +577,21 @@ def _steps(refresh: bool = False) -> list[Step]:
 and change the render `Step` entry from:
 
 ```python
-        Step("render", _detect_render, _run_render, _summ_render, "Data/books.csv"),
+(Step("render", _detect_render, _run_render, _summ_render, "Data/books.csv"),)
 ```
 
 to:
 
 ```python
-        Step(
-            "render",
-            _detect_render,
-            lambda v: _run_render(v, refresh),
-            _summ_render,
-            "Data/books.csv",
-        ),
+(
+    Step(
+        "render",
+        _detect_render,
+        lambda v: _run_render(v, refresh),
+        _summ_render,
+        "Data/books.csv",
+    ),
+)
 ```
 
 (The `lambda` looks up `_run_render` by name at call time, so tests that monkeypatch `sync._run_render` still take effect.)
@@ -619,13 +617,15 @@ and change the `for step in _steps():` line to:
 (d) Add the `--refresh` option to the `sync` command. Add this parameter after `dry_run` (before the closing `) -> None:`):
 
 ```python
-    refresh: bool = typer.Option(
+refresh: bool = (
+    typer.Option(
         False,
         "--refresh",
         help="Delete Books/ and Authors/ before the render step (a clean rebuild). "
         "Your topics/aliases/cssclasses are cached and restored for books still in "
         "the catalog. Ignored under --dry-run.",
     ),
+)
 ```
 
 and change the final call from:

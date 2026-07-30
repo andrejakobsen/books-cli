@@ -67,7 +67,7 @@ def test_config_reads_importer_sections(tmp_path):
         '[calibre]\nlibrary = "~/Books"\n'
         '[kobo]\ndb = "/tmp/K.sqlite"\n'
         '[audible]\ntranscriber = "openai"\nselect = "all"\n'
-        '[covers]\ninteractive = true\nlimit = 5\n'
+        "[covers]\ninteractive = true\nlimit = 5\n"
     )
     cfg = config.load_config(_write(tmp_path, text))
     assert cfg.calibre.library == "~/Books"
@@ -111,10 +111,10 @@ def test_config_rejects_bad_values_per_key(tmp_path):
         '[covers]\ninteractive = "yes"\nlimit = "lots"\n'
     )
     cfg = config.load_config(_write(tmp_path, text))
-    assert cfg.audible.transcriber == "local"   # invalid choice → default
+    assert cfg.audible.transcriber == "local"  # invalid choice → default
     assert cfg.audible.select == "interactive"  # wrong type → default
-    assert cfg.covers.interactive is False      # wrong type → default
-    assert cfg.covers.limit == 0                # wrong type → default
+    assert cfg.covers.interactive is False  # wrong type → default
+    assert cfg.covers.limit == 0  # wrong type → default
 
 
 def test_config_malformed_toml_falls_back(tmp_path):
@@ -258,12 +258,8 @@ def _parse_sections(data: dict) -> dict:
     aud = _table(data, "audible")
     cov = _table(data, "covers")
     return {
-        "import_": ImportConfig(
-            default=_importer_list_or(imp, "default", DEFAULT_IMPORTERS)
-        ),
-        "calibre": CalibreConfig(
-            library=_nonempty_str_or(cal, "library", DEFAULT_CALIBRE_LIBRARY)
-        ),
+        "import_": ImportConfig(default=_importer_list_or(imp, "default", DEFAULT_IMPORTERS)),
+        "calibre": CalibreConfig(library=_nonempty_str_or(cal, "library", DEFAULT_CALIBRE_LIBRARY)),
         "kobo": KoboConfig(db=_str_or(kob, "db", "")),
         "audible": AudibleConfig(
             transcriber=_choice_or(aud, "transcriber", _TRANSCRIBERS, "local"),
@@ -551,8 +547,12 @@ def test_covers_run_import_maps_config(tmp_path, monkeypatch):
     def fake_run(vault, **kw):
         captured.update(kw)
         return {
-            "by_source": {}, "errored": {}, "scanned": 0,
-            "missing": 0, "fetched": 0, "not_found": 0,
+            "by_source": {},
+            "errored": {},
+            "scanned": 0,
+            "missing": 0,
+            "fetched": 0,
+            "not_found": 0,
         }
 
     monkeypatch.setattr(covers_cmd, "run", fake_run)
@@ -562,7 +562,7 @@ def test_covers_run_import_maps_config(tmp_path, monkeypatch):
 
     assert captured["interactive"] is True
     assert captured["dry_run"] is True
-    assert captured["limit"] is None   # 0 → no limit
+    assert captured["limit"] is None  # 0 → no limit
     assert captured["book_id"] is None
 ```
 
@@ -846,21 +846,33 @@ def _all_steps() -> dict[str, Step]:
             "calibre", _detect_calibre, _run_calibre, _summ_calibre, "~/Calibre Library"
         ),
         "goodreads": Step(
-            "goodreads", _detect_goodreads, _run_goodreads, _summ_goodreads,
+            "goodreads",
+            _detect_goodreads,
+            _run_goodreads,
+            _summ_goodreads,
             _imports_label("goodreads"),
         ),
         "audible": Step("audible", _detect_audible, _run_audible, _summ_audible, "Audible cloud"),
         "covers": Step("covers", _detect_covers, _run_covers, _summ_covers, "Data/books.csv"),
         "kobo": Step(
-            "kobo", _detect_kobo, _run_kobo, _summ_highlights,
+            "kobo",
+            _detect_kobo,
+            _run_kobo,
+            _summ_highlights,
             f"{_imports_label('kobo')} or a mounted Kobo",
         ),
         "highlighted": Step(
-            "highlighted", _detect_highlighted, _run_highlighted, _summ_highlights,
+            "highlighted",
+            _detect_highlighted,
+            _run_highlighted,
+            _summ_highlights,
             _imports_label("highlighted"),
         ),
         "readwise": Step(
-            "readwise", _detect_readwise, _run_readwise, _summ_highlights,
+            "readwise",
+            _detect_readwise,
+            _run_readwise,
+            _summ_highlights,
             _imports_label("readwise"),
         ),
     }
@@ -950,9 +962,7 @@ def _print_summary(results: list[StepResult], *, dry_run: bool = False) -> None:
 # --- Orchestration ----------------------------------------------------------
 
 
-def run_import(
-    vault: Path, *, selection: set[str], dry_run: bool = False
-) -> list[StepResult]:
+def run_import(vault: Path, *, selection: set[str], dry_run: bool = False) -> list[StepResult]:
     """Run the selected importers (with auto-merge) in dependency order.
 
     Returns a ``StepResult`` per step. Failures are recorded and never stop the
@@ -1117,7 +1127,12 @@ def _names(steps):
 def test_no_flags_runs_sync_set_with_one_merge():
     steps = imp.build_steps(set(imp.SYNC_SET))
     assert _names(steps) == [
-        "calibre", "goodreads", "merge", "kobo", "highlighted", "readwise",
+        "calibre",
+        "goodreads",
+        "merge",
+        "kobo",
+        "highlighted",
+        "readwise",
     ]
 
 
@@ -1137,9 +1152,10 @@ def test_enricher_gets_merge_before_and_after():
 def test_selection_from_flags_uses_default_when_empty():
     default = {"calibre", "covers"}
     assert imp._selection_from_flags({"calibre": False}, default) == default
-    assert imp._selection_from_flags(
-        {"calibre": True, "kobo": True}, default
-    ) == {"calibre", "kobo"}
+    assert imp._selection_from_flags({"calibre": True, "kobo": True}, default) == {
+        "calibre",
+        "kobo",
+    }
 
 
 # --- orchestration ----------------------------------------------------------
@@ -1152,6 +1168,7 @@ def _stub_runs(monkeypatch, order, *, failing=None):
             if failing and name == failing:
                 raise RuntimeError(f"{name} boom")
             return {}
+
         return run
 
     for name in ("calibre", "goodreads", "kobo", "highlighted", "readwise", "merge"):
@@ -1160,8 +1177,12 @@ def _stub_runs(monkeypatch, order, *, failing=None):
 
 def _detect_all(monkeypatch):
     for name in (
-        "_detect_calibre", "_detect_goodreads", "_detect_kobo",
-        "_detect_highlighted", "_detect_readwise", "_detect_merge",
+        "_detect_calibre",
+        "_detect_goodreads",
+        "_detect_kobo",
+        "_detect_highlighted",
+        "_detect_readwise",
+        "_detect_merge",
     ):
         monkeypatch.setattr(imp, name, lambda v: "src")
 
@@ -1270,7 +1291,7 @@ CAPABILITIES = (
 In `books/cli.py`, change the `help=` argument on `typer.Typer(...)` to:
 
 ```python
-    help="Tools for books & reading data: import sources into a store, export notes.",
+help = ("Tools for books & reading data: import sources into a store, export notes.",)
 ```
 
 - [ ] **Step 3: Rewrite `tests/commands/test_cli.py` surface assertions**
@@ -1287,8 +1308,18 @@ def test_all_capabilities_registered():
 
 def test_removed_commands_are_gone():
     result = runner.invoke(app, ["--help"])
-    for command in ("calibre", "goodreads", "merge", "kobo", "highlighted",
-                    "readwise", "audible", "covers", "render", "sync"):
+    for command in (
+        "calibre",
+        "goodreads",
+        "merge",
+        "kobo",
+        "highlighted",
+        "readwise",
+        "audible",
+        "covers",
+        "render",
+        "sync",
+    ):
         assert command not in result.output
 
 

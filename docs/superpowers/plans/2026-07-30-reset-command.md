@@ -40,9 +40,7 @@ Add to `tests/core/test_store.py`:
 def test_reset_store_deletes_books_csv_and_highlights(tmp_path):
     vault = tmp_path / "vault"
     store.write_books_csv(vault, [store.BookRow(title="X", authors=["A"])])
-    store.write_highlights(
-        vault, "X - A", "kobo", [store.HighlightRow(text="hi", source="kobo")]
-    )
+    store.write_highlights(vault, "X - A", "kobo", [store.HighlightRow(text="hi", source="kobo")])
     # An orphaned highlight file from a since-changed book_id.
     store.write_highlights(
         vault, "Old Id - A", "kobo", [store.HighlightRow(text="stale", source="kobo")]
@@ -58,9 +56,7 @@ def test_reset_store_deletes_books_csv_and_highlights(tmp_path):
 def test_reset_store_dry_run_deletes_nothing(tmp_path):
     vault = tmp_path / "vault"
     store.write_books_csv(vault, [store.BookRow(title="X", authors=["A"])])
-    store.write_highlights(
-        vault, "X - A", "kobo", [store.HighlightRow(text="hi", source="kobo")]
-    )
+    store.write_highlights(vault, "X - A", "kobo", [store.HighlightRow(text="hi", source="kobo")])
 
     result = store.reset_store(vault, dry_run=True)
 
@@ -156,9 +152,7 @@ from books.core import store
 
 def _seed(vault):
     store.write_books_csv(vault, [store.BookRow(title="X", authors=["A"])])
-    store.write_highlights(
-        vault, "X - A", "kobo", [store.HighlightRow(text="hi", source="kobo")]
-    )
+    store.write_highlights(vault, "X - A", "kobo", [store.HighlightRow(text="hi", source="kobo")])
 
 
 def test_reset_dry_run_deletes_nothing(tmp_path):
@@ -265,8 +259,7 @@ def _plan_lines(vault: Path, plan: dict) -> list[str]:
         lines.append(f"  - {store.books_csv_path(vault)}")
     if plan["highlight_files"]:
         lines.append(
-            f"  - {store.highlights_dir(vault)} "
-            f"({plan['highlight_files']} highlight file(s))"
+            f"  - {store.highlights_dir(vault)} ({plan['highlight_files']} highlight file(s))"
         )
     return lines
 
