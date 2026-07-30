@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import typer
+from rich.markup import escape
 
 from books.commands.covers.images import (
     default_fetch_bytes,
@@ -16,7 +17,7 @@ from books.commands.covers.sources import (
     MissingBook,
     iter_candidates,
 )
-from books.core import config, store
+from books.core import config, store, ui
 
 
 def books_missing_cover(vault: Path) -> list[MissingBook]:
@@ -84,9 +85,13 @@ def pick_cover(candidates, fetch_bytes, *, interactive, prompt):
 
 def _terminal_prompt(cand: Candidate) -> str:
     """Ask the user about one candidate; map keys to an action string."""
-    fmt = f" [{cand.fmt}]" if cand.fmt else ""
-    print(f"  {cand.source}: {cand.label}{fmt}\n    {cand.image_url}")
-    ans = input("  accept [y] / next [n] / skip book [s] / quit [q]? ").strip().lower()
+    fmt = f" · {cand.fmt}" if cand.fmt else ""
+    body = (
+        f"[cyan]{escape(cand.source)}[/cyan]  {escape(cand.label)}[dim]{fmt}[/dim]\n"
+        f"[dim]{escape(cand.image_url)}[/dim]"
+    )
+    ui.console.print(ui.panel(body, title="candidate", style="blue"))
+    ans = ui.prompt_choice("Use this cover?", choices=["y", "n", "s", "q"], default="y")
     return {"y": "accept", "n": "next", "s": "skip", "q": "quit"}.get(ans, "next")
 
 
@@ -118,7 +123,7 @@ def run(vault, *, interactive, dry_run, limit, fetch_json, fetch_bytes, prompt, 
         missing = [m for m in all_missing if m.book_id == book_id]
         scanned = 1
         if not missing:
-            print(
+            ui.warn(
                 f"no cover-less book with book_id {book_id!r} "
                 "(unknown id, or it already has a cover)"
             )
@@ -141,26 +146,29 @@ def run(vault, *, interactive, dry_run, limit, fetch_json, fetch_bytes, prompt, 
     for book in todo:
         stats["processed"] += 1
         if interactive:
-            print(f"\n{book.title} — {', '.join(book.authors) or 'Unknown'}")
+            ui.console.print(
+                f"\n[bold]{escape(book.title)}[/bold] "
+                f"[dim]— {escape(', '.join(book.authors) or 'Unknown')}[/dim]"
+            )
         errored: list[str] = []
         candidates = iter_candidates(book, fetch_json, errored)
         try:
             picked = pick_cover(candidates, fetch_bytes, interactive=interactive, prompt=prompt)
         except QuitRequested:
-            print("Quit.")
+            ui.dim("Quit.")
             break
         finally:
             for src in errored:
                 stats["errored"][src] = stats["errored"].get(src, 0) + 1
         if picked is None:
             stats["not_found"] += 1
-            print(f"  no cover: {book.title}")
+            ui.warn(f"no cover: {book.title}")
             continue
         cand, data = picked
         stats["fetched"] += 1
         stats["by_source"][cand.source] = stats["by_source"].get(cand.source, 0) + 1
         if dry_run:
-            print(f"  [dry-run] {cand.source}: {cand.image_url}")
+            ui.dim(f"[dry-run] {cand.source}: {cand.image_url}")
             continue
         cover_rel = store.stage_cover(vault, "covers", book.book_id, data=data)
         layer[book.book_id] = store.BookRow(
@@ -170,7 +178,7 @@ def run(vault, *, interactive, dry_run, limit, fetch_json, fetch_bytes, prompt, 
             amazon=(book.amazon or ""),
             cover=cover_rel,
         )
-        print(f"  ✓ {cand.source}: {book.title}")
+        ui.success(f"{cand.source}: {book.title}")
 
     if not dry_run:
         store.write_layer(vault, "covers", list(layer.values()))
@@ -241,20 +249,23 @@ def covers_command(
         book_id=book,
     )
     bs = stats["by_source"]
-    typer.echo(
-        f"Scanned {stats['scanned']} books, {stats['missing']} missing covers → "
-        f"{stats['fetched']} fetched "
-        f"(apple {bs['apple']}, google {bs['google']}, "
-        f"openlibrary {bs['openlibrary']}, amazon {bs['amazon']}), "
-        f"{stats['not_found']} not found."
+    errored_by_source = stats.get("errored", {})
+    table = ui.summary_table("Covers")
+    table.add_column("Source")
+    table.add_column("Fetched", justify="right")
+    table.add_column("Errored", justify="right")
+    for src in ("apple", "google", "openlibrary", "amazon"):
+        table.add_row(src, str(bs.get(src, 0)), str(errored_by_source.get(src, 0)))
+    ui.console.print(table)
+
+    ui.info(
+        f"Scanned {stats['scanned']} books · {stats['missing']} missing covers · "
+        f"{stats['fetched']} fetched · {stats['not_found']} not found"
     )
-    errored = {src: n for src, n in stats.get("errored", {}).items() if n}
+    errored = {src: n for src, n in errored_by_source.items() if n}
     if errored:
         detail = ", ".join(f"{src} {n}" for src, n in errored.items())
-        typer.secho(
-            f"⚠ source errors (rate-limited / unreachable, not 'no match'): {detail}",
-            fg=typer.colors.YELLOW,
-        )
+        ui.warn(f"source errors (rate-limited / unreachable, not 'no match'): {detail}")
 
 
 def register(app: typer.Typer) -> None:

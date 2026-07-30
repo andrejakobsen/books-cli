@@ -609,15 +609,15 @@ def test_pick_cover_interactive_quit_raises():
 
 
 def test_terminal_prompt_maps_keys(monkeypatch):
-    answers = iter(["y", "n", "s", "q", "?"])
+    # Invalid input re-asks (Rich validated choice) before a valid key is given.
+    answers = iter(["y", "n", "s", "?", "q"])
     monkeypatch.setattr("builtins.input", lambda *a: next(answers))
     cand = _cand("google")
     assert covers._terminal_prompt(cand) == "accept"
     assert covers._terminal_prompt(cand) == "next"
     assert covers._terminal_prompt(cand) == "skip"
+    # "?" is rejected and re-asked, then "q" -> quit
     assert covers._terminal_prompt(cand) == "quit"
-    # unrecognized input defaults to "next" (safe, non-destructive)
-    assert covers._terminal_prompt(cand) == "next"
 
 
 def _google_volume_with_isbn(isbn):
