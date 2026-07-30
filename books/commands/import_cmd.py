@@ -402,7 +402,7 @@ def import_command(
     """Ingest raw sources into the CSV store.
 
     With no flag the configured default set runs (out of the box: calibre,
-    goodreads, kobo, highlighted, readwise — set `[import].default` in your
+    goodreads, kobo, highlighted, readwise — set the import.default list in your
     config to change it); flags select an exact subset. `--audible`/`--covers`
     run only when named or added to the default. `merge` runs automatically.
     Rendering notes is a separate command (`books export`).
