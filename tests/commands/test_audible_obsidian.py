@@ -823,11 +823,31 @@ def test_cli_enriches_book_end_to_end(monkeypatch, tmp_path):
     monkeypatch.setattr(ao, "_build_cutter", lambda: FakeCutter())
     monkeypatch.setattr(ao, "_build_downloader", lambda client: FakeDownloader())
 
-    result = runner.invoke(app, ["audible"])
+    result = runner.invoke(app, ["audible", "--all"])
     assert result.exit_code == 0, result.output
     hl = store.read_highlights(out, "Stalin - Stephen Kotkin")
     assert hl and hl[0].text == "transcribed text"
     assert "1 book" in result.output
+
+
+def test_cli_off_tty_without_all_errors(tmp_path, monkeypatch):
+    out, book, anns = _catalog_and_library(tmp_path)
+    monkeypatch.setattr(ao, "_build_client", lambda quality="normal": FakeClient([book], anns))
+    # CliRunner is not a tty; no --all/--asin -> clean error, nothing built.
+    result = runner.invoke(app, ["audible", "-o", str(out)])
+    assert result.exit_code != 0
+    assert "--all" in result.output or "--asin" in result.output
+
+
+def test_cli_all_flag_runs_without_picker(tmp_path, monkeypatch):
+    out, book, anns = _catalog_and_library(tmp_path)
+    monkeypatch.setattr(ao, "_build_client", lambda quality="normal": FakeClient([book], anns))
+    monkeypatch.setattr(ao, "_build_transcriber", lambda kind, model: _fake_transcriber)
+    monkeypatch.setattr(ao, "_build_cutter", lambda: FakeCutter())
+    monkeypatch.setattr(ao, "_build_downloader", lambda client: FakeDownloader())
+    result = runner.invoke(app, ["audible", "-o", str(out), "--all"])
+    assert result.exit_code == 0, result.output
+    assert store.read_highlights(out, "Stalin - Stephen Kotkin")  # highlights written
 
 
 def test_cli_dry_run_builds_no_heavy_adapters(monkeypatch, tmp_path):

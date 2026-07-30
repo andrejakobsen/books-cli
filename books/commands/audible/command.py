@@ -514,6 +514,12 @@ def audible_command(
     limit: int | None = typer.Option(
         None, "--limit", help="Process at most this many matched books."
     ),
+    all_books: bool = typer.Option(
+        False,
+        "--all",
+        help="Transcribe every book in your Audible library (skip the interactive "
+        "picker). Required when there is no interactive terminal.",
+    ),
     asin: str | None = typer.Option(
         None, "--asin", help="Only process the book with this Audible ASIN."
     ),
@@ -553,17 +559,57 @@ def audible_command(
 
     vault = config.resolve_vault(output)
     cache_dir = config.resolve_imports("audible", output) / "cache"
+    show_cost = transcriber == "openai"
 
     client = _build_client(quality)
+
     if dry_run:
-        downloader = cutter = transcribe_fn = None
-    else:
-        transcribe_fn = _build_transcriber(transcriber, model)
-        cutter = _build_cutter()
-        downloader = _build_downloader(client)
+        stats = run(
+            vault,
+            client=client,
+            downloader=None,
+            cutter=None,
+            transcriber=None,
+            cache_dir=cache_dir,
+            clip_window=clip_window,
+            limit=limit,
+            asin=asin,
+            dry_run=True,
+            show_cost=show_cost,
+            echo=ui.info,
+        )
+        secs = stats["est_seconds"]
+        cost = (
+            f" (~${secs * COST_PER_SECOND:.2f} @ ${COST_PER_SECOND:.5f}/sec)" if show_cost else ""
+        )
+        ui.info(
+            f"Dry run: {stats['matched']} matched, {stats['new']} new (audiobook-only). "
+            f"Estimated transcription: ~{secs / 60:.1f} min{cost}."
+        )
+        return
+
+    # Choose which books to process. --asin and --all skip the picker; otherwise an
+    # interactive terminal is required (no surprise bulk transcription runs).
+    interactive = not (asin or all_books)
+    if interactive and not ui.console.is_terminal:
+        raise typer.BadParameter("No interactive terminal — pass --all or --asin.")
+
+    catalog = store.Catalog(vault)
+    with ui.progress("Fetching annotations from Audible…") as prog:
+        candidates = build_candidates(client, catalog, cache_dir, asin, describe=prog.describe)
+
+    selected = select_books(candidates) if interactive else candidates
+    if not selected:
+        ui.info("No books selected.")
+        return
+
+    transcribe_fn = _build_transcriber(transcriber, model)
+    cutter = _build_cutter()
+    downloader = _build_downloader(client)
 
     stats = run(
         vault,
+        selected=selected,
         client=client,
         downloader=downloader,
         cutter=cutter,
@@ -571,27 +617,16 @@ def audible_command(
         cache_dir=cache_dir,
         clip_window=clip_window,
         limit=limit,
-        asin=asin,
-        dry_run=dry_run,
         echo=ui.info,
     )
 
-    if dry_run:
-        secs = stats["est_seconds"]
-        ui.info(
-            f"Dry run: {stats['skipped']} book(s) skipped — no book match. "
-            f"Estimated transcription: ~{secs / 60:.1f} min "
-            f"(~${secs * COST_PER_SECOND:.2f} @ ${COST_PER_SECOND:.5f}/sec) "
-            f"across all listed clips."
-        )
-        return
     books_word = "book" if stats["books"] == 1 else "books"
-    skip = store.skipped_note(stats["skipped"])
     fail = f", {stats['failed']} failed" if stats.get("failed") else ""
     ui.info(
-        f"Done. {stats['books']} {books_word}{skip}, {stats['entries']} clips, "
-        f"{stats['downloaded']} downloaded, {stats['transcribed']} transcribed"
-        f"{fail}.\n"
+        f"Done. {stats['books']} {books_word} written, "
+        f"{stats['new']} new (audiobook-only, staged for the next merge/render), "
+        f"{stats['entries']} clips, {stats['downloaded']} downloaded, "
+        f"{stats['transcribed']} transcribed{fail}.\n"
         f"Output: {vault}"
     )
 
