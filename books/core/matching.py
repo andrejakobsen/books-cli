@@ -58,6 +58,8 @@ def author_key(name: str) -> tuple[str, str]:
     Handles both "First Last" and "Last, First" orderings.
     """
     name = fold(name)
+    # Split glued initials so "S.C.M. Paine" tokenizes like "S. C. M. Paine".
+    name = name.replace(".", ". ")
     if "," in name:
         last, _, first = name.partition(",")
         tokens = first.split() + last.split()
