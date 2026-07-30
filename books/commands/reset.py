@@ -85,7 +85,8 @@ def reset_command(
     removed: list[str] = []
     if result["books_csv"]:
         removed.append("books.csv")
-    removed.append(f"{result['highlight_files']} highlight file(s)")
+    if result["highlight_files"]:
+        removed.append(f"{result['highlight_files']} highlight file(s)")
     ui.success(f"Reset: removed {' and '.join(removed)}. Run `books sync` to rebuild.")
 
 
