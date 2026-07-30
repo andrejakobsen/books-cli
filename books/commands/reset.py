@@ -61,7 +61,10 @@ def reset_command(
         ui.info(f"Nothing to reset under {store.data_dir(vault)}.")
         return
 
-    ui.info("The following will be deleted:")
+    if dry_run:
+        ui.info("The following would be deleted (dry run):")
+    else:
+        ui.info("The following will be deleted:")
     for line in _plan_lines(vault, plan):
         ui.info(line)
 
@@ -79,11 +82,11 @@ def reset_command(
             return
 
     result = store.reset_store(vault)
-    ui.success(
-        f"Reset: removed books.csv={result['books_csv']}, "
-        f"{result['highlight_files']} highlight file(s). "
-        f"Run `books sync` to rebuild."
-    )
+    removed: list[str] = []
+    if result["books_csv"]:
+        removed.append("books.csv")
+    removed.append(f"{result['highlight_files']} highlight file(s)")
+    ui.success(f"Reset: removed {' and '.join(removed)}. Run `books sync` to rebuild.")
 
 
 def register(app: typer.Typer) -> None:

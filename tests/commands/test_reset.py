@@ -21,6 +21,7 @@ def test_reset_dry_run_deletes_nothing(tmp_path):
     assert result.exit_code == 0, result.output
     assert store.books_csv_path(vault).exists()
     assert store.highlights_dir(vault).exists()
+    assert "would be deleted (dry run)" in " ".join(result.output.split())
 
 
 def test_reset_yes_deletes(tmp_path):
@@ -32,6 +33,10 @@ def test_reset_yes_deletes(tmp_path):
     assert result.exit_code == 0, result.output
     assert not store.books_csv_path(vault).exists()
     assert not store.highlights_dir(vault).exists()
+    flat = " ".join(result.output.split())
+    assert "removed books.csv and 1 highlight file(s)" in flat
+    assert "Run" in flat
+    assert "sync" in flat
 
 
 def test_reset_non_tty_without_yes_errors(tmp_path):
@@ -75,3 +80,4 @@ def test_reset_noop_when_empty(tmp_path):
     result = CliRunner().invoke(app, ["reset", "--output", str(vault), "--yes"])
 
     assert result.exit_code == 0, result.output
+    assert "Nothing to reset" in " ".join(result.output.split())
