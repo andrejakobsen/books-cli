@@ -78,26 +78,47 @@ is why the zero-config commands just work.
 ## Commands
 
 With sources in place and a configured vault, none of these need arguments.
+The commands fall into a few groups that mirror the pipeline.
+
+**Pipeline (run it all)**
 
 | Command | What it does |
 | --- | --- |
 | **`sync`** | Runs the whole pipeline: `calibre` → `goodreads` → `merge` → `kobo` → `highlighted` → `readwise` → `render`. |
+
+**Metadata importers → catalog** (write to `Data/Sources/`)
+
+| Command | What it does |
+| --- | --- |
 | **`calibre`** | Reads a Calibre library (`--library`, default `~/Calibre Library`) into the `calibre` source layer, staging covers. |
 | **`goodreads`** | Reads a Goodreads CSV (all shelves) into the `goodreads` source layer, carrying reviews into the `## Review` section. |
 | **`merge`** | Clusters the per-source layers under `Data/Sources/` into the merged catalog `Data/books.csv`. Run after the metadata importers, before `render`. |
-| **`kobo`** | Imports Kobo highlights & notes into the highlights store. Reads a mounted device (snapshotted read-only) or a `*.sqlite` in `Data/Imports/kobo`; override with `--db`. |
-| **`highlighted`** | Imports highlights from *physical* books via the [Highlighted](https://highlighted.app) app (imports every CSV in the folder). |
-| **`readwise`** | Imports Readwise highlights (newest CSV in the folder) into the highlights store. |
-| **`render`** | Renders the CSV store (`Data/books.csv` + `Data/Highlights/`) into book notes. See [Rendering](#rendering). |
-| **`covers`** | Finds catalog books with no cover and fetches one (Apple Books → Google Books → Open Library → Amazon). Not in `sync`. |
-| **`audible`** | Imports Audible bookmarks & clips, transcribed to text. Needs the `[audible]` extra + `ffmpeg`; not in `sync`. See [Audible](#audible). |
 
-The importers are **CSV writers** — they never touch your notes. `calibre` and
-`goodreads` write metadata layers under `Data/Sources/`; the highlight importers
-(`kobo`, `highlighted`, `readwise`) resolve each book against the merged catalog
-and write into `Data/Highlights/`. So run `merge` (or `sync`) before the
-highlight importers. Highlights carry their source through the store, so a book
-fed by several sources shows them grouped under per-source subheadings.
+**Highlight importers** (resolve against the catalog, write to `Data/Highlights/`)
+
+| Command | What it does |
+| --- | --- |
+| **`kobo`** | Imports Kobo highlights & notes. Reads a mounted device (snapshotted read-only) or a `*.sqlite` in `Data/Imports/kobo`; override with `--db`. |
+| **`highlighted`** | Imports highlights from *physical* books via the [Highlighted](https://highlighted.app) app (imports every CSV in the folder). |
+| **`readwise`** | Imports Readwise highlights (newest CSV in the folder). |
+
+**Render**
+
+| Command | What it does |
+| --- | --- |
+| **`render`** | Renders the CSV store (`Data/books.csv` + `Data/Highlights/`) into book notes. See [Rendering](#rendering). |
+
+**Enrichment** (run manually after `merge`, then re-`merge` + `render`; not in `sync`)
+
+| Command | What it does |
+| --- | --- |
+| **`covers`** | Finds catalog books with no cover and fetches one (Apple Books → Google Books → Open Library → Amazon). |
+| **`audible`** | Imports Audible bookmarks & clips, transcribed to text. Needs the `[audible]` extra + `ffmpeg`. See [Audible](#audible). |
+
+All importers are **CSV writers** — they never touch your notes. Because the
+highlight importers resolve each book against the merged catalog, run `merge`
+(or `sync`) before them. Highlights carry their source through the store, so a
+book fed by several sources shows them grouped under per-source subheadings.
 
 Override the defaults with explicit paths:
 
