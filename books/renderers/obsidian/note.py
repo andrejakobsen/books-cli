@@ -210,24 +210,27 @@ def render(vault: Path) -> dict:
     rows = list(store.read_books_csv(vault))
     with ui.progress("Rendering notes", total=len(rows)) as prog:
         for row in rows:
-            prog.advance(0)
-            if not row.book_id:
-                continue
-            highlights = store.read_highlights(vault, row.book_id)
+            prog.describe(f"Rendering {row.book_id or row.title}")
             try:
-                render_note(vault, row, highlights)
-            except Exception as exc:  # continue-on-error per book
-                stats["failed"] += 1
-                ui.warn(f"{row.book_id}: {exc}")
-                continue
-            stats["notes"] += 1
-            stats["highlights"] += len(highlights)
-            if compose_review(row.review, row.private_notes):
-                stats["reviews"] += 1
-            for author in row.authors:
-                if author and author not in seen_authors:
-                    write_stub(authors_dir, author, "author")
-                    seen_authors.add(author)
+                if not row.book_id:
+                    continue
+                highlights = store.read_highlights(vault, row.book_id)
+                try:
+                    render_note(vault, row, highlights)
+                except Exception as exc:  # continue-on-error per book
+                    stats["failed"] += 1
+                    ui.warn(f"{row.book_id}: {exc}")
+                    continue
+                stats["notes"] += 1
+                stats["highlights"] += len(highlights)
+                if compose_review(row.review, row.private_notes):
+                    stats["reviews"] += 1
+                for author in row.authors:
+                    if author and author not in seen_authors:
+                        write_stub(authors_dir, author, "author")
+                        seen_authors.add(author)
+            finally:
+                prog.advance()
     stats["authors"] = len(seen_authors)
     return stats
 
