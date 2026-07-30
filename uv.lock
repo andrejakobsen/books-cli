@@ -190,6 +190,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "python-frontmatter" },
     { name = "rapidfuzz" },
+    { name = "rich" },
     { name = "ruamel-yaml" },
     { name = "typer" },
 ]
@@ -223,6 +224,7 @@ requires-dist = [
     { name = "pydub", marker = "extra == 'audible'", specifier = ">=0.25" },
     { name = "python-frontmatter", specifier = ">=1.1" },
     { name = "rapidfuzz", specifier = ">=3.6" },
+    { name = "rich", specifier = ">=13" },
     { name = "ruamel-yaml", specifier = ">=0.18" },
     { name = "speechrecognition", marker = "extra == 'audible'", specifier = ">=3.10" },
     { name = "typer", specifier = ">=0.12" },
