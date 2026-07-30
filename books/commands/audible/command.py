@@ -148,19 +148,37 @@ def uncached(annotations: list[Annotation], clips: dict) -> list[Annotation]:
     return [a for a in annotations if a.id not in clips]
 
 
-def book_highlight_rows(clips: dict) -> list[store.HighlightRow]:
+def book_highlight_rows(clips: dict, valid_ids: set | None = None) -> list[store.HighlightRow]:
     """Map a book's cached clips into audible-source HighlightRows.
 
     Each clip record becomes a Highlight (:func:`record_to_highlight`); empty-text
     records are dropped. The cache key (the Audible annotation id) is the stable
     ``annotation_id`` so re-runs replace cleanly.
+
+    ``valid_ids`` (the current run's annotation ids) prunes stale cache entries: a
+    ``cache.json`` written before the twin-bookmark/duplicate-note dedup still holds
+    transcriptions for ids that are no longer annotations, and emitting them would
+    resurface the very duplicates the dedup removes. When ``valid_ids`` is None all
+    cached records are emitted (used where the caller has no annotation list).
     """
     rows: list[store.HighlightRow] = []
     for ann_id, rec in clips.items():
+        if valid_ids is not None and ann_id not in valid_ids:
+            continue
         h = record_to_highlight(rec)
         if h.text:
             rows.append(store.highlight_to_row(h, "audible", ann_id))
     return rows
+
+
+def _is_text_only(ann: Annotation) -> bool:
+    """True for a standalone note: it has an explicit zero-length range (end == start).
+
+    Such an annotation carries user text but no chosen audio span, so it is rendered
+    from its text alone — never downloaded, cut, or transcribed. A clip (end > start)
+    and a legacy point bookmark (end is None) are both False.
+    """
+    return ann.end_ms is not None and ann.end_ms <= ann.start_ms
 
 
 def _clip_bounds(ann: Annotation, clip_window: int) -> tuple[int, int]:
@@ -263,23 +281,31 @@ def run(
 
                 if new:
                     chapters = client.chapters(book.asin)
+                    # Text-only notes (end == start) have no audio range: their text
+                    # IS the highlight, so they need no download/cut/transcribe.
+                    needs_audio = any(not _is_text_only(a) for a in new)
                     with tempfile.TemporaryDirectory() as td:
                         tmp = Path(td)
-                        prog.status(f"{book.title} — {authors} · downloading")
-                        audio = downloader.download(book.asin, tmp)
-                        stats["downloaded"] += 1
+                        audio = None
+                        if needs_audio:
+                            prog.status(f"{book.title} — {authors} · downloading")
+                            audio = downloader.download(book.asin, tmp)
+                            stats["downloaded"] += 1
                         for i, ann in enumerate(new, start=1):
-                            prog.status(
-                                f"{book.title} — {authors} · transcribing clip {i}/{len(new)}"
-                            )
-                            start, end = _clip_bounds(ann, clip_window)
-                            clip_path = cutter.cut(audio, start, end, tmp / f"{ann.id}.wav")
-                            text = transcriber(clip_path)
+                            if _is_text_only(ann):
+                                text = ""  # note text becomes the body in record_to_highlight
+                            else:
+                                prog.status(
+                                    f"{book.title} — {authors} · transcribing clip {i}/{len(new)}"
+                                )
+                                start, end = _clip_bounds(ann, clip_window)
+                                clip_path = cutter.cut(audio, start, end, tmp / f"{ann.id}.wav")
+                                text = transcriber(clip_path)
+                                stats["transcribed"] += 1
                             clips[ann.id] = annotation_to_record(ann, text, chapters)
-                            stats["transcribed"] += 1
                     save_cache(cache_path, cache)
 
-                rows = book_highlight_rows(clips)
+                rows = book_highlight_rows(clips, valid_ids={a.id for a in annotations})
                 if not rows:
                     continue
                 store.write_highlights(vault, book_id, "audible", rows)

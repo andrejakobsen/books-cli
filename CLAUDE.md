@@ -90,14 +90,21 @@ notes; note creation belongs solely to it.
   annotations, downloads the audiobook, and uses **ffmpeg** to decrypt (AAXC via
   `-audible_key`/`-audible_iv`) and cut each clip, then transcribes it with a pluggable
   backend (`--transcriber local|openai|google`, default `local` faster-whisper). Clips use
-  their own start→end; a point bookmark (no end) uses `--clip-window` seconds ending at the
-  mark. A clip's own **title and note** (parsed from the sidecar's nested
-  `metadata.title`/`metadata.note`, falling back to a note record's top-level `text`) are
+  their own start→end. **The sidecar is de-duplicated** (`annotations_from_sidecar`): making
+  a clip auto-creates a twin `audible.bookmark` at the same position, and a note is stored
+  BOTH on the clip (`metadata.note`) AND as a separate `audible.note` record — so each
+  position is collapsed to **one** annotation. Bookmarks are dropped entirely (twins and
+  lone marks); a clip keeps its `metadata.title`/`metadata.note` (adopting a same-position
+  note record's `text` when it has no `metadata.note`); a standalone note with no clip at
+  its position is kept as a *text-only* annotation (`end == start`, so `run` renders it from
+  its text without downloading/cutting/transcribing). A clip's own **title and note** are
   merged (title first, then note body) into the highlight's nested blockquote, with their
   `#tag`/`@link` markers parsed out and pooled (same convention as Kobo). Transcriptions
   are cached in `<vault>/Data/Imports/audible/cache.json` (keyed by ASIN + annotation id),
   so re-runs re-render for free and only download books with new clips; downloaded audio is
-  written to a temp dir and deleted. Runs after `merge`; **not** part of `sync`. Lives as a
+  written to a temp dir and deleted. `book_highlight_rows` renders only ids present in the
+  current run's annotations, so a cache written before this dedup never resurfaces the old
+  duplicate rows. Runs after `merge`; **not** part of `sync`. Lives as a
   package (`command.py` + `models.py` + `client.py` + `transcribe.py`), with the shared
   dataclasses (`Annotation`, `Chapter`, `DownloadedAudio`, `LibraryBook`) in `models.py`.
 - `books/commands/sync.py` → `sync` — master orchestrator that runs the full two-phase pipeline in dependency order using each command's default options: `calibre` → `goodreads` → `merge` → `kobo` → `highlighted` → `readwise` → `render` (covers and audible are **not** included). The source-detection steps are skipped when their source is absent (calibre: `~/Calibre Library` exists; goodreads/highlighted/readwise: a `*.csv` in the `Data/Imports/<name>` folder; kobo: a mounted device or a `*.sqlite` in `Data/Imports/kobo`); the `merge` step runs when any source layer exists (or calibre/goodreads were detected, so `--dry-run` predicts it), and `render` runs when `Data/books.csv` exists (or `merge` would run). Each step calls the module's core function directly (`convert`/`export_obsidian`/`store.merge`/`render.render`) — no shelling out. Failures are reported but never stop the remaining steps (continue-on-error); a colored per-step + summary report is printed via `typer.secho`. `--output` overrides the vault; `--dry-run` prints the detection plan (with each step's source location) without writing. Creates no notes itself — note creation is delegated to the `render` step.

@@ -91,35 +91,91 @@ def chapters_from_metadata(meta: dict) -> list[Chapter]:
     return chapters
 
 
-def annotations_from_sidecar(payload: dict) -> list[Annotation]:
-    """Parse the CDE sidecar payload into Annotations (clips + bookmarks + notes).
+def _note_text(rec: dict) -> str | None:
+    """Read a note record's text (nested `metadata.note` or top-level `text`)."""
+    meta = rec.get("metadata")
+    meta = meta if isinstance(meta, dict) else {}
+    return (meta.get("note") or rec.get("text") or "").strip() or None
 
-    A record with an endPosition is a clip (has duration); one without is a point
-    bookmark. A clip carries its title and note under a nested `metadata` object
-    (`metadata.title` / `metadata.note`); a standalone `audible.note` record uses a
-    top-level `text` field instead. Both shapes are read defensively.
+
+def annotations_from_sidecar(payload: dict) -> list[Annotation]:
+    """Parse the CDE sidecar payload into de-duplicated Annotations.
+
+    Audible's sidecar is noisy: making a clip auto-creates a **twin bookmark** at
+    the same position, and adding a note stores that text BOTH on the clip
+    (`metadata.note`) AND as a separate `audible.note` record. Rendered naively
+    that yields two or three highlights per annotation. So this collapses each
+    position to at most one annotation:
+
+    - **Bookmarks are dropped entirely** (twins and lone marks alike) — they carry
+      no user text and no chosen audio range.
+    - **Clips are kept**, carrying their `metadata.title` and `metadata.note`. When
+      a clip has no `metadata.note` but a note record sits at the same position, the
+      clip adopts that note's text.
+    - A **standalone note** (no clip at its position) is kept as a *text-only*
+      annotation: its `end_ms` is pinned to `start_ms` so :func:`run` knows there is
+      no audio range to transcribe — the note text itself is the highlight.
+
+    `#tag`/`@link` markers inside title/note are left intact here and parsed later
+    by ``record_to_highlight`` (same convention as Kobo).
     """
     records = ((payload or {}).get("payload") or {}).get("records") or []
+
+    # Note text pooled by position, so a clip can adopt a same-position note.
+    clip_positions = {
+        r.get("startPosition")
+        for r in records
+        if r.get("type") == "audible.clip" and r.get("startPosition") is not None
+    }
+    note_text_by_pos: dict = {}
+    for r in records:
+        if r.get("type") == "audible.note" and r.get("startPosition") is not None:
+            text = _note_text(r)
+            if text:
+                note_text_by_pos.setdefault(r.get("startPosition"), text)
+
     out: list[Annotation] = []
     for rec in records:
         ann_id = rec.get("annotationId") or rec.get("id")
-        if not ann_id or rec.get("startPosition") is None:
+        pos = rec.get("startPosition")
+        if not ann_id or pos is None:
             continue
-        end = rec.get("endPosition")
-        meta = rec.get("metadata")
-        meta = meta if isinstance(meta, dict) else {}
-        title = (meta.get("title") or "").strip() or None
-        note = (meta.get("note") or rec.get("text") or "").strip() or None
-        out.append(
-            Annotation(
-                id=str(ann_id),
-                start_ms=_to_ms(rec.get("startPosition")),
-                end_ms=None if end is None else _to_ms(end),
-                title=title,
-                note=note,
-                date=(rec.get("creationTime") or "").strip() or None,
+        kind = rec.get("type")
+        date = (rec.get("creationTime") or "").strip() or None
+        start = _to_ms(pos)
+
+        if kind == "audible.clip":
+            meta = rec.get("metadata")
+            meta = meta if isinstance(meta, dict) else {}
+            title = (meta.get("title") or "").strip() or None
+            note = (meta.get("note") or "").strip() or None
+            if note is None:
+                note = note_text_by_pos.get(pos)  # adopt a same-position note
+            end = rec.get("endPosition")
+            out.append(
+                Annotation(
+                    id=str(ann_id),
+                    start_ms=start,
+                    end_ms=None if end is None else _to_ms(end),
+                    title=title,
+                    note=note,
+                    date=date,
+                )
             )
-        )
+        elif kind == "audible.note":
+            if pos in clip_positions:
+                continue  # carried by the clip at this position — drop the duplicate
+            out.append(
+                Annotation(
+                    id=str(ann_id),
+                    start_ms=start,
+                    end_ms=start,  # text-only: no audio range to transcribe
+                    title=None,
+                    note=note_text_by_pos.get(pos),
+                    date=date,
+                )
+            )
+        # else: audible.bookmark / audible.last_heard / unknown -> dropped
     return out
 
 

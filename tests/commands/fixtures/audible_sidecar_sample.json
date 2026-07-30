@@ -1,0 +1,139 @@
+{
+  "md5": "fixture",
+  "payload": {
+    "type": "AUDI",
+    "key": "B0GWFB1KLJ",
+    "records": [
+      {
+        "startPosition": "4654633",
+        "type": "audible.last_heard",
+        "creationTime": "2026-07-28 07:38:09.0"
+      },
+      {
+        "startPosition": "1181098",
+        "type": "audible.bookmark",
+        "annotationId": "a1A8P2UVR0GZ0B",
+        "lastModificationTime": "2026-07-28 13:01:20.0",
+        "creationTime": "2026-07-28 13:00:54.0"
+      },
+      {
+        "startPosition": "123448",
+        "type": "audible.bookmark",
+        "annotationId": "aF2MBCC04UCLS",
+        "lastModificationTime": "2026-07-28 12:19:20.0",
+        "creationTime": "2026-07-28 12:19:07.0"
+      },
+      {
+        "metadata": {
+          "c_version": "132901621",
+          "title": "Modernity as realpolitik"
+        },
+        "startPosition": "123448",
+        "type": "audible.clip",
+        "annotationId": "a2C45KLXAFKCAC",
+        "lastModificationTime": "2026-07-28 12:19:19.0",
+        "endPosition": "153448",
+        "creationTime": "2026-07-28 12:19:07.0"
+      },
+      {
+        "metadata": {
+          "c_version": "132901621",
+          "title": "@westernization"
+        },
+        "startPosition": "1284716",
+        "type": "audible.clip",
+        "annotationId": "a1CFNDRSEH005Q",
+        "lastModificationTime": "2026-07-28 13:06:08.0",
+        "endPosition": "1314716",
+        "creationTime": "2026-07-28 13:05:52.0"
+      },
+      {
+        "startPosition": "1284716",
+        "type": "audible.bookmark",
+        "annotationId": "a2RRO2NIFVL14S",
+        "lastModificationTime": "2026-07-28 13:06:09.0",
+        "creationTime": "2026-07-28 13:05:53.0"
+      },
+      {
+        "startPosition": "1584982",
+        "type": "audible.bookmark",
+        "annotationId": "a2QDEM585VL2DS",
+        "lastModificationTime": "2026-07-28 13:14:27.0",
+        "creationTime": "2026-07-28 13:12:44.0"
+      },
+      {
+        "text": "@modernization @geopolitics",
+        "startPosition": "1584982",
+        "type": "audible.note",
+        "annotationId": "a27LJ1KRL36TNM",
+        "lastModificationTime": "2026-07-28 13:14:27.0",
+        "endPosition": "1584982",
+        "creationTime": "2026-07-28 13:12:44.0"
+      },
+      {
+        "metadata": {
+          "note": "@modernization @geopolitics",
+          "c_version": "132901621",
+          "title": "Their plan for modernization"
+        },
+        "startPosition": "1584982",
+        "type": "audible.clip",
+        "annotationId": "a1M9448UCP12PO",
+        "lastModificationTime": "2026-07-28 13:14:27.0",
+        "endPosition": "1627134",
+        "creationTime": "2026-07-28 13:12:44.0"
+      },
+      {
+        "text": "Great discussion on proximate and underlying causes",
+        "startPosition": "2509669",
+        "type": "audible.note",
+        "annotationId": "a3VG15S9JE5GXW",
+        "lastModificationTime": "2026-07-29 10:18:53.0",
+        "endPosition": "2509669",
+        "creationTime": "2026-07-29 10:18:53.0"
+      },
+      {
+        "startPosition": "2509669",
+        "type": "audible.bookmark",
+        "annotationId": "aZYSXGAPERG5E",
+        "lastModificationTime": "2026-07-29 10:18:53.0",
+        "creationTime": "2026-07-29 10:18:53.0"
+      },
+      {
+        "metadata": {
+          "note": "Great discussion on proximate and underlying causes",
+          "c_version": "132901621",
+          "title": "@causality @geopolitics"
+        },
+        "startPosition": "2509669",
+        "type": "audible.clip",
+        "annotationId": "a24KW62IU3IU7U",
+        "lastModificationTime": "2026-07-29 10:18:53.0",
+        "endPosition": "2610427",
+        "creationTime": "2026-07-29 10:18:53.0"
+      },
+      {
+        "text": "Interesting way to look at underlying causes narrowing the possible proximate causes.",
+        "startPosition": "3134197",
+        "type": "audible.note",
+        "annotationId": "a5O3CD99ZPIPI",
+        "lastModificationTime": "2026-07-29 15:30:39.0",
+        "endPosition": "3134197",
+        "creationTime": "2026-07-29 15:30:39.0"
+      },
+      {
+        "metadata": {
+          "note": "Interesting way to look at underlying causes narrowing the possible proximate causes.",
+          "c_version": "132901621",
+          "title": "@causality"
+        },
+        "startPosition": "3134197",
+        "type": "audible.clip",
+        "annotationId": "a3O1Z3YFAN0SNA",
+        "lastModificationTime": "2026-07-29 15:30:38.0",
+        "endPosition": "3164197",
+        "creationTime": "2026-07-29 15:29:50.0"
+      }
+    ]
+  }
+}

@@ -1,15 +1,19 @@
 """Tests for the Audible clips importer."""
 
+import json
 from pathlib import Path
 
 from typer.testing import CliRunner
 
 from books.cli import app
+from books.commands.audible import client as ac
 from books.commands.audible import command as ao
 from books.commands.audible import models
 from books.core import store
 
 runner = CliRunner()
+
+FIXTURES = Path(__file__).parent / "fixtures"
 
 
 def _seed_catalog(vault, rows):
@@ -205,6 +209,19 @@ def test_book_highlight_rows_maps_clips_with_annotation_ids():
     assert rows[0].source == "audible"
     assert rows[0].text == "First clip."
     assert rows[0].chapter_title == "The Rise"
+
+
+def test_book_highlight_rows_prunes_stale_cache_ids():
+    # A cache left over from before the twin-bookmark/duplicate-note fix still holds
+    # transcriptions for ids that are no longer valid annotations. When the caller
+    # passes the current annotation ids, only those are emitted (no stale dupes).
+    clips = {
+        "clip1": {"text": "Real clip.", "start_ms": 1000, "end_ms": 2000},
+        "twin_bookmark": {"text": "Window before the mark.", "start_ms": 0, "end_ms": 1000},
+        "dup_note": {"text": "A duplicated note.", "start_ms": 1000, "end_ms": 1000},
+    }
+    rows = ao.book_highlight_rows(clips, valid_ids={"clip1"})
+    assert [r.annotation_id for r in rows] == ["clip1"]
 
 
 class FakeClient:
@@ -422,6 +439,137 @@ def test_run_point_bookmark_uses_window_before_mark(tmp_path):
     )
     # point bookmark: window ends at the mark, starts clip_window seconds earlier
     assert cut.calls == [("B0STALIN.aaxc", 60_000, 90_000)]
+
+
+def test_run_text_only_note_is_not_transcribed(tmp_path):
+    # A standalone note (end == start, no audio range) must NOT be cut/transcribed;
+    # its text is the highlight body directly.
+    out = tmp_path / "V"
+    out.mkdir(parents=True)
+    _seed_catalog(
+        out,
+        [
+            store.BookRow(
+                book_id="Stalin - Stephen Kotkin",
+                title="Stalin",
+                authors=["Stephen Kotkin"],
+                amazon="B0STALIN",
+            )
+        ],
+    )
+    book = models.LibraryBook(asin="B0STALIN", title="Stalin", authors=["Stephen Kotkin"])
+    anns = {
+        "B0STALIN": [
+            models.Annotation(id="n1", start_ms=90_000, end_ms=90_000, note="A pure thought")
+        ]
+    }
+    cut = FakeCutter()
+    ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=FakeDownloader(),
+        cutter=cut,
+        transcriber=_fake_transcriber,
+        cache_path=out / "c.json",
+        clip_window=30,
+    )
+    assert cut.calls == []  # never cut a zero-length range
+    hl = store.read_highlights(out, "Stalin - Stephen Kotkin")
+    assert [r.text for r in hl] == ["A pure thought"]
+
+
+def test_run_prunes_stale_cache_from_before_the_fix(tmp_path):
+    # Regression: a cache.json written before the dedup fix holds transcriptions for
+    # twin bookmarks / duplicate notes. A fresh run (whose annotations no longer
+    # include those ids) must not resurface them as duplicate highlights.
+    out = tmp_path / "V"
+    out.mkdir(parents=True)
+    _seed_catalog(
+        out,
+        [
+            store.BookRow(
+                book_id="Stalin - Stephen Kotkin",
+                title="Stalin",
+                authors=["Stephen Kotkin"],
+                amazon="B0STALIN",
+            )
+        ],
+    )
+    cache_path = out / "Data" / "Imports" / "audible" / "cache.json"
+    ao.save_cache(
+        cache_path,
+        {
+            "B0STALIN": {
+                "title": "Stalin",
+                "clips": {
+                    "clip1": {"text": "Real clip.", "start_ms": 1000, "end_ms": 2000},
+                    "twin_bm": {"text": "stale window", "start_ms": 0, "end_ms": 1000},
+                    "dup_note": {"text": "stale note", "start_ms": 1000, "end_ms": 1000},
+                },
+            }
+        },
+    )
+    book = models.LibraryBook(asin="B0STALIN", title="Stalin", authors=["Stephen Kotkin"])
+    # The deduped client only returns the real clip now.
+    anns = {"B0STALIN": [models.Annotation(id="clip1", start_ms=1000, end_ms=2000)]}
+    down = FakeDownloader()
+    ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=down,
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=cache_path,
+        clip_window=30,
+    )
+    assert down.calls == []  # clip1 already cached, nothing new to download
+    hl = store.read_highlights(out, "Stalin - Stephen Kotkin")
+    assert [r.annotation_id for r in hl] == ["clip1"]  # stale ids not resurfaced
+
+
+def test_run_real_sidecar_produces_one_highlight_per_annotation(tmp_path):
+    # End-to-end against a real (trimmed) Audible sidecar: 5 clips + twin bookmarks
+    # + duplicate note records must collapse to exactly 5 highlights, each carrying
+    # its merged note with @links parsed out — no duplicates.
+    out = tmp_path / "V"
+    out.mkdir(parents=True)
+    _seed_catalog(
+        out,
+        [
+            store.BookRow(
+                book_id="The Japanese Empire - Author",
+                title="The Japanese Empire",
+                authors=["Author"],
+                amazon="B0GWFB1KLJ",
+            )
+        ],
+    )
+    payload = json.loads((FIXTURES / "audible_sidecar_sample.json").read_text(encoding="utf-8"))
+    anns = ac.annotations_from_sidecar(payload)
+    book = models.LibraryBook(asin="B0GWFB1KLJ", title="The Japanese Empire", authors=["Author"])
+    ao.run(
+        out,
+        client=FakeClient([book], {"B0GWFB1KLJ": anns}),
+        downloader=FakeDownloader(),
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=out / "c.json",
+        clip_window=30,
+    )
+    hl = store.read_highlights(out, "The Japanese Empire - Author")
+    assert len(hl) == 5  # one per clip, no twin/duplicate highlights
+    assert len({r.annotation_id for r in hl}) == 5  # no duplicate ids
+
+    by_id = {r.annotation_id: r for r in hl}
+    # "@causality" title + "Interesting way..." note -> link pooled, note is the body.
+    causality = by_id["a3O1Z3YFAN0SNA"]
+    assert "Causality" in causality.links
+    assert causality.note.startswith("Interesting way to look")
+    assert causality.text == "transcribed text"  # the clip audio is still the quote
+    # "@causality @geopolitics" title + a note -> both links pooled.
+    two = by_id["a24KW62IU3IU7U"]
+    assert two.links == ["Causality", "Geopolitics"]
+    assert two.note.startswith("Great discussion")
 
 
 def test_run_continues_when_one_book_fails(tmp_path):
