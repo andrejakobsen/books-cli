@@ -2,71 +2,64 @@
 
 Turn your reading data into a clean [Obsidian](https://obsidian.md) vault.
 
-`books` is a single command that pulls your library and highlights from Calibre,
-Goodreads, Readwise, Kobo, the [Highlighted](https://highlighted.app) app, and
-Audible (bookmarks & clips, transcribed to text) into tidy, linked Markdown
-notes — one self-contained note per book, with covers, reviews, and highlights.
-Built with [Typer](https://typer.tiangolo.com/) and
-[uv](https://docs.astral.sh/uv/).
+`books` pulls your library and highlights from Calibre, Goodreads, Readwise,
+Kobo, the [Highlighted](https://highlighted.app) app, and Audible into one
+self-contained Markdown note per book — with covers, reviews, and highlights.
 
 ## Install
-
-Install straight from GitHub with uv — no clone needed:
 
 ```bash
 uv tool install git+https://github.com/andrejakobsen/books-cli.git
 books --help
 ```
 
-This puts the `books` command at `~/.local/bin/books`. If your shell can't find
+This installs the `books` command to `~/.local/bin`. If your shell can't find
 it, run `uv tool update-shell` and restart your terminal.
 
-Later:
-
 ```bash
-uv tool upgrade books     # update to the latest
-uv tool uninstall books   # remove it
-books --install-completion  # optional: tab-completion for commands & options
+uv tool upgrade books        # update
+uv tool uninstall books      # remove
+books --install-completion   # optional shell tab-completion
 ```
 
-The `audible` command needs extra, heavier dependencies (and system `ffmpeg`).
-They're an optional extra that no other command loads — install them only if you
-want it:
+The `audible` command needs a heavier optional extra plus system `ffmpeg`
+(no other command loads it):
 
 ```bash
 uv tool install 'git+https://github.com/andrejakobsen/books-cli.git[audible]'
-brew install ffmpeg   # ffmpeg is required to decrypt and cut clips
+brew install ffmpeg
 ```
 
 <details>
-<summary>Install from a local clone instead</summary>
+<summary>Install from a local clone</summary>
 
 ```bash
 git clone https://github.com/andrejakobsen/books-cli.git && cd books-cli
-uv tool install .            # global install
+uv tool install .                          # global install
 uv tool install . --reinstall --editable   # editable: picks up local edits
-uv run books --help          # or just run it via uv without installing
+uv run books --help                        # or run without installing
 ```
 
 </details>
 
 ## Quickstart
 
-1. Drop your export files into the import subfolders of your vault:
-   `Data/Imports/goodreads`, `Data/Imports/readwise`, `Data/Imports/highlighted`,
-   `Data/Imports/kobo`. (Calibre is read from `~/Calibre Library`; a mounted Kobo is
-   copied in automatically.)
-2. Refresh everything with one command:
+1. Drop your export files into the matching import folders inside your vault:
+   `Data/Imports/{goodreads,readwise,highlighted,kobo}`. (Calibre is read from
+   `~/Calibre Library`; a mounted Kobo is copied in automatically.)
+2. Run everything with one command:
 
 ```bash
-books sync             # calibre → goodreads → merge → kobo → highlighted → readwise → render
+books sync             # run the full pipeline
 books sync --dry-run   # preview which steps would run, and from where
 ```
 
-Each step is skipped when its source is missing, and a failing step never stops
-the others. Under the hood `sync` runs in two phases: the importers write plain
-CSV data into `Data/` (they never touch your notes), `merge` clusters that into a
-single catalog, and `render` turns the catalog into the Markdown notes.
+`sync` runs two phases: importers write plain CSV data into `Data/` (never
+touching your notes), `merge` clusters it into one catalog, and `render` turns
+the catalog into Markdown notes. Missing sources are skipped; a failing step
+never stops the others.
+
+Covers and Audible are **not** part of `sync` — run them on their own (see below).
 
 ## Configuration
 
@@ -78,136 +71,110 @@ vault = "History"
 imports = "Data/Imports"
 ```
 
-Commands write to `obsidian_path/vault`; pass `--output` to override per run.
-`imports` is a folder inside the vault (under `Data/`) holding your raw exports.
-This is why the zero-config commands above just work: drop a file in the right
-subfolder and it's found.
+Commands write to `obsidian_path/vault`. Pass `--output`/`-o` to override the
+vault per run. `imports` is the in-vault folder holding your raw exports — this
+is why the zero-config commands just work.
 
 ## Commands
 
-Run any importer on its own, or `books sync` to run them all. With sources in
-`Data/Imports/` and a configured vault, none of these need arguments:
-
-```bash
-books calibre        # imports ~/Calibre Library
-books goodreads      # newest CSV in Data/Imports/goodreads
-books readwise       # newest CSV in Data/Imports/readwise
-books highlighted    # every CSV in Data/Imports/highlighted
-books kobo           # copies a mounted Kobo's DB in, then exports
-books covers         # fetch missing cover images
-```
-
-The importers are **CSV writers**: none of them touch your notes. `calibre` and
-`goodreads` write per-source metadata layers under `Data/Sources/`; the highlight
-importers (`kobo`, `highlighted`, `readwise`) write into the per-book highlights
-store under `Data/Highlights/` (resolving each book against the merged catalog).
-`merge` clusters the layers into `Data/books.csv`, and `render` turns the catalog
-
-+ highlights into the actual Markdown notes.
+With sources in place and a configured vault, none of these need arguments.
 
 | Command | What it does |
 | --- | --- |
-| **`sync`** | Runs the whole pipeline in order: `calibre` → `goodreads` → `merge` → `kobo` → `highlighted` → `readwise` → `render`. The metadata importers write source layers, `merge` builds the catalog, the highlight importers enrich it, and `render` writes the notes. Covers are out of scope — run `covers` separately. |
-| **`calibre`** | Reads a Calibre library — stages covers and extracts `.opf` metadata into the `calibre` source layer, ready for `merge`. `--library` defaults to `~/Calibre Library`. |
-| **`goodreads`** | Reads a Goodreads CSV (read books by default, `--shelf all` for everything) into the `goodreads` source layer, carrying the review through to the write-once `## Review` section that `render` emits. |
-| **`readwise`** | Reads a Readwise CSV into the highlights store (`readwise` source). |
-| **`kobo`** | Exports Kobo highlights to per-book CSVs in a zip (default), or `--obsidian` to write them into the highlights store (`kobo` source). |
-| **`highlighted`** | Imports highlights from *physical* books via the [Highlighted](https://highlighted.app) app (anchored by page) into the highlights store. |
-| **`merge`** | Clusters the per-source layers under `Data/Sources/` into a single merged catalog at `Data/books.csv`. Run it after the metadata importers and before `render`. |
-| **`render`** | Renders the CSV store (`Data/books.csv` + `Data/Highlights/`) into book notes. Output format is picked by a flag — `--obsidian` (the default and only format today), with room for other formats later. See below. |
-| **`audible`** | Imports Audible bookmarks & clips, transcribing each clip to text in a `## Highlights` section of the *existing* book note. Needs the `[audible]` extra + `ffmpeg`; not part of `sync`. See below. |
-| **`covers`** | Finds book notes with a blank cover and fetches one (Apple Books → Google Books → Open Library → Amazon). |
+| **`sync`** | Runs the whole pipeline: `calibre` → `goodreads` → `merge` → `kobo` → `highlighted` → `readwise` → `render`. |
+| **`calibre`** | Reads a Calibre library (`--library`, default `~/Calibre Library`) into the `calibre` source layer, staging covers. |
+| **`goodreads`** | Reads a Goodreads CSV (all shelves) into the `goodreads` source layer, carrying reviews into the `## Review` section. |
+| **`merge`** | Clusters the per-source layers under `Data/Sources/` into the merged catalog `Data/books.csv`. Run after the metadata importers, before `render`. |
+| **`kobo`** | Imports Kobo highlights & notes into the highlights store. Reads a mounted device (snapshotted read-only) or a `*.sqlite` in `Data/Imports/kobo`; override with `--db`. |
+| **`highlighted`** | Imports highlights from *physical* books via the [Highlighted](https://highlighted.app) app (imports every CSV in the folder). |
+| **`readwise`** | Imports Readwise highlights (newest CSV in the folder) into the highlights store. |
+| **`render`** | Renders the CSV store (`Data/books.csv` + `Data/Highlights/`) into book notes. See [Rendering](#rendering). |
+| **`covers`** | Finds catalog books with no cover and fetches one (Apple Books → Google Books → Open Library → Amazon). Not in `sync`. |
+| **`audible`** | Imports Audible bookmarks & clips, transcribed to text. Needs the `[audible]` extra + `ffmpeg`; not in `sync`. See [Audible](#audible). |
 
-Point at explicit paths to override the defaults:
+The importers are **CSV writers** — they never touch your notes. `calibre` and
+`goodreads` write metadata layers under `Data/Sources/`; the highlight importers
+(`kobo`, `highlighted`, `readwise`) resolve each book against the merged catalog
+and write into `Data/Highlights/`. So run `merge` (or `sync`) before the
+highlight importers. Highlights carry their source through the store, so a book
+fed by several sources shows them grouped under per-source subheadings.
+
+Override the defaults with explicit paths:
 
 ```bash
 books goodreads --csv ~/goodreads_library_export.csv
-books kobo ~/KoboReader.sqlite --obsidian --output ~/Obsidian
+books kobo --db ~/KoboReader.sqlite --output ~/Obsidian
 ```
 
-The `--csv` importers accept a single file or a folder. Highlights carry their
-originating source through the store, so a book fed by several sources shows them
-grouped under per-source subheadings in the rendered note.
+`covers` runs after `merge`: it fetches into a `covers` layer, so re-run `merge`
++ `render` afterward to fold covers in.
+
+```bash
+books covers                  # auto-pick the best match for each missing cover
+books covers --interactive    # approve each candidate
+books covers --dry-run        # preview without writing
+books covers --book "<id>"    # a single catalog book (interactive by default)
+books covers --limit 20       # cap the run
+```
 
 ## Audible
 
-`books audible` turns your Audible **bookmarks and clips** into highlights. For
-each clip it authenticates to your Audible account, downloads the audiobook,
-uses `ffmpeg` to decrypt and cut the clip's audio, and transcribes it to text —
-rendered into the `## Highlights` section of the *matching* book note. Like the
-other highlight importers it never creates notes: a book with no existing note is
-skipped and counted, so run `calibre`/`goodreads` first to establish book
-identity. It is **not** part of `books sync` — run it on its own.
-
-Prerequisites: install the `[audible]` extra and `ffmpeg` (see
-[Install](#install)). Downloading and decrypting audiobooks you own is for
-personal archival use only.
+`books audible` turns your Audible **bookmarks and clips** into highlights: it
+authenticates to your account, downloads each audiobook, uses `ffmpeg` to
+decrypt and cut the clip's audio, and transcribes it to text — rendered into the
+`## Highlights` section of the matching note. Like the other highlight
+importers it never creates notes, so run `calibre`/`goodreads`/`merge` first.
+Run `merge` + `render` afterward to surface the results.
 
 ```bash
-books audible                 # import clips into matching notes
-books audible --dry-run       # log in, show which books match & clip counts; write nothing
-books audible --asin B0ABCDEFG # only this one audiobook
-books audible --limit 5       # process at most 5 matched books
+books audible                   # import clips into matching notes
+books audible --dry-run         # show matches & clip counts; write nothing
+books audible --asin B0ABCDEFG  # only this audiobook
+books audible --limit 5         # at most 5 matched books
 ```
 
-On first run you're prompted for your Audible email, password, and marketplace
-(`us`, `uk`, `de`, …); the auth is cached at `~/.config/books/audible-auth.json`
-(mode `600`) so later runs are non-interactive.
+On first run you're prompted for your Audible email, password, and marketplace;
+the auth is cached at `~/.config/books/audible-auth.json` (mode `600`) so later
+runs are non-interactive.
 
-+ **Matching** — a library book matches a note by ASIN (the `amazon`
-  frontmatter id), then by standardized title/author.
-+ **Point bookmarks** — a plain bookmark has no end position, so a window of
-  audio *ending* at the mark is transcribed. Tune it with `--clip-window`
-  (default `30` seconds); clips use their own recorded length.
-+ **Transcriber** — `--transcriber local` (default; `faster-whisper`, offline,
-  no key), `openai` (needs `OPENAI_API_KEY`), or `google` (free, lower quality).
-  `--model` picks the Whisper model size (default `small`) for the local/openai
-  backends.
-+ **Caching** — transcriptions are cached in `<vault>/Data/Imports/audible/cache.json`
-  (keyed by ASIN + annotation id). Re-runs re-render for free and only download
-  books that have new clips; the downloaded audio goes to a temp dir and is
-  deleted after cutting.
-+ **Notes** — any typed note on a clip renders as a nested blockquote, and its
-  `#tag` / `@link` markers follow the same convention as the other importers.
+- **Matching** — by ASIN (`amazon` frontmatter id), then standardized title/author.
+- **Point bookmarks** — a bookmark with no end transcribes a window *ending* at
+  the mark; tune with `--clip-window` (default `30`s). Clips use their own length.
+- **Transcriber** — `--transcriber local` (default; `faster-whisper`, offline),
+  `openai` (needs `OPENAI_API_KEY`), or `google`. `--model` sets the Whisper size.
+- **Caching** — transcriptions cache in `Data/Imports/audible/cache.json`, so
+  re-runs re-render for free and only download books with new clips.
 
-## Rendering the CSV store
+Downloading and decrypting audiobooks you own is for personal archival use only.
 
-Under the hood, book data lives in a plain-CSV store under `Data/` — a merged
-catalog (`Data/books.csv`), per-source layers (`Data/Sources/`), and per-book
-highlights (`Data/Highlights/`). `books render` reads that store and writes the
-notes:
+## Rendering
+
+Book data lives in a plain-CSV store under `Data/` (a merged catalog plus
+per-source and per-highlight layers). `render` reads that store and writes the
+notes, so the output *format* is just a choice at render time:
 
 ```bash
-books render               # render every book into Obsidian notes
+books render                # render every book into Obsidian notes
 books render --output ~/Obsidian
 ```
 
-Keeping the data and the rendered output separate means the *format* is just a
-choice at render time. Today the only format is Obsidian Markdown, selected by
-`--obsidian` (on by default):
+Today the only format is Obsidian Markdown (`--obsidian`, on by default); the
+flag exists so other formats can slot in later. `render` errors cleanly if no
+`Data/books.csv` exists yet.
 
-```bash
-books render --obsidian    # the default — Obsidian book notes under Books/
-```
+## Vault layout
 
-The flag exists so future output formats can slot in beside Obsidian without
-changing how the data is collected. `render` errors cleanly if no `books.csv`
-exists yet.
+Notes live in flat, top-level folders; everything the tool manages lives under
+`Data/`:
 
-## The vault layout
-
-Your notes live in flat, top-level folders; everything the tooling manages
-lives under `Data/`:
-
-+ **`Books/`** — one note per book (`<Title> - <Author>.md`): frontmatter, a
+- **`Books/`** — one note per book (`<Title> - <Author>.md`): frontmatter, a
   cover embed, an optional `## Review`, and a `## Highlights` section.
-+ **`Notes/`** — your own free-form notes; never touched by importers.
-+ **`Authors/`** and **`Topics/`** — stub notes for the graph.
-+ **`Data/`** — tool-managed data: `Data/Imports/` (raw export files you drop
-  in), `Data/Covers/` (cover images named to match their note), and the CSV
-  store (`Data/Sources/`, `Data/Highlights/`, `Data/books.csv`).
+- **`Authors/`** — author stub notes for the graph.
+- **`Data/`** — tool-managed data: `Data/Imports/` (raw exports you drop in),
+  `Data/Covers/` (cover images), and the CSV store (`Data/Sources/`,
+  `Data/Highlights/`, `Data/books.csv`).
 
-Re-running is safe. Highlights live between `%% books:highlights:start %%` /
+Re-running is safe. Highlights sit between `%% books:highlights:start %%` /
 `:end %%` markers and are regenerated wholesale; everything else you write —
 including a hand-edited `## Review` — is preserved.
 
@@ -219,7 +186,6 @@ uv run pytest -q   # run the tests
 ```
 
 Add a capability by creating `books/commands/<feature>.py` with a
-`register(app: typer.Typer)` function, then adding it to `CAPABILITIES` in
-`books/cli.py`. Format-agnostic building blocks (config, paths, the CSV store,
-the highlight model + parsing) live under `books/core/`; everything
-Obsidian/markdown-specific lives under `books/renderers/obsidian/`.
+`register(app: typer.Typer)` function and adding it to `CAPABILITIES` in
+`books/cli.py`. Format-agnostic building blocks live under `books/core/`;
+Obsidian/markdown-specific code lives under `books/renderers/obsidian/`.
