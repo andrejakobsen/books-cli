@@ -765,6 +765,51 @@ def test_dry_run_reads_legacy_cache_without_migrating(tmp_path):
     assert not any(cache_dir.glob("*.json"))  # nor writes per-book files
 
 
+def test_dry_run_lists_matched_and_new_without_cost_for_local(tmp_path):
+    out, book, anns = _catalog_and_library(tmp_path)
+    new_book = models.LibraryBook(asin="B0NEW", title="Audio Only", authors=["Narrator"])
+    client = FakeClient(
+        [book, new_book],
+        {**anns, "B0NEW": [models.Annotation(id="n1", start_ms=0, end_ms=60_000)]},
+    )
+    lines = []
+    stats = ao.run(
+        out,
+        client=client,
+        downloader=None,
+        cutter=None,
+        transcriber=None,
+        cache_dir=out / "cache",
+        clip_window=30,
+        dry_run=True,
+        show_cost=False,
+        echo=lines.append,
+    )
+    text = "\n".join(lines)
+    assert "Stalin" in text and "Audio Only" in text
+    assert "new" in text.lower()  # the audiobook-only book is flagged
+    assert "$" not in text  # local backend -> no cost shown
+    assert stats["new"] == 1 and stats["matched"] == 1
+
+
+def test_dry_run_shows_cost_for_openai(tmp_path):
+    out, book, anns = _catalog_and_library(tmp_path)
+    lines = []
+    ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=None,
+        cutter=None,
+        transcriber=None,
+        cache_dir=out / "cache",
+        clip_window=30,
+        dry_run=True,
+        show_cost=True,
+        echo=lines.append,
+    )
+    assert "$" in "\n".join(lines)  # openai backend -> cost shown
+
+
 def test_cli_enriches_book_end_to_end(monkeypatch, tmp_path):
     from books.core import config, store
 

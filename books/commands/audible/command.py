@@ -313,6 +313,7 @@ def run(
     stats = {
         "books": 0,
         "new": 0,
+        "matched": 0,
         "entries": 0,
         "skipped": 0,
         "downloaded": 0,
@@ -407,44 +408,49 @@ def run(
     return stats
 
 
-def _run_dry(library, catalog, cache_dir, stats, client, clip_window, limit, echo) -> dict:
-    """Dry-run path: log matches + estimated transcription, write nothing.
+def _cost_suffix(secs: float, show_cost: bool) -> str:
+    """The ``~X min[ · ~$Y]`` tail for a dry-run line (cost only when requested)."""
+    tail = f"~{secs / 60:.1f} min"
+    if show_cost:
+        tail += f" · ~${secs * COST_PER_SECOND:.2f}"
+    return tail
 
-    Reads per-book caches (falling back to a not-yet-migrated legacy ``cache.json``)
-    to estimate only the *new* clips, but never writes or migrates on disk.
+
+def _run_dry(candidates, cache_dir, stats, clip_window, limit, show_cost, echo) -> dict:
+    """Dry-run: list every book with its status + new-clip estimate, write nothing.
+
+    Matched books are counted in ``books``; audiobook-only books in ``new``. New-clip
+    estimates read per-book caches (falling back to a not-yet-migrated legacy
+    ``cache.json``) without writing or migrating on disk. The dollar figure is shown
+    only when *show_cost* is True (the ``openai`` backend).
     """
     legacy = load_legacy_cache(cache_dir)
     matched = 0
-    for book in library:
-        ref = BookRef(title=book.title, authors=book.authors, amazon=book.asin)
-        book_id = catalog.find(ref)
-        if book_id is None:
-            stats["skipped"] += 1
-            authors = ", ".join(book.authors) or "?"
-            anns = client.annotations(book.asin)
-            secs = _clip_seconds(anns, clip_window)
+    for cand in candidates:
+        book = cand.book
+        authors = ", ".join(book.authors) or "?"
+        if cand.book_id is None:
+            secs = _clip_seconds(cand.annotations, clip_window)
             stats["est_seconds"] += secs
+            stats["new"] += 1
             echo(
-                f"[dry-run] SKIP (no book): {book.title} — {authors} "
-                f"[asin {book.asin}] — {len(anns)} clip(s), "
-                f"~{secs / 60:.1f} min, ~${secs * COST_PER_SECOND:.2f}"
+                f"[dry-run] NEW (audiobook-only): {book.title} — {authors} "
+                f"[asin {book.asin}] — {cand.clip_count} clip(s), "
+                f"{_cost_suffix(secs, show_cost)}"
             )
             continue
         if limit is not None and matched >= limit:
-            break
-        matched += 1
-        annotations = client.annotations(book.asin)
-        if not annotations:
             continue
+        matched += 1
+        stats["matched"] += 1
         book_cache = load_book_cache(cache_dir, book.asin) or legacy.get(book.asin, {})
         clips = book_cache.get("clips", {})
-        new = uncached(annotations, clips)
+        new = uncached(cand.annotations, clips)
         secs = _clip_seconds(new, clip_window)
         stats["est_seconds"] += secs
         echo(
-            f"[dry-run] {book.title}: {len(annotations)} annotations, "
-            f"{len(new)} new to transcribe — ~{secs / 60:.1f} min, "
-            f"~${secs * COST_PER_SECOND:.2f}"
+            f"[dry-run] {book.title} — {authors}: {cand.clip_count} annotations, "
+            f"{len(new)} new to transcribe — {_cost_suffix(secs, show_cost)}"
         )
     return stats
 
