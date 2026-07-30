@@ -60,15 +60,88 @@ def cut_clip(audio: DownloadedAudio, start_ms: int, end_ms: int, dest: Path) -> 
     return dest
 
 
+_TERMINATORS = ".!?"
+# closing punctuation that belongs to the sentence it follows (straight + curly)
+_CLOSERS = "\"')]”’»"
+# a leading fragment shorter than this (in words) is treated as a mid-sentence catch
+_LEADING_FRAGMENT_MAX_WORDS = 5
+
+
+def _first_terminator(text: str) -> int:
+    for i, ch in enumerate(text):
+        if ch in _TERMINATORS:
+            return i
+    return -1
+
+
+def _last_terminator(text: str) -> int:
+    for i in range(len(text) - 1, -1, -1):
+        if text[i] in _TERMINATORS:
+            return i
+    return -1
+
+
+def clean_transcript(text: str) -> str:
+    """Trim dangling partial sentences from the start/end of a clip transcript.
+
+    Clips are cut on time boundaries, so a transcription often begins mid-sentence
+    and ends on a half-started one. Two trims are applied to the stripped text:
+
+    - **Leading (only if partial):** if the first letter is lowercase *and* the
+      fragment ending at the first ``.``/``!``/``?`` has fewer than five words, drop
+      that fragment (plus any trailing closing quote/bracket and whitespace). An
+      uppercase start or a long lowercase fragment is kept — it is likely a real
+      sentence.
+    - **Trailing (always):** drop everything after the last terminator, keeping the
+      terminator plus any immediately-following closing quote/bracket.
+
+    Each trim only applies when a terminator exists and the result stays non-empty,
+    so a fragment with no terminator at all is returned untouched. Idempotent.
+    """
+    s = text.strip()
+    if not s:
+        return s
+
+    # Leading trim.
+    first_letter = next((c for c in s if c.isalpha()), "")
+    if first_letter and first_letter.islower():
+        idx = _first_terminator(s)
+        if idx != -1 and len(s[:idx].split()) < _LEADING_FRAGMENT_MAX_WORDS:
+            j = idx + 1
+            while j < len(s) and (s[j] in _CLOSERS or s[j].isspace()):
+                j += 1
+            remainder = s[j:]
+            if remainder.strip():
+                s = remainder
+
+    # Trailing trim.
+    idx = _last_terminator(s)
+    if idx != -1:
+        j = idx + 1
+        while j < len(s) and s[j] in _CLOSERS:
+            j += 1
+        head = s[:j]
+        if head.strip():
+            s = head
+
+    return s.strip()
+
+
 def make_transcriber(kind: str, model: str = "small"):
-    """Return a ``transcribe(clip_path) -> str`` callable for the chosen backend."""
+    """Return a ``transcribe(clip_path) -> str`` callable for the chosen backend.
+
+    Every backend's raw output is passed through :func:`clean_transcript` so the
+    stored highlight text does not start or end mid-sentence.
+    """
     if kind == "local":
-        return _local_transcriber(model)
-    if kind == "openai":
-        return _openai_transcriber(model)
-    if kind == "google":
-        return _google_transcriber()
-    raise ValueError(f"unknown transcriber: {kind!r} (expected 'local', 'openai', or 'google')")
+        base = _local_transcriber(model)
+    elif kind == "openai":
+        base = _openai_transcriber(model)
+    elif kind == "google":
+        base = _google_transcriber()
+    else:
+        raise ValueError(f"unknown transcriber: {kind!r} (expected 'local', 'openai', or 'google')")
+    return lambda path: clean_transcript(base(path))
 
 
 def _local_transcriber(model: str):

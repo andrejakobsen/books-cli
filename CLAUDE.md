@@ -89,7 +89,12 @@ notes; note creation belongs solely to it.
   first run, auth cached at `~/.config/books/audible-auth.json`), fetches each book's
   annotations, downloads the audiobook, and uses **ffmpeg** to decrypt (AAXC via
   `-audible_key`/`-audible_iv`) and cut each clip, then transcribes it with a pluggable
-  backend (`--transcriber local|openai|google`, default `local` faster-whisper). Clips use
+  backend (`--transcriber local|openai|google`, default `local` faster-whisper). Every
+  backend's raw output is passed through `transcribe.clean_transcript` before caching, which
+  trims dangling partial sentences: a short (< 5 word) lowercase leading fragment before the
+  first `.`/`!`/`?` is dropped (a mid-sentence catch), and everything after the last
+  terminator is dropped — each trim is skipped when no terminator exists so a punctuation-less
+  fragment is kept intact. Clips use
   their own start→end. **The sidecar is de-duplicated** (`annotations_from_sidecar`): making
   a clip auto-creates a twin `audible.bookmark` at the same position, and a note is stored
   BOTH on the clip (`metadata.note`) AND as a separate `audible.note` record — so each
