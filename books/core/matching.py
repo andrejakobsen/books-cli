@@ -11,6 +11,11 @@ import re
 import unicodedata
 from dataclasses import dataclass, field
 
+import isbnlib
+from rapidfuzz import fuzz
+
+from books.core.naming import strip_subtitle
+
 
 @dataclass
 class BookRef:
@@ -65,3 +70,35 @@ def author_key(name: str) -> tuple[str, str]:
     if len(tokens) == 1:
         return (tokens[0], tokens[0])
     return (tokens[0], tokens[-1])
+
+
+TITLE_MATCH_THRESHOLD = 90  # rapidfuzz ratio 0-100; conservative to avoid false merges
+
+
+def canonical_isbn(isbn: str | None) -> str | None:
+    """Canonical ISBN-13 for matching, or None. Falls back to digit-normalization."""
+    if not isbn:
+        return None
+    c = isbnlib.canonical(str(isbn))
+    if c and isbnlib.is_isbn10(c):
+        c = isbnlib.to_isbn13(c) or c
+    return c or norm_isbn(isbn)
+
+
+def _has_subtitle(title: str) -> bool:
+    return strip_subtitle(title).strip().casefold() != (title or "").strip().casefold()
+
+
+def title_similar(t1: str, t2: str) -> bool:
+    """Subtitle-aware fuzzy title match with the symmetric ``fuzz.ratio``.
+
+    When both titles carry a subtitle, compare them in full (differing subtitles
+    separate distinct volumes); otherwise compare the subtitle-stripped bases (a
+    bare title merges with the subtitled edition of the same book). Never uses
+    ``partial_ratio`` -- it would merge "Dune"/"Dune Messiah" and the like.
+    """
+    if _has_subtitle(t1) and _has_subtitle(t2):
+        left, right = norm_title(t1), norm_title(t2)
+    else:
+        left, right = norm_title(strip_subtitle(t1)), norm_title(strip_subtitle(t2))
+    return fuzz.ratio(left, right) >= TITLE_MATCH_THRESHOLD

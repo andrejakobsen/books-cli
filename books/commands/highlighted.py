@@ -71,9 +71,7 @@ def convert(csv_path: Path, output: Path) -> dict:
     metadata importers + merge); a book with no catalog match is skipped and
     counted. Returns {"books": int, "entries": int, "skipped": int}.
     """
-    stats = {"books": 0, "entries": 0, "skipped": 0}
     output.mkdir(parents=True, exist_ok=True)
-    catalog = store.Catalog(output)
 
     # Group rows by book (ISBN when present, else title), preserving CSV order.
     groups: dict[str, dict] = {}
@@ -87,28 +85,18 @@ def convert(csv_path: Path, output: Path) -> dict:
         group = groups.setdefault(key, {"title": title, "author": author, "isbn": isbn, "rows": []})
         group["rows"].append(row)
 
-    # Accumulate highlights per resolved book_id: two groups (e.g. one keyed by
-    # ISBN, one by title) can resolve to the same book, and write_highlights
-    # replaces a source wholesale -- so we must collect all of a book's rows
-    # before the single write, or the second group would wipe the first.
-    by_book: dict[str, list] = {}
-    for group in groups.values():
-        authors = [group["author"]] if group["author"] else []
-        book_id = catalog.find(BookRef(title=group["title"], authors=authors, isbn=group["isbn"]))
-        if book_id is None:
-            stats["skipped"] += 1
-            continue
-        by_book.setdefault(book_id, []).extend(row_to_highlight(r) for r in group["rows"])
-
-    for book_id, highlights in by_book.items():
-        hl_rows = [
-            store.highlight_to_row(h, "highlighted", str(i)) for i, h in enumerate(highlights)
-        ]
-        store.write_highlights(output, book_id, "highlighted", hl_rows)
-        stats["books"] += 1
-        stats["entries"] += len(hl_rows)
-
-    return stats
+    resolved = [
+        (
+            BookRef(
+                title=g["title"],
+                authors=[g["author"]] if g["author"] else [],
+                isbn=g["isbn"],
+            ),
+            [row_to_highlight(r) for r in g["rows"]],
+        )
+        for g in groups.values()
+    ]
+    return store.import_highlights(output, "highlighted", resolved)
 
 
 def highlighted_to_obsidian(

@@ -68,7 +68,7 @@ def _safe_copy_db(src: Path, dest: Path) -> Path:
     return dest
 
 
-def _default_kobo_db(output: Path | None) -> Path:
+def default_kobo_db(output: Path | None) -> Path:
     """Resolve the Kobo DB under <vault>/Data/Imports/kobo.
 
     If the Kobo device is mounted (``KOBO_DEVICE_DB`` exists), safely copy its DB
@@ -210,36 +210,20 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
         conn.close()
 
     vault.mkdir(parents=True, exist_ok=True)
-    catalog = store.Catalog(vault)
 
     # Group rows by book, preserving the query's reading order.
     books: dict[str, list] = {}
     for r in rows:
         books.setdefault(r["book_title"] or "Untitled", []).append(r)
 
-    # Accumulate highlights per resolved book_id before writing: two titles can
-    # resolve to the same book, and write_highlights replaces a source wholesale
-    # -- so all of a book's rows must be collected before the single write, or the
-    # second title would wipe the first.
-    entries = 0
-    skipped = 0
-    by_book: dict[str, list] = {}
+    resolved = []
     for title, book_rows in books.items():
         author = (book_rows[0]["author"] or "").strip()
-        authors = [author] if author else []
         isbn = (book_rows[0]["isbn"] or "").strip() or None
-        book_id = catalog.find(BookRef(title=title, authors=authors, isbn=isbn))
-        if book_id is None:
-            skipped += 1
-            continue
-        by_book.setdefault(book_id, []).extend(row_to_highlight(r) for r in book_rows)
+        ref = BookRef(title=title, authors=[author] if author else [], isbn=isbn)
+        resolved.append((ref, [row_to_highlight(r) for r in book_rows]))
 
-    for book_id, highlights in by_book.items():
-        hl_rows = [store.highlight_to_row(h, "kobo", str(i)) for i, h in enumerate(highlights)]
-        store.write_highlights(vault, book_id, "kobo", hl_rows)
-        entries += len(hl_rows)
-
-    return {"books": len(by_book), "entries": entries, "skipped": skipped}
+    return store.import_highlights(vault, "kobo", resolved)
 
 
 def export(db_path: Path, out_path: Path) -> dict:
@@ -372,7 +356,7 @@ def kobo_export(
     """
     explicit = input_path or db
     if explicit is None:
-        db_path = _default_kobo_db(output if obsidian else None)
+        db_path = default_kobo_db(output if obsidian else None)
     else:
         db_path = resolve_path(explicit, Path.cwd())
 

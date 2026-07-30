@@ -83,14 +83,6 @@ def test_calibre_rerun_replaces_layer(tmp_path):
     assert len(store.read_layer(vault, "calibre")) == 1  # not duplicated
 
 
-def test_html_to_markdown_list():
-    html = "<p>Intro</p><ul><li>one</li><li>two</li></ul>"
-    md = calibre.html_to_markdown(html)
-    assert "Intro" in md
-    assert "- one" in md
-    assert "- two" in md
-
-
 def test_calibre_defaults_library_to_home_calibre_library(monkeypatch, tmp_path):
     from pathlib import Path as _Path
 

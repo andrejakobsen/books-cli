@@ -129,7 +129,7 @@ def _run_goodreads(vault: Path) -> dict:
 
 
 def _run_kobo(vault: Path) -> dict:
-    db = kobo._default_kobo_db(vault)
+    db = kobo.default_kobo_db(vault)
     return kobo.export_obsidian(db, vault)
 
 

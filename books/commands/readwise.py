@@ -31,17 +31,16 @@ from books.core.matching import BookRef
 _SERIES_RE = re.compile(r"\s*\(([^()]+?)\s+#(\d+(?:\.\d+)?)\)\s*$")
 
 
-def split_series(title: str) -> tuple[str, str | None, str | None]:
-    """Split a trailing "(Series #N)" off *title*.
+def strip_series(title: str) -> str:
+    """Strip a trailing "(Series #N)" suffix off *title* for grouping/matching.
 
-    Returns (clean_title, series_name, series_index). When no suffix is present
-    the title is returned verbatim with (None, None) for the series fields.
+    Series metadata is not persisted by this importer (highlights only), so only
+    the cleaned title is returned; a title with no suffix is returned verbatim.
     """
     m = _SERIES_RE.search(title or "")
     if not m:
-        return (title or "").strip(), None, None
-    clean = (title[: m.start()]).strip()
-    return clean, m.group(1).strip(), m.group(2).strip()
+        return (title or "").strip()
+    return (title[: m.start()]).strip()
 
 
 def row_to_highlight(row: dict) -> Highlight:
@@ -87,9 +86,7 @@ def convert(csv_path: Path, output: Path) -> dict:
     matching, but series/amazon/shelves metadata is no longer persisted -- this
     importer writes highlights only.
     """
-    stats = {"books": 0, "entries": 0, "skipped": 0}
     output.mkdir(parents=True, exist_ok=True)
-    catalog = store.Catalog(output)
 
     # Group rows by book (Amazon id when present, else standardized title),
     # preserving CSV order.
@@ -98,7 +95,7 @@ def convert(csv_path: Path, output: Path) -> dict:
         raw_title = (row.get("Book Title") or "").strip()
         if not raw_title:
             continue
-        title, series, series_index = split_series(raw_title)
+        title = strip_series(raw_title)
         amazon = (row.get("Amazon Book ID") or "").strip() or None
         author = (row.get("Book Author") or "").strip()
         key = amazon or f"{title}\x00{author}"
@@ -107,28 +104,18 @@ def convert(csv_path: Path, output: Path) -> dict:
         )
         group["rows"].append(row)
 
-    # Accumulate highlights per resolved book_id: two groups (e.g. one keyed by
-    # Amazon id, one by title/author) can resolve to the same book, and
-    # write_highlights replaces a source wholesale -- so we must collect all of a
-    # book's rows before the single write, or the second group would wipe the first.
-    by_book: dict[str, list] = {}
-    for group in groups.values():
-        authors = [group["author"]] if group["author"] else []
-        book_id = catalog.find(
-            BookRef(title=group["title"], authors=authors, amazon=group["amazon"])
+    resolved = [
+        (
+            BookRef(
+                title=g["title"],
+                authors=[g["author"]] if g["author"] else [],
+                amazon=g["amazon"],
+            ),
+            [row_to_highlight(r) for r in g["rows"]],
         )
-        if book_id is None:
-            stats["skipped"] += 1
-            continue
-        by_book.setdefault(book_id, []).extend(row_to_highlight(r) for r in group["rows"])
-
-    for book_id, highlights in by_book.items():
-        hl_rows = [store.highlight_to_row(h, "readwise", str(i)) for i, h in enumerate(highlights)]
-        store.write_highlights(output, book_id, "readwise", hl_rows)
-        stats["books"] += 1
-        stats["entries"] += len(hl_rows)
-
-    return stats
+        for g in groups.values()
+    ]
+    return store.import_highlights(output, "readwise", resolved)
 
 
 def readwise_to_obsidian(

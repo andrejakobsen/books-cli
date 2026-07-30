@@ -62,15 +62,15 @@ def test_parse_csv_fields(tmp_path):
 
 
 def test_normalization_helpers():
-    from books.renderers import obsidian as ob
+    from books.core import matching as m
 
-    assert ob.norm_isbn('="9780698176287"') == "9780698176287"
-    assert ob.norm_title("The Cold War: A New History") == ob.norm_title(
+    assert m.norm_isbn('="9780698176287"') == "9780698176287"
+    assert m.norm_title("The Cold War: A New History") == m.norm_title(
         "The Cold War - A New History"
     )
-    assert ob.author_key("Terry Martin") == ob.author_key("Terry L. Martin")
-    assert ob.author_key("Roberts, Andrew") == ob.author_key("Andrew Roberts")
-    assert ob.author_key("Broué, Pierre") == ob.author_key("Pierre Broue")
+    assert m.author_key("Terry Martin") == m.author_key("Terry L. Martin")
+    assert m.author_key("Roberts, Andrew") == m.author_key("Andrew Roberts")
+    assert m.author_key("Broué, Pierre") == m.author_key("Pierre Broue")
 
 
 def test_norm_format_maps_bindings():

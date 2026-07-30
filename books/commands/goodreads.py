@@ -126,8 +126,6 @@ def parse_csv(path: Path) -> list[GoodreadsBook]:
 
 # --- Store row construction -------------------------------------------------
 
-DEFAULT_SHELVES = "read,currently-reading"
-
 
 def _row_from_book(book: GoodreadsBook) -> store.BookRow:
     """Map a parsed Goodreads row to a store ``BookRow`` (all fields verbatim)."""
@@ -156,12 +154,11 @@ def _row_from_book(book: GoodreadsBook) -> store.BookRow:
     )
 
 
-def convert(csv_path: Path, output: Path, shelf: str = DEFAULT_SHELVES) -> dict:
+def convert(csv_path: Path, output: Path) -> dict:
     """Write every Goodreads row into the ``goodreads`` metadata layer CSV.
 
     Every shelf is emitted (books.csv becomes the whole library); the renderer
-    turns each row into a note. ``shelf`` is accepted for CLI compatibility but no
-    longer gates output.
+    turns each row into a note.
     """
     stats = {"books": 0, "reviews": 0, "skipped": 0}
     output.mkdir(parents=True, exist_ok=True)
@@ -195,19 +192,12 @@ def goodreads_to_obsidian(
         help="Output Obsidian vault. Defaults to the vault from your config file "
         "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
-    shelf: str = typer.Option(
-        DEFAULT_SHELVES,
-        "--shelf",
-        help="Accepted for compatibility; no longer gates output — every shelf is "
-        "written to the store (books.csv is the whole library).",
-    ),
 ) -> None:
     """Write a Goodreads CSV export into the CSV metadata store.
 
     Every row (all shelves) is dumped into ``Data/Sources/goodreads.csv``; the
     ``render`` command later turns each merged row into a note. No notes, reviews,
-    or stubs are written here. ``--shelf`` is accepted for compatibility but no
-    longer gates output.
+    or stubs are written here.
     """
     try:
         csv = config.resolve_csv_arg(csv, "goodreads", output)
@@ -219,7 +209,7 @@ def goodreads_to_obsidian(
         raise typer.BadParameter(f"CSV not found: {csv}", param_hint="--csv")
 
     output.mkdir(parents=True, exist_ok=True)
-    stats = convert(csv, output, shelf=shelf)
+    stats = convert(csv, output)
     typer.echo(
         f"Done. {stats['books']} books, {stats['reviews']} reviews, "
         f"{stats['skipped']} skipped.\nOutput: {output}"

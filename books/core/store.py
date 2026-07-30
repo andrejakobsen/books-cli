@@ -13,19 +13,19 @@ book is assigned a stable ``book_id`` (the note stem ``<Title> - <Author>``).
 from __future__ import annotations
 
 import csv
+import shutil
 from pathlib import Path
 
-import isbnlib
 from pydantic import BaseModel, Field
-from rapidfuzz import fuzz
 
 from books.core.highlights import Highlight
 from books.core.matching import (
     BookRef,
     author_key,
+    canonical_isbn,
     norm_amazon,
-    norm_isbn,
     norm_title,
+    title_similar,
 )
 from books.core.naming import next_free_stem, safe_filename, strip_subtitle
 
@@ -183,6 +183,45 @@ def highlights_dir(vault: Path) -> Path:
     return data_dir(vault) / HIGHLIGHTS_DIRNAME
 
 
+COVERS_STAGING_DIRNAME = "_covers"
+
+
+def cover_staging_dir(vault: Path, source: str) -> Path:
+    """Where *source* stages fetched/copied covers before merge assigns a book_id.
+
+    ``Data/Sources/_covers/<source>/`` — a per-source scratch area whose images
+    are recorded (vault-relative) on each ``BookRow.cover`` and materialized into
+    ``Data/Covers/<book_id>.jpg`` by ``render`` after merge.
+    """
+    return sources_dir(vault) / COVERS_STAGING_DIRNAME / source
+
+
+def stage_cover(
+    vault: Path,
+    source: str,
+    name: str,
+    *,
+    data: bytes | None = None,
+    src: Path | None = None,
+) -> str:
+    """Stage one cover image and return its vault-relative posix path.
+
+    Writes ``Data/Sources/_covers/<source>/<name>.jpg`` from either raw *data*
+    bytes or by copying an existing *src* file. The returned path is what callers
+    record on ``BookRow.cover``.
+    """
+    staging = cover_staging_dir(vault, source)
+    staging.mkdir(parents=True, exist_ok=True)
+    dest = staging / f"{name}.jpg"
+    if data is not None:
+        dest.write_bytes(data)
+    elif src is not None:
+        shutil.copy2(src, dest)
+    else:
+        raise ValueError("stage_cover requires either data or src")
+    return dest.relative_to(vault).as_posix()
+
+
 def highlight_path(vault: Path, book_id: str) -> Path:
     return highlights_dir(vault) / f"{book_id}.csv"
 
@@ -221,38 +260,6 @@ def read_all_layers(vault: Path) -> dict[str, list[BookRow]]:
         if layer_path(vault, source).is_file():
             out[source] = read_layer(vault, source)
     return out
-
-
-TITLE_MATCH_THRESHOLD = 90  # rapidfuzz ratio 0-100; conservative to avoid false merges
-
-
-def canonical_isbn(isbn: str | None) -> str | None:
-    """Canonical ISBN-13 for matching, or None. Falls back to digit-normalization."""
-    if not isbn:
-        return None
-    c = isbnlib.canonical(str(isbn))
-    if c and isbnlib.is_isbn10(c):
-        c = isbnlib.to_isbn13(c) or c
-    return c or norm_isbn(isbn)
-
-
-def _has_subtitle(title: str) -> bool:
-    return strip_subtitle(title).strip().casefold() != (title or "").strip().casefold()
-
-
-def title_similar(t1: str, t2: str) -> bool:
-    """Subtitle-aware fuzzy title match with the symmetric ``fuzz.ratio``.
-
-    When both titles carry a subtitle, compare them in full (differing subtitles
-    separate distinct volumes); otherwise compare the subtitle-stripped bases (a
-    bare title merges with the subtitled edition of the same book). Never uses
-    ``partial_ratio`` -- it would merge "Dune"/"Dune Messiah" and the like.
-    """
-    if _has_subtitle(t1) and _has_subtitle(t2):
-        left, right = norm_title(t1), norm_title(t2)
-    else:
-        left, right = norm_title(strip_subtitle(t1)), norm_title(strip_subtitle(t2))
-    return fuzz.ratio(left, right) >= TITLE_MATCH_THRESHOLD
 
 
 def same_book(a: BookRow, b: BookRow) -> bool:
@@ -491,6 +498,40 @@ def row_to_highlight(row: HighlightRow) -> Highlight:
         tags=list(row.tags),
         links=list(row.links),
     )
+
+
+def import_highlights(
+    vault: Path,
+    source: str,
+    groups: list[tuple[BookRef, list[Highlight]]],
+) -> dict:
+    """Resolve each ``(BookRef, highlights)`` group to a book and write the store.
+
+    Shared tail of every highlight importer. Each group's ref is resolved to a
+    ``book_id`` via :class:`Catalog` (match-only); highlights for groups that
+    resolve to the *same* book are accumulated before the single per-book write
+    (``write_highlights`` replaces a source wholesale, so a second group would
+    otherwise wipe the first). A group that resolves to nothing is skipped and
+    counted. Returns ``{"books": int, "entries": int, "skipped": int}``.
+    """
+    vault.mkdir(parents=True, exist_ok=True)
+    catalog = Catalog(vault)
+    by_book: dict[str, list[Highlight]] = {}
+    skipped = 0
+    for ref, highlights in groups:
+        book_id = catalog.find(ref)
+        if book_id is None:
+            skipped += 1
+            continue
+        by_book.setdefault(book_id, []).extend(highlights)
+
+    stats = {"books": 0, "entries": 0, "skipped": skipped}
+    for book_id, hls in by_book.items():
+        hl_rows = [highlight_to_row(h, source, str(i)) for i, h in enumerate(hls)]
+        write_highlights(vault, book_id, source, hl_rows)
+        stats["books"] += 1
+        stats["entries"] += len(hl_rows)
+    return stats
 
 
 def read_highlights(vault: Path, book_id: str) -> list[HighlightRow]:

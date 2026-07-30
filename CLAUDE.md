@@ -42,8 +42,10 @@ The package is organized in three layers with a one-way dependency direction
   dataclass + `norm_title`/`norm_isbn`/`norm_amazon`/`author_key`/`fold` normalization),
   and `naming.py` (the `<Title> - <Author>` note-stem/filename logic: `safe_filename`,
   `strip_subtitle`, `next_free_stem`) — none of it carries markdown/Obsidian knowledge.
-  The `store` shares these identity helpers with the Obsidian renderer, which is why they
-  live in `core` (the renderer re-exports them, so nothing imports them from `core` directly).
+  The `store` and the Obsidian renderer both consume these identity helpers, importing
+  them directly from `core` (the renderer no longer re-exports them).
+  `matching.py` also owns the fuzzy match helpers used by `store` (`canonical_isbn`,
+  `title_similar`, and the `TITLE_MATCH_THRESHOLD` rapidfuzz cutoff).
 - **`books/renderers/`** — output targets. `books/renderers/obsidian/` owns 100% of the
   Obsidian/markdown-specific code (a future renderer slots in beside it). Its
   `__init__.py` re-exports the public API so call sites use `from books.renderers.obsidian
@@ -71,7 +73,7 @@ metadata layer) — they are run **manually after `merge`** (then re-`merge` + `
 fold them in), and are **not** part of `sync`. `render` is the sole producer of Obsidian
 notes; note creation belongs solely to it.
 - `books/commands/calibre.py` → `calibre` — reads a Calibre library's `metadata.opf` (XML) + `cover.jpg` per book into `store.BookRow`s and writes them to `Data/Sources/calibre.csv` via `store.write_layer`. Covers are staged under `Data/Sources/_covers/calibre/<n>.jpg` and their vault-relative path recorded on the row (materialized into `Data/Covers/` later by `render`). Creates no notes. `--library` defaults to `~/Calibre Library`. Run `merge` then `render` to produce notes.
-- `books/commands/goodreads.py` → `goodreads` — reads a Goodreads CSV export into `store.BookRow`s and writes them to `Data/Sources/goodreads.csv` via `store.write_layer`. Carries the review through the row so `render` can emit the write-once `## Review` section, and fills the `goodreads:` field with the book's full Goodreads URL (`https://www.goodreads.com/book/show/<Book Id>`). Rows are written for books on the `--shelf` shelves (default `read,currently-reading`); `merge` clusters them with the calibre layer, so a shared book gets both sources' fields. `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/Data/Imports/goodreads`. Creates no notes.
+- `books/commands/goodreads.py` → `goodreads` — reads a Goodreads CSV export into `store.BookRow`s and writes them to `Data/Sources/goodreads.csv` via `store.write_layer`. Carries the review through the row so `render` can emit the write-once `## Review` section, and fills the `goodreads:` field with the book's full Goodreads URL (`https://www.goodreads.com/book/show/<Book Id>`). Rows are written for every book in the export (all shelves); `merge` clusters them with the calibre layer, so a shared book gets both sources' fields. `--csv` accepts a single CSV file or a folder (newest `*.csv`), defaulting to `<vault>/Data/Imports/goodreads`. Creates no notes.
 - `books/commands/merge.py` → `merge` — clusters the per-source layers under `Data/Sources/` into the single merged catalog `Data/books.csv` via `store.merge`. Errors cleanly (`typer.BadParameter`) when no source layer exists yet. Run it after the metadata importers and before `render`.
 - `books/commands/kobo.py` → `kobo` — reads `KoboReader.sqlite` (opened **read-only** via `file:...?mode=ro`) and exports per-book highlight CSVs into a zip. Has a `--csv` flag (the default output mode) and an `--obsidian` flag that maps highlights (via the shared `books/core/highlights.py` model) into the highlights store (`Data/Highlights/<book_id>.csv`, source `kobo`) via `store.write_highlights`, resolving each book to a `book_id` via `store.Catalog.find` (unmatched books are skipped and counted). Note markers follow the `#tag` / `@link` convention (parsed via `highlights.parse_markers`). When no DB path is given, a mounted Kobo (`/Volumes/KOBOeReader/.kobo/KoboReader.sqlite`) is safely snapshotted into `<vault>/Data/Imports/kobo/` via SQLite's read-only backup API (the device file is never modified) and read from there; otherwise the existing copy (or newest `*.sqlite`) in that folder is used.
 - `books/commands/highlighted.py` → `highlighted` — reads a Highlighted app CSV export (highlights from physical books, page-located) and writes them into the highlights store (source `highlighted`) via `store.write_highlights`, resolving each book to a `book_id` via `store.Catalog.find` (unmatched books are skipped and counted). `--csv` accepts a single CSV file or a folder of CSV exports (every top-level `*.csv` is imported in sorted order; a file that fails to parse is skipped and reported), defaulting to `<vault>/Data/Imports/highlighted`. Its `Tags` column follows the `#tag` / `@link` convention (`highlights.split_tag_column`).
@@ -158,38 +160,38 @@ be reading order); Kobo's SQL `ORDER BY` produces the same order and is merely r
 
 The `books/renderers/obsidian/` package is the heart of the design and the reason the
 Calibre and Goodreads importers compose. Read it before changing either importer. Its
-`__init__.py` re-exports the whole public API (so call sites do `from
-books.renderers.obsidian import X`) — including the format-agnostic identity helpers that
-actually live in `books/core/{matching,naming}.py`, re-exported here so existing call sites
-are unchanged. It is split by responsibility across `layout.py` (folder constants +
-cover/filename helpers), `frontmatter.py` (schema + `update_frontmatter` + readers),
-`sections.py` (section helpers), `format.py` (`wikilink`/`link_list`/`html_to_markdown`),
+`__init__.py` re-exports its own public API (so call sites do `from
+books.renderers.obsidian import X`); the format-agnostic identity helpers are imported
+directly from `books/core/{matching,naming}.py` (the renderer no longer re-exports them).
+It is split by responsibility across `layout.py` (folder constants + hub-stub helpers),
+`frontmatter.py` (the `BOOK_PROPERTY_ORDER` schema + a split helper),
+`sections.py` (section helpers), `format.py` (`format_rating`/`wikilink`),
 and `highlights.py` (`render_highlights`). It owns:
 
 - **The flat vault layout.** The note folders live at the top level — `Books/` (the
-  indexed book notes), `Notes/` (fully manual personal notes), `Authors/` and `Topics/`
-  (stub/hub notes) — while all tool-managed data lives under `Data/`: `Data/Covers/`
-  (flat cover images named `<Title> - <Author>.jpg`), `Data/Imports/` (raw import
-  sources), and the CSV store (`Data/Sources/`, `Data/Highlights/`, `Data/books.csv`).
-  There is no per-book `Exports/<Author>/<Title>/` folder any more; a book note is a
-  single self-contained file. The folder names are constants in `layout.py`
-  (`BOOKS_DIRNAME`, `COVERS_DIRNAME` = `Data/Covers`, `NOTES_DIRNAME`, `AUTHORS_DIRNAME`,
-  `TOPICS_DIRNAME`).
+  indexed book notes) and `Authors/` (stub/hub notes `render` creates) — while all
+  tool-managed data lives under `Data/`: `Data/Covers/` (flat cover images named
+  `<Title> - <Author>.jpg`), `Data/Imports/` (raw import sources), and the CSV store
+  (`Data/Sources/`, `Data/Highlights/`, `Data/books.csv`). There is no per-book
+  `Exports/<Author>/<Title>/` folder any more; a book note is a single self-contained
+  file. The tool-managed folder names are constants in `layout.py` (`BOOKS_DIRNAME`,
+  `COVERS_DIRNAME` = `Data/Covers`, `AUTHORS_DIRNAME`).
 - **The book note anatomy.** A book note is frontmatter + a cover embed
   (`![[Data/Covers/<stem>.jpg|150]]`, width from `COVER_WIDTH`) + an optional write-once
   `## Review` section + a marker-wrapped `## Highlights` section. Personal notes are not
-  in the book note; the `Notes/` folder holds fully manual notes the user authors by hand.
+  in the book note; the user can keep fully manual notes anywhere else in the vault.
 - **A canonical frontmatter schema** (`BOOK_PROPERTY_ORDER`). Every book note emits
   all keys (empty when unknown) so any importer or a manual edit can fill a field later.
   The key is `topics` (not `genres`), and `cover` is the last key. `highlighted` and
   `reviewed` are booleans (defaulting to `false`) that flip to `true` when highlights or
   a review are imported, used for filtering the vault on reading progress.
-- **The "never overwrite" merge rule** (`update_frontmatter`): fills only absent or
-  blank keys, leaves non-empty values and the note body untouched, appends new keys in
-  canonical order — except keys in `OVERWRITE_KEYS` (`highlighted`, `reviewed`), where a
-  `true` update overwrites so the flag can flip on. This is what lets Calibre → Goodreads
-  (in either order) plus hand edits accumulate without clobbering. `write_if_absent`
-  enforces the same rule at the file level (used for hub/stub notes).
+- **Authoritative frontmatter, at merge not render.** Accumulation now happens in the
+  CSV store: `merge` clusters the per-source layers so Calibre → Goodreads (in either
+  order) build up a single row, and `render` writes each note's canonical frontmatter
+  authoritatively from that row (see `render.py` for the per-key rules: `topics` is
+  user-owned, `highlighted`/`reviewed` are derived, etc.). The old note-level
+  `update_frontmatter` "never overwrite" merge helper has been deleted. `write_if_absent`
+  still enforces a write-once rule at the file level (used for hub/stub notes).
 - **Section helpers** for idempotent re-imports. `render_marked_section(text, heading,
   marker, content)` wraps `content` between `%% books:<marker>:start %%` / `:end %%`
   comment markers under a `## heading`; on re-runs it replaces everything between the
@@ -197,13 +199,12 @@ and `highlights.py` (`render_highlights`). It owns:
   outside the markers survive). `ensure_section(text, heading, content)` is write-once:
   it appends a `## heading` section only if that heading is absent (used for `## Review`,
   so a hand-edited review is never clobbered).
-- **Cover reference helpers**: `cover_path(note_path)` maps a book note to its flat
-  `Data/Covers/<stem>.jpg` file; `cover_refs(note_path)` returns the `(frontmatter, embed)`
-  pair (the embed carrying `|150`).
-- **Matching normalization** used to detect that a Goodreads row and an existing Calibre
-  note are the same book: `norm_title`, `norm_isbn`, `author_key` (reduces names to
-  (first, last), handling "Last, First"), and `fold` (accent/case folding). These live in
-  `books/core/matching.py` (format-agnostic) and are re-exported by the renderer.
+- **Cover materialization**: `render` reads each row's staged cover path and writes the
+  flat `Data/Covers/<stem>.jpg` file plus the `![[…|150]]` embed (width from `COVER_WIDTH`).
+- **Matching normalization** used to cluster rows for the same book: `norm_title`,
+  `norm_isbn`, `author_key` (reduces names to (first, last), handling "Last, First"), and
+  `fold` (accent/case folding). These live in `books/core/matching.py` (format-agnostic)
+  and are imported directly from `core` by both `store` and the renderer.
 - **Book identity resolution** (`store.Catalog.find`): every importer resolves a `BookRef`
   to a `book_id` against the merged catalog by ISBN, then Amazon id, then standardized
   (title, author) — match-only, never creating. (The old `VaultIndex` note-resolution class
@@ -218,12 +219,12 @@ and `highlights.py` (`render_highlights`). It owns:
   restores its subtitle to disambiguate, rendering the illegal `:` as `,`
   (`Stalin, Waiting for Hitler, 1929-1941 - Stephen Kotkin.md`); a numeric `(n)` suffix is
   the last resort. Existing notes are matched by frontmatter and never renamed, so only
-  newly-created notes use this scheme. The note stem also names the book's `Data/Covers/` image
-  and `Notes/` note, keeping the three in lockstep.
-- **Formatting + parsing helpers**: `yaml_quote`, `wikilink`/`link_list` (authors and
-  topics become `[[wikilinks]]` for Obsidian's graph), `html_to_markdown` (book
-  descriptions/reviews), and frontmatter readers (`frontmatter_values`, `unquote`,
-  `extract_wikilinks`).
+  newly-created notes use this scheme. The note stem also names the book's `Data/Covers/`
+  image, keeping the two in lockstep.
+- **Formatting helpers**: `format_rating` (0-5 → star emoji) and `wikilink` (authors and
+  topics become `[[wikilinks]]` for Obsidian's graph). `render` handles its own YAML
+  round-tripping via python-frontmatter + ruamel.yaml, so the old string-level
+  `yaml_quote`/`link_list`/`html_to_markdown`/frontmatter-reader helpers are gone.
 
 Both importers are stdlib-only (Typer is the sole runtime dependency); prefer keeping
 new shared logic in `books/renderers/obsidian/` rather than duplicating it per importer.

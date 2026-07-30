@@ -90,19 +90,6 @@ def _terminal_prompt(cand: Candidate) -> str:
     return {"y": "accept", "n": "next", "s": "skip", "q": "quit"}.get(ans, "next")
 
 
-def _covers_staging(vault: Path) -> Path:
-    return store.sources_dir(vault) / "_covers" / "covers"
-
-
-def _stage_image(vault: Path, book_id: str, image: bytes) -> str:
-    """Write *image* to the covers staging dir; return its vault-relative path."""
-    staging = _covers_staging(vault)
-    staging.mkdir(parents=True, exist_ok=True)
-    dest = staging / f"{book_id}.jpg"
-    dest.write_bytes(image)
-    return dest.relative_to(vault).as_posix()
-
-
 def _existing_covers_layer(vault: Path) -> dict[str, store.BookRow]:
     """Prior covers-layer rows keyed by the book_id embedded in their staged path.
 
@@ -175,7 +162,7 @@ def run(vault, *, interactive, dry_run, limit, fetch_json, fetch_bytes, prompt, 
         if dry_run:
             print(f"  [dry-run] {cand.source}: {cand.image_url}")
             continue
-        cover_rel = _stage_image(vault, book.book_id, data)
+        cover_rel = store.stage_cover(vault, "covers", book.book_id, data=data)
         layer[book.book_id] = store.BookRow(
             title=book.title,
             authors=list(book.authors),

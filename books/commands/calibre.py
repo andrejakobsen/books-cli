@@ -8,9 +8,8 @@ each row's ``cover`` field; the ``render`` command materializes them (after merg
 into ``Data/Covers/<book_id>.jpg`` and creates the notes/stubs. Ebook files and
 Calibre internals are ignored.
 
-The layer is written via ``books.core.store`` (pydantic ``BookRow``). The only
-remaining ``books.renderers.obsidian`` dependency is ``html_to_markdown``, kept
-solely because the unchanged ``parse_opf`` still converts the OPF ``<description>``.
+The layer is written via ``books.core.store`` (pydantic ``BookRow``); this
+importer depends only on ``books.core`` (no renderer dependency).
 """
 
 from __future__ import annotations
@@ -23,7 +22,6 @@ import typer
 
 from books.core import config, store
 from books.core.paths import resolve_path
-from books.renderers.obsidian import html_to_markdown
 
 # --- XML namespaces used in Calibre .opf files -----------------------------
 
@@ -66,7 +64,6 @@ class BookMetadata:
     def __init__(self) -> None:
         self.title: str | None = None
         self.authors: list[str] = []
-        self.genres: list[str] = []
         self.publisher: str | None = None
         self.published: str | None = None
         self.language: str | None = None
@@ -79,7 +76,6 @@ class BookMetadata:
         self.date_added: str | None = None
         self.series: str | None = None
         self.series_index: str | None = None
-        self.description: str = ""
 
 
 def _date_only(value: str | None) -> str | None:
@@ -110,10 +106,6 @@ def parse_opf(opf_path: Path) -> BookMetadata:
         role = creator.get(f"{{{NS['opf']}}}role")
         if role in (None, "aut") and creator.text:
             meta.authors.append(creator.text.strip())
-
-    for subject in findall("subject"):
-        if subject.text:
-            meta.genres.append(subject.text.strip())
 
     pub = metadata.find(".//{*}publisher")
     if pub is not None and pub.text:
@@ -161,12 +153,6 @@ def parse_opf(opf_path: Path) -> BookMetadata:
         elif name == "calibre:series_index":
             meta.series_index = content.strip()
 
-    # description/genres are still parsed here but NOT mapped to a store column
-    # this pass (no BookRow field exists for them yet) — _to_row omits both.
-    desc = metadata.find(".//{*}description")
-    if desc is not None and desc.text:
-        meta.description = html_to_markdown(desc.text)
-
     return meta
 
 
@@ -181,11 +167,7 @@ def _rating_str(rating: float | None) -> str:
 
 
 def _to_row(meta: BookMetadata, cover_rel: str) -> store.BookRow:
-    """Map parsed Calibre metadata to a store BookRow (cover = staged rel path).
-
-    ``meta.description`` and ``meta.genres`` are intentionally not mapped: the
-    store schema has no column for them this pass.
-    """
+    """Map parsed Calibre metadata to a store BookRow (cover = staged rel path)."""
     return store.BookRow(
         title=meta.title or "",
         authors=list(meta.authors),
@@ -220,7 +202,7 @@ def convert(library: Path, output: Path) -> dict:
     stats = {"books": 0, "covers": 0, "skipped": 0, "authors": set()}
     output.mkdir(parents=True, exist_ok=True)
 
-    staging = store.sources_dir(output) / "_covers" / "calibre"
+    staging = store.cover_staging_dir(output, "calibre")
     if staging.exists():
         shutil.rmtree(staging)  # fresh each run so re-runs don't accumulate
 
@@ -242,10 +224,7 @@ def convert(library: Path, output: Path) -> dict:
         cover_rel = ""
         cover_src = opf_path.parent / "cover.jpg"
         if cover_src.is_file():
-            staging.mkdir(parents=True, exist_ok=True)
-            staged = staging / f"{len(rows)}.jpg"
-            shutil.copy2(cover_src, staged)
-            cover_rel = staged.relative_to(output).as_posix()
+            cover_rel = store.stage_cover(output, "calibre", str(len(rows)), src=cover_src)
             stats["covers"] += 1
 
         rows.append(_to_row(meta, cover_rel))

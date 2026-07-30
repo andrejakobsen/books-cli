@@ -1,21 +1,20 @@
 """Unit tests for the shared Obsidian helpers."""
 
+from books.core.matching import norm_amazon
+from books.core.naming import safe_filename
 from books.renderers import obsidian as ob
 
 
 def test_safe_filename_replaces_illegal_chars():
-    assert ob.safe_filename("A: B / C?") == "A_ B _ C_"
-    assert ob.safe_filename("  spaced  out  ") == "spaced out"
-    assert ob.safe_filename("trailing. ") == "trailing"
-    assert ob.safe_filename("///") == "___"
-    assert ob.safe_filename("") == "Untitled"
+    assert safe_filename("A: B / C?") == "A_ B _ C_"
+    assert safe_filename("  spaced  out  ") == "spaced out"
+    assert safe_filename("trailing. ") == "trailing"
+    assert safe_filename("///") == "___"
+    assert safe_filename("") == "Untitled"
 
 
-def test_yaml_quote_and_links():
-    assert ob.yaml_quote('he said "hi"') == '"he said \\"hi\\""'
+def test_wikilink_sanitizes_illegal_chars():
     assert ob.wikilink("A|B#C") == "[[A-BC]]"
-    assert ob.link_list(["X", "Y"]) == '["[[X]]", "[[Y]]"]'
-    assert ob.plain_list(["read", "fiction"]) == '["read", "fiction"]'
 
 
 def test_format_rating():
@@ -25,50 +24,6 @@ def test_format_rating():
     assert ob.format_rating(0) == "⭐"  # present 0 -> one star
     assert ob.format_rating(0.4) == "⭐"  # rounds down to 0 -> one star
     assert ob.format_rating(None) == ""  # unrated -> blank
-
-
-def test_update_frontmatter_fills_blank_only():
-    note = '---\ntype: book\ntitle: "Keep"\nrating:\n---\n\nbody text\n'
-    out = ob.update_frontmatter(
-        note,
-        {
-            "title": ob.yaml_quote("New"),  # existing non-empty -> untouched
-            "rating": "5",  # existing blank -> filled
-            "status": ob.yaml_quote("read"),  # absent -> added
-        },
-    )
-    assert 'title: "Keep"' in out
-    assert "rating: 5" in out
-    assert 'status: "read"' in out
-    assert "body text" in out  # body preserved
-
-
-def test_update_frontmatter_no_frontmatter_prepends_block():
-    out = ob.update_frontmatter("just a body\n", {"title": ob.yaml_quote("T")})
-    assert out.startswith("---\n")
-    assert 'title: "T"' in out
-    assert "just a body" in out
-
-
-def test_update_frontmatter_empty_update_adds_placeholder():
-    out = ob.update_frontmatter("---\ntype: book\n---\n", {"pages": ""})
-    assert "pages:" in out
-
-
-def test_frontmatter_values_and_extractors():
-    note = (
-        '---\ntype: book\ntitle: "Napoleon: A Life"\nisbn: "9780698176287"\n'
-        'authors: ["[[Andrew Roberts]]"]\n---\nbody\n'
-    )
-    fm = ob.frontmatter_values(note)
-    assert ob.unquote(fm["title"]) == "Napoleon: A Life"
-    assert ob.unquote(fm["isbn"]) == "9780698176287"
-    assert ob.extract_wikilinks(fm["authors"]) == ["Andrew Roberts"]
-
-
-def test_html_to_markdown_list():
-    md = ob.html_to_markdown("<p>Intro</p><ul><li>one</li><li>two</li></ul>")
-    assert "Intro" in md and "- one" in md and "- two" in md
 
 
 def test_render_marked_section_inserts_when_absent():
@@ -128,20 +83,6 @@ def test_ensure_top_embed_noop_when_present():
     assert ob.ensure_top_embed(note, "![[Covers/T.jpg|150]]") == note
 
 
-def test_cover_path_is_flat_keyed_to_note_stem(tmp_path):
-    note_path = tmp_path / "Books" / "Napoleon - Andrew Roberts.md"
-    assert (
-        ob.cover_path(note_path) == tmp_path / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg"
-    )
-
-
-def test_cover_refs_builds_vault_relative_wikilinks_with_width(tmp_path):
-    note_path = tmp_path / "Books" / "Napoleon - Andrew Roberts.md"
-    fm, embed = ob.cover_refs(note_path)
-    assert fm == '"[[Data/Covers/Napoleon - Andrew Roberts.jpg]]"'
-    assert embed == "![[Data/Covers/Napoleon - Andrew Roberts.jpg|150]]"
-
-
 def test_property_order_uses_topics_not_genres():
     assert "topics" in ob.BOOK_PROPERTY_ORDER
     assert "genres" not in ob.BOOK_PROPERTY_ORDER
@@ -149,29 +90,17 @@ def test_property_order_uses_topics_not_genres():
 
 
 def test_source_in_property_order():
-    from books.renderers import obsidian as ob
-
     assert "source" in ob.BOOK_PROPERTY_ORDER
 
 
-def test_source_never_overwrites_existing():
-    # "First metadata importer wins" on a shared note (spec addendum).
-    from books.renderers import obsidian as ob
-
-    note = "---\ntype: book\nsource: calibre\n---\n\nBody.\n"
-    out = ob.update_frontmatter(note, {"source": "goodreads"})
-    assert "source: calibre" in out
-    assert "source: goodreads" not in out
-
-
 def test_norm_amazon_uppercases_and_strips():
-    assert ob.norm_amazon(" b00inixpye ") == "B00INIXPYE"
-    assert ob.norm_amazon("B00-INIX_PYE") == "B00INIXPYE"
+    assert norm_amazon(" b00inixpye ") == "B00INIXPYE"
+    assert norm_amazon("B00-INIX_PYE") == "B00INIXPYE"
 
 
 def test_norm_amazon_empty_is_none():
-    assert ob.norm_amazon("") is None
-    assert ob.norm_amazon(None) is None
+    assert norm_amazon("") is None
+    assert norm_amazon(None) is None
 
 
 def test_property_order_includes_flags_after_status():
@@ -180,29 +109,3 @@ def test_property_order_includes_flags_after_status():
     assert "reviewed" in order
     assert order.index("highlighted") == order.index("status") + 1
     assert order.index("reviewed") == order.index("status") + 2
-
-
-def test_overwrite_key_true_flips_existing_false():
-    note = "---\ntype: book\nhighlighted: false\n---\n"
-    out = ob.update_frontmatter(note, {"highlighted": "true"})
-    assert "highlighted: true" in out
-    assert "highlighted: false" not in out
-
-
-def test_overwrite_key_false_default_does_not_downgrade_true():
-    note = "---\ntype: book\nhighlighted: true\n---\n"
-    out = ob.update_frontmatter(note, {"highlighted": "false"})
-    assert "highlighted: true" in out
-    assert "highlighted: false" not in out
-
-
-def test_overwrite_key_false_default_appends_when_absent():
-    note = "---\ntype: book\n---\n"
-    out = ob.update_frontmatter(note, {"reviewed": "false"})
-    assert "reviewed: false" in out
-
-
-def test_non_overwrite_key_still_never_overwrites():
-    note = '---\ntype: book\ntitle: "Keep"\n---\n'
-    out = ob.update_frontmatter(note, {"title": ob.yaml_quote("New")})
-    assert 'title: "Keep"' in out
