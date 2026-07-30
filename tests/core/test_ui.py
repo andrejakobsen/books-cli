@@ -97,8 +97,43 @@ def test_prompt_choice_validates_and_returns():
 def test_nested_progress_offtty_is_noop():
     # In the pytest process the console is not a terminal, so nested_progress
     # yields a no-op handle whose methods are safely callable.
-    with ui.nested_progress("Importing", total=2) as prog:
-        prog.status("Book A - downloading")
+    with ui.nested_progress("Importing · 0/2 books") as prog:
+        prog.status("Importing · 1/2 books")
+        prog.book("Book A", total=3)
+        prog.describe("Book A · downloading")
         prog.advance()
         prog.advance(1)
     # no exception, nothing rendered
+
+
+def test_stepprogress_bar_tracks_clips():
+    prog = Progress()
+    task = prog.add_task("", total=None)
+    step = ui.StepProgress(prog, task, spinner=ui.Spinner("dots"))
+
+    step.book("The Deluge — Adam Tooze", total=12)
+    step.describe("The Deluge — Adam Tooze · downloading")
+    step.advance()
+    step.advance(2)
+
+    t = prog.tasks[0]
+    assert t.total == 12
+    assert t.completed == 3
+    assert t.description == "The Deluge — Adam Tooze · downloading"
+
+
+def test_stepprogress_book_resets_completed():
+    prog = Progress()
+    task = prog.add_task("", total=None)
+    step = ui.StepProgress(prog, task, spinner=ui.Spinner("dots"))
+
+    step.book("Book A", total=2)
+    step.advance()
+    step.advance()
+    # A new book resets the bar rather than accumulating across books.
+    step.book("Book B", total=5)
+
+    t = prog.tasks[0]
+    assert t.total == 5
+    assert t.completed == 0
+    assert t.description == "Book B"

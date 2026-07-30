@@ -303,14 +303,18 @@ def run(
     if limit is not None:
         matched = matched[:limit]
 
-    with ui.nested_progress("Importing audiobooks", total=len(matched)) as prog:
-        for book, book_id in matched:
+    total_books = len(matched)
+    with ui.nested_progress(f"Importing audiobooks · 0/{total_books} books") as prog:
+        for idx, (book, book_id) in enumerate(matched, start=1):
             authors = ", ".join(book.authors) or "?"
+            label = f"{book.title} — {authors}"
+            # Overall status tracks book count; the per-book bar tracks its clips.
+            prog.status(f"Importing audiobooks · {idx}/{total_books} books")
+            prog.book(label, total=None)
             # Isolate each book: a single failure (an unpublished/undownloadable
             # title, a license/voucher error, a network hiccup, a bad transcribe)
             # is counted and skipped so it never aborts the whole run.
             try:
-                prog.status(f"{book.title} — {authors}")
                 annotations = client.annotations(book.asin)
                 if not annotations:
                     continue
@@ -321,6 +325,8 @@ def run(
                 new = uncached(annotations, clips)
 
                 if new:
+                    # Size the per-book bar to this book's clip count.
+                    prog.book(label, total=len(new))
                     chapters = client.chapters(book.asin)
                     # Text-only notes (end == start) have no audio range: their text
                     # IS the highlight, so they need no download/cut/transcribe.
@@ -329,21 +335,20 @@ def run(
                         tmp = Path(td)
                         audio = None
                         if needs_audio:
-                            prog.status(f"{book.title} — {authors} · downloading")
+                            prog.describe(f"{label} · downloading")
                             audio = downloader.download(book.asin, tmp)
                             stats["downloaded"] += 1
-                        for i, ann in enumerate(new, start=1):
+                        prog.describe(f"{label} · transcribing")
+                        for ann in new:
                             if _is_text_only(ann):
                                 text = ""  # note text becomes the body in record_to_highlight
                             else:
-                                prog.status(
-                                    f"{book.title} — {authors} · transcribing clip {i}/{len(new)}"
-                                )
                                 start, end = _clip_bounds(ann, clip_window)
                                 clip_path = cutter.cut(audio, start, end, tmp / f"{ann.id}.wav")
                                 text = transcriber(clip_path)
                                 stats["transcribed"] += 1
                             clips[ann.id] = annotation_to_record(ann, text, chapters)
+                            prog.advance()
                     save_book_cache(cache_dir, book.asin, book_cache)
 
                 rows = book_highlight_rows(clips, valid_ids={a.id for a in annotations})
@@ -361,8 +366,6 @@ def run(
             except Exception as exc:  # noqa: BLE001 — continue-on-error per book
                 stats["failed"] += 1
                 echo(f"[skip] {book.title} [asin {book.asin}]: {exc}")
-            finally:
-                prog.advance()
 
     store.write_layer(vault, "audible", list(layer.values()))
     return stats

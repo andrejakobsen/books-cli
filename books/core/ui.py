@@ -114,42 +114,69 @@ def progress(description: str, total: int | None = None):
 
 
 class StepProgress:
-    """Handle for a nested display: an overall bar + a live status line."""
+    """Handle for a nested display: an overall status line + a per-book bar.
+
+    The top line is a spinner + status text describing the whole run (all books);
+    below it a determinate bar tracks the *current* book's clips, reset per book
+    via :meth:`book`.
+    """
 
     def __init__(self, prog: Progress, task_id, spinner: Spinner) -> None:
         self._prog = prog
         self._task = task_id
         self._spinner = spinner
 
-    def advance(self, n: int = 1) -> None:
-        """Advance the overall (outer) bar by *n*."""
-        self._prog.advance(self._task, n)
-
     def status(self, text: str) -> None:
-        """Rewrite the per-item status line."""
+        """Rewrite the overall status line (all books)."""
         self._spinner.update(text=text)
+
+    def book(self, description: str, total: int | None = None) -> None:
+        """Start the per-book bar for a new book with *total* clips.
+
+        Resets the bar's completed count to zero; pass ``total=None`` for a
+        pulsing/indeterminate bar (e.g. while fetching annotations).
+        """
+        self._prog.reset(self._task, total=total, description=description)
+
+    def describe(self, text: str) -> None:
+        """Change the per-book bar's label without resetting its progress."""
+        self._prog.update(self._task, description=text)
+
+    def advance(self, n: int = 1) -> None:
+        """Advance the current book's clip bar by *n*."""
+        self._prog.advance(self._task, n)
 
 
 class _NoopStep:
     """No-op stand-in used off-tty so callers need no branching."""
 
-    def advance(self, n: int = 1) -> None:
+    def status(self, text: str) -> None:
         pass
 
-    def status(self, text: str) -> None:
+    def book(self, description: str, total: int | None = None) -> None:
+        pass
+
+    def describe(self, text: str) -> None:
+        pass
+
+    def advance(self, n: int = 1) -> None:
         pass
 
 
 @contextmanager
-def nested_progress(description: str, total: int | None):
-    """Yield a :class:`StepProgress`: an overall bar plus a live status line.
+def nested_progress(status: str):
+    """Yield a :class:`StepProgress`: an overall status line above a per-book bar.
 
-    Off-tty (tests/pipes) a :class:`_NoopStep` is yielded and nothing renders.
+    The top line is a spinner + *status* text describing the whole run; the bar
+    below it tracks the current book's clips (reset per book via
+    :meth:`StepProgress.book`). Off-tty (tests/pipes) a :class:`_NoopStep` is
+    yielded and nothing renders.
     """
     if not console.is_terminal:
         yield _NoopStep()
         return
-    overall = Progress(
+    spinner = Spinner("dots", text=status)
+    bar = Progress(
         TextColumn("[progress.description]{task.description}"),
         BarColumn(),
         MofNCompleteColumn(),
@@ -157,10 +184,9 @@ def nested_progress(description: str, total: int | None):
         console=console,
         auto_refresh=False,
     )
-    task = overall.add_task(description, total=total)
-    spinner = Spinner("dots", text="")
-    with Live(Group(overall, spinner), console=console, refresh_per_second=12):
-        yield StepProgress(overall, task, spinner)
+    task = bar.add_task("", total=None)
+    with Live(Group(spinner, bar), console=console, refresh_per_second=12):
+        yield StepProgress(bar, task, spinner)
 
 
 def prompt_choice(

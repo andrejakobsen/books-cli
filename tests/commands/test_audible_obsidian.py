@@ -796,11 +796,18 @@ def test_run_asin_preserves_other_audible_layer_rows(tmp_path):
 class RecordingStep:
     def __init__(self):
         self.statuses = []
+        self.books = []  # (description, total) per book
+        self.describes = []  # per-book bar label changes
         self.advances = 0
-        self.total = None
 
     def status(self, text):
         self.statuses.append(text)
+
+    def book(self, description, total=None):
+        self.books.append((description, total))
+
+    def describe(self, text):
+        self.describes.append(text)
 
     def advance(self, n=1):
         self.advances += n
@@ -813,8 +820,8 @@ def test_run_reports_per_clip_progress(monkeypatch, tmp_path):
     rec = RecordingStep()
 
     @contextmanager
-    def fake_nested(description, total):
-        rec.total = total
+    def fake_nested(status):
+        rec.statuses.append(status)
         yield rec
 
     monkeypatch.setattr(ao.ui, "nested_progress", fake_nested)
@@ -829,7 +836,10 @@ def test_run_reports_per_clip_progress(monkeypatch, tmp_path):
         clip_window=30,
     )
 
-    assert rec.total == 1  # one matched book
-    assert rec.advances == 1  # advanced once for the book
-    assert any("downloading" in s for s in rec.statuses)
-    assert any("transcribing clip 1/1" in s for s in rec.statuses)
+    # Overall status line tracks the book count (1/1 books here).
+    assert any("1/1 books" in s for s in rec.statuses)
+    # The per-book bar is sized to the book's one clip and advanced once.
+    assert (1 in (total for _, total in rec.books)) and rec.advances == 1
+    # Download/transcribe phases show on the per-book bar label, not the status.
+    assert any("downloading" in d for d in rec.describes)
+    assert any("transcribing" in d for d in rec.describes)
