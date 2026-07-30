@@ -20,7 +20,7 @@ from xml.etree import ElementTree as ET
 
 import typer
 
-from books.core import config, store
+from books.core import config, store, ui
 from books.core.paths import resolve_path
 
 # --- XML namespaces used in Calibre .opf files -----------------------------
@@ -216,29 +216,32 @@ def convert(library: Path, output: Path) -> dict:
         shutil.rmtree(staging)  # fresh each run so re-runs don't accumulate
 
     rows: list[store.BookRow] = []
-    for opf_path in sorted(library.rglob("metadata.opf")):
-        rel_parts = opf_path.relative_to(library).parts
-        if any(part in IGNORED_NAMES for part in rel_parts):
-            continue
-        try:
-            meta = parse_opf(opf_path)
-        except ET.ParseError as exc:
-            print(f"WARN: could not parse {opf_path}: {exc}")
-            stats["skipped"] += 1
-            continue
-        if not meta.title:
-            stats["skipped"] += 1
-            continue
+    opf_paths = sorted(library.rglob("metadata.opf"))
+    with ui.progress("Scanning Calibre library", total=len(opf_paths)) as prog:
+        for opf_path in opf_paths:
+            prog.advance(0)
+            rel_parts = opf_path.relative_to(library).parts
+            if any(part in IGNORED_NAMES for part in rel_parts):
+                continue
+            try:
+                meta = parse_opf(opf_path)
+            except ET.ParseError as exc:
+                ui.warn(f"could not parse {opf_path}: {exc}")
+                stats["skipped"] += 1
+                continue
+            if not meta.title:
+                stats["skipped"] += 1
+                continue
 
-        cover_rel = ""
-        cover_src = opf_path.parent / "cover.jpg"
-        if cover_src.is_file():
-            cover_rel = store.stage_cover(output, "calibre", str(len(rows)), src=cover_src)
-            stats["covers"] += 1
+            cover_rel = ""
+            cover_src = opf_path.parent / "cover.jpg"
+            if cover_src.is_file():
+                cover_rel = store.stage_cover(output, "calibre", str(len(rows)), src=cover_src)
+                stats["covers"] += 1
 
-        rows.append(_to_row(meta, cover_rel))
-        stats["books"] += 1
-        stats["authors"].update(meta.authors)
+            rows.append(_to_row(meta, cover_rel))
+            stats["books"] += 1
+            stats["authors"].update(meta.authors)
 
     store.write_layer(output, "calibre", rows)
     return stats
@@ -286,7 +289,7 @@ def calibre_to_obsidian(
 
     output.mkdir(parents=True, exist_ok=True)
     stats = convert(library, output)
-    typer.echo(
+    ui.info(
         f"Done. {stats['books']} books, {stats['covers']} covers, "
         f"{len(stats['authors'])} authors, {stats['skipped']} skipped.\n"
         f"Output: {output}"
