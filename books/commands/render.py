@@ -38,6 +38,13 @@ def render_command(
         help="Render the CSV store as Obsidian book notes (the default and only "
         "output format today; future formats slot in beside it as their own flag).",
     ),
+    refresh: bool = typer.Option(
+        False,
+        "--refresh",
+        help="Delete Books/ and Authors/ before rendering (a clean rebuild that "
+        "removes stale notes/stubs). Your topics/aliases/cssclasses are cached and "
+        "restored for books still in the catalog.",
+    ),
 ) -> None:
     """Render the CSV store into book notes for the chosen output format.
 
@@ -64,7 +71,7 @@ def render_command(
             param_hint="--output",
         )
     vault.mkdir(parents=True, exist_ok=True)
-    stats = renderer.render(vault)
+    stats = renderer.render(vault, refresh=refresh)
     suffix = f" ({stats['failed']} failed)" if stats.get("failed") else ""
     ui.info(
         f"Done. {stats['notes']} notes, {stats['highlights']} highlights, "
