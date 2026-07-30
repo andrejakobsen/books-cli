@@ -42,7 +42,7 @@ def test_calibre_writes_layer_csv(tmp_path):
     assert row.authors == ["Adam Tooze"]
     assert row.isbn == "9780141032184"
     assert row.format == "ebook"
-    assert row.rating == "4"          # calibre 8/2 = 4.0 -> "4"
+    assert row.rating == "4"  # calibre 8/2 = 4.0 -> "4"
     assert stats["books"] == 1
 
 
@@ -92,9 +92,11 @@ def test_html_to_markdown_list():
 
 
 def test_calibre_defaults_library_to_home_calibre_library(monkeypatch, tmp_path):
+    from pathlib import Path as _Path
+
     import typer
     from typer.testing import CliRunner
-    from pathlib import Path as _Path
+
     from books.commands import calibre as cal
     from books.core import config
 

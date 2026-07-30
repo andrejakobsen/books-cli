@@ -37,6 +37,7 @@ def test_highlight_tags_defaults_to_empty_list():
 
 # --- sanitize_link -----------------------------------------------------------
 
+
 def test_sanitize_link_keeps_case_and_spaces():
     assert hl.sanitize_link("War Commisar") == "War Commisar"
 
@@ -81,12 +82,14 @@ def test_sanitize_link_stopword_last_word_capitalized():
 
 # --- Highlight.links ---------------------------------------------------------
 
+
 def test_highlight_links_defaults_to_empty_list():
     h = hl.Highlight(text="x")
     assert h.links == []
 
 
 # --- parse_markers -----------------------------------------------------------
+
 
 def test_parse_markers_splits_link_tag_and_clean_text():
     clean, links, tags = hl.parse_markers("Great chapter. @One Two #history #russia")
@@ -133,6 +136,7 @@ def test_parse_markers_only_markers_clean_is_none():
 
 
 # --- split_tag_column --------------------------------------------------------
+
 
 def test_split_tag_column_separates_links_and_tags():
     links, tags = hl.split_tag_column("history, @War Commisar, Cold War")

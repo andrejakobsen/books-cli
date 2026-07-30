@@ -13,15 +13,15 @@ class Highlight:
     note: str | None = None
     chapter_index: int | None = None
     chapter_title: str | None = None
-    progress: float | None = None      # 0.0-1.0 within the chapter
-    block: str | None = None           # stable location component (e.g. KoboSpan block)
-    segment: str | None = None         # secondary location component
-    page: str | None = None            # human page/location (physical books), e.g. "45-49"
+    progress: float | None = None  # 0.0-1.0 within the chapter
+    block: str | None = None  # stable location component (e.g. KoboSpan block)
+    segment: str | None = None  # secondary location component
+    page: str | None = None  # human page/location (physical books), e.g. "45-49"
     location_label: str | None = None  # display prefix for `page`; defaults to "p." when None
     date: str | None = None
     tags: list[str] = field(default_factory=list)
     links: list[str] = field(default_factory=list)
-    source: str | None = None          # provenance (kobo | readwise | ...) for grouping
+    source: str | None = None  # provenance (kobo | readwise | ...) for grouping
 
 
 def sanitize_tag(raw: str | None) -> str | None:
@@ -42,8 +42,22 @@ def sanitize_tag(raw: str | None) -> str | None:
 
 # Lowercased "small words" that stay lowercase mid-title (unless first/last word).
 _TITLE_STOPWORDS = {
-    "a", "an", "and", "as", "at", "but", "by", "for", "in", "nor", "of",
-    "on", "or", "the", "to", "vs",
+    "a",
+    "an",
+    "and",
+    "as",
+    "at",
+    "but",
+    "by",
+    "for",
+    "in",
+    "nor",
+    "of",
+    "on",
+    "or",
+    "the",
+    "to",
+    "vs",
 }
 
 

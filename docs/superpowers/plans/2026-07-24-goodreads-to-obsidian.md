@@ -58,11 +58,14 @@ def test_yaml_quote_and_links():
 
 def test_update_frontmatter_fills_blank_only():
     note = '---\ntype: book\ntitle: "Keep"\nrating:\n---\n\nbody text\n'
-    out = ob.update_frontmatter(note, {
-        "title": ob.yaml_quote("New"),   # existing non-empty -> untouched
-        "rating": "5",                   # existing blank -> filled
-        "status": ob.yaml_quote("read"), # absent -> added
-    })
+    out = ob.update_frontmatter(
+        note,
+        {
+            "title": ob.yaml_quote("New"),  # existing non-empty -> untouched
+            "rating": "5",  # existing blank -> filled
+            "status": ob.yaml_quote("read"),  # absent -> added
+        },
+    )
     assert 'title: "Keep"' in out
     assert "rating: 5" in out
     assert 'status: "read"' in out
@@ -151,6 +154,7 @@ BOOK_PROPERTY_ORDER = (
 
 # --- YAML / link formatting -------------------------------------------------
 
+
 def yaml_quote(value: str) -> str:
     """Double-quote a scalar, escaping backslashes and quotes."""
     escaped = value.replace("\\", "\\\\").replace('"', '\\"')
@@ -209,6 +213,7 @@ def write_stub(hub_dir: Path, name: str, note_type: str) -> None:
 
 # --- Frontmatter reading ----------------------------------------------------
 
+
 def _split_frontmatter(text: str) -> tuple[list[str], str]:
     """Return (frontmatter_lines, body); lines exclude the '---' fences.
 
@@ -219,7 +224,7 @@ def _split_frontmatter(text: str) -> tuple[list[str], str]:
     lines = text.split("\n")
     for i in range(1, len(lines)):
         if lines[i].strip() == "---":
-            return lines[1:i], "\n".join(lines[i + 1:])
+            return lines[1:i], "\n".join(lines[i + 1 :])
     return [], text
 
 
@@ -262,6 +267,7 @@ def extract_wikilinks(value: str) -> list[str]:
 
 # --- Frontmatter merge ("never overwrite") ---------------------------------
 
+
 def update_frontmatter(note_text: str, updates: dict[str, str]) -> str:
     """Return *note_text* with *updates* applied, filling only empty/absent keys.
 
@@ -301,6 +307,7 @@ def update_frontmatter(note_text: str, updates: dict[str, str]) -> str:
 
 
 # --- HTML -> Markdown -------------------------------------------------------
+
 
 class _HTMLToMarkdown(HTMLParser):
     """Minimal HTML->Markdown for book descriptions and reviews.
@@ -390,6 +397,7 @@ def html_to_markdown(html: str) -> str:
 
 # --- Matching normalization -------------------------------------------------
 
+
 def fold(text: str) -> str:
     """Lowercase and strip accents (NFKD + drop combining marks)."""
     text = unicodedata.normalize("NFKD", text)
@@ -462,7 +470,7 @@ def test_missing_cover(tmp_path):
 
     note = (out / "Jane Doe" / "No Cover Book" / "No Cover Book.md").read_text()
     assert "cover:\n" in note or note.rstrip().endswith("cover:")  # empty placeholder
-    assert "![[cover.jpg]]" not in note                            # no body embed
+    assert "![[cover.jpg]]" not in note  # no body embed
     assert "rating:" in note
     assert not (out / "Jane Doe" / "No Cover Book" / "cover.jpg").exists()
 ```
@@ -527,6 +535,7 @@ Replace everything from `# --- YAML emission ---` through the end of `build_note
 
 ```python
 # --- Frontmatter / note construction ---------------------------------------
+
 
 def _calibre_updates(meta: BookMetadata, has_cover: bool) -> dict[str, str]:
     """Map a BookMetadata to canonical property -> formatted YAML value.
@@ -650,14 +659,14 @@ HEADER = (
 ROWS = (
     '1,"Napoleon: A Life",Andrew Roberts,"Roberts, Andrew",,'
     '"=""0141032014""","=""9780141032016""",5.0,Penguin,Paperback,976,2015,2014,'
-    '2026/07/17,2026/05/04,history,history (#1),read,'
+    "2026/07/17,2026/05/04,history,history (#1),read,"
     '"Great book.<br/><br/>Loved it.",,note-to-self,1,0\n'
     '2,"The Cold War: A New History",John Lewis Gaddis,"Gaddis, John Lewis",,'
     '"=""0143038273""","=""9780143038276""",0,Penguin,Paperback,352,2006,2005,,'
-    '2026/07/14,to-read,to-read (#2),to-read,,,,0,0\n'
+    "2026/07/14,to-read,to-read (#2),to-read,,,,0,0\n"
     '3,"Stalin: Paradoxes of Power",Stephen Kotkin,"Kotkin, Stephen",,'
     '"=""1594203792""","=""9781594203794""",0,Penguin,Hardcover,976,2014,2014,,'
-    '2026/04/30,,,currently-reading,,,,1,0\n'
+    "2026/04/30,,,currently-reading,,,,1,0\n"
 )
 
 
@@ -684,18 +693,20 @@ def test_parse_csv_fields(tmp_path):
     assert "Great book." in nap.review
 
     unrated = books[1]
-    assert unrated.rating is None          # My Rating 0 -> unrated
+    assert unrated.rating is None  # My Rating 0 -> unrated
     assert unrated.status == "to-read"
 
     reading = books[2]
-    assert reading.status == "reading"     # currently-reading normalized
+    assert reading.status == "reading"  # currently-reading normalized
 
 
 def test_normalization_helpers():
     from books import obsidian as ob
+
     assert ob.norm_isbn('="9780698176287"') == "9780698176287"
-    assert ob.norm_title("The Cold War: A New History") == \
-        ob.norm_title("The Cold War - A New History")
+    assert ob.norm_title("The Cold War: A New History") == ob.norm_title(
+        "The Cold War - A New History"
+    )
     assert ob.author_key("Terry Martin") == ob.author_key("Terry L. Martin")
     assert ob.author_key("Roberts, Andrew") == ob.author_key("Andrew Roberts")
     assert ob.author_key("Broué, Pierre") == ob.author_key("Pierre Broue")
@@ -759,10 +770,10 @@ class GoodreadsBook:
     rating: int | None = None
     publisher: str | None = None
     pages: str | None = None
-    published: str | None = None      # year only
+    published: str | None = None  # year only
     date_read: str | None = None
     date_added: str | None = None
-    status: str | None = None         # reading status (Exclusive Shelf)
+    status: str | None = None  # reading status (Exclusive Shelf)
     shelves: list[str] = field(default_factory=list)
     review: str | None = None
     private_notes: str | None = None
@@ -807,23 +818,27 @@ def parse_csv(path: Path) -> list[GoodreadsBook]:
             except ValueError:
                 rating = 0
             shelves = [s.strip() for s in (row.get("Bookshelves") or "").split(",") if s.strip()]
-            books.append(GoodreadsBook(
-                title=(row.get("Title") or "").strip(),
-                authors=_split_authors(row.get("Author", ""), row.get("Additional Authors", "")),
-                isbn=_strip_isbn(row.get("ISBN", "")),
-                isbn13=_strip_isbn(row.get("ISBN13", "")),
-                rating=rating if rating > 0 else None,
-                publisher=(row.get("Publisher") or "").strip() or None,
-                pages=(row.get("Number of Pages") or "").strip() or None,
-                published=(row.get("Year Published") or "").strip() or None,
-                date_read=_norm_date(row.get("Date Read", "")),
-                date_added=_norm_date(row.get("Date Added", "")),
-                status=_norm_status(row.get("Exclusive Shelf", "")),
-                shelves=shelves,
-                review=(row.get("My Review") or "").strip() or None,
-                private_notes=(row.get("Private Notes") or "").strip() or None,
-                exclusive_shelf=(row.get("Exclusive Shelf") or "").strip() or None,
-            ))
+            books.append(
+                GoodreadsBook(
+                    title=(row.get("Title") or "").strip(),
+                    authors=_split_authors(
+                        row.get("Author", ""), row.get("Additional Authors", "")
+                    ),
+                    isbn=_strip_isbn(row.get("ISBN", "")),
+                    isbn13=_strip_isbn(row.get("ISBN13", "")),
+                    rating=rating if rating > 0 else None,
+                    publisher=(row.get("Publisher") or "").strip() or None,
+                    pages=(row.get("Number of Pages") or "").strip() or None,
+                    published=(row.get("Year Published") or "").strip() or None,
+                    date_read=_norm_date(row.get("Date Read", "")),
+                    date_added=_norm_date(row.get("Date Added", "")),
+                    status=_norm_status(row.get("Exclusive Shelf", "")),
+                    shelves=shelves,
+                    review=(row.get("My Review") or "").strip() or None,
+                    private_notes=(row.get("Private Notes") or "").strip() or None,
+                    exclusive_shelf=(row.get("Exclusive Shelf") or "").strip() or None,
+                )
+            )
     return books
 ```
 
@@ -890,16 +905,16 @@ def test_convert_merges_into_existing_note_by_isbn(tmp_path):
     note = book_dir / "Napoleon_ A Life.md"
     note.write_text(
         '---\ntype: book\ntitle: "Napoleon: A Life"\nisbn: "9780141032016"\n'
-        'status:\npages:\nrating: 4\n---\n\nMy body.\n',
+        "status:\npages:\nrating: 4\n---\n\nMy body.\n",
         encoding="utf-8",
     )
     stats = gr.convert(write_csv(tmp_path), out)
     assert stats["merged"] == 1 and stats["created"] == 0
     updated = note.read_text()
-    assert "status: read" in updated       # blank filled
-    assert "pages: 976" in updated         # blank filled
-    assert "rating: 4" in updated          # existing value NOT overwritten (was 4, GR is 5)
-    assert "My body." in updated           # body preserved
+    assert "status: read" in updated  # blank filled
+    assert "pages: 976" in updated  # blank filled
+    assert "rating: 4" in updated  # existing value NOT overwritten (was 4, GR is 5)
+    assert "My body." in updated  # body preserved
 
 
 def test_convert_merges_by_strict_title_author(tmp_path):
@@ -939,6 +954,7 @@ Append after `parse_csv`:
 ```python
 # --- Matching against an existing vault -------------------------------------
 
+
 def build_index(output: Path) -> tuple[dict[str, Path], dict[tuple, Path]]:
     """Index existing book notes by normalized ISBN and (title, author)."""
     by_isbn: dict[str, Path] = {}
@@ -976,9 +992,11 @@ def match_note(book: GoodreadsBook, by_isbn, by_title_author) -> Path | None:
 
 # --- Note construction ------------------------------------------------------
 
+
 def _goodreads_updates(book: GoodreadsBook) -> dict[str, str]:
     """Canonical property -> formatted value; empty for fields Goodreads lacks."""
     from books.obsidian import BOOK_PROPERTY_ORDER
+
     u = {k: "" for k in BOOK_PROPERTY_ORDER if k != "type"}
     if book.title:
         u["title"] = yaml_quote(book.title)
@@ -1094,12 +1112,14 @@ Append at the end of the module:
 def goodreads_to_obsidian(
     csv: Path = typer.Option(
         ...,
-        "--csv", "-c",
+        "--csv",
+        "-c",
         help="Path to the Goodreads library CSV export. Relative paths resolve against the current directory.",
     ),
     output: Path = typer.Option(
         Path("Obsidian"),
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Relative paths resolve against the current directory.",
     ),
     shelf: str = typer.Option(

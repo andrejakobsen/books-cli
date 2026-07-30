@@ -66,7 +66,9 @@ Changes to `books/config.py`:
       """Canonical import subfolder for a command: <vault>/<imports>/<name>."""
       vault = resolve_vault(output)
       cfg = load_config()
-      root = resolve_path(Path(cfg.imports), vault)  # absolute imports honored; else joined onto vault
+      root = resolve_path(
+          Path(cfg.imports), vault
+      )  # absolute imports honored; else joined onto vault
       return root / name
   ```
 

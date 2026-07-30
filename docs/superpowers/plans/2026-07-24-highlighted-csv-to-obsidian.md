@@ -29,8 +29,8 @@ def test_page_label_and_anchor_single():
 def test_page_label_range_uses_en_dash_anchor_keeps_hyphen():
     hs = [hl.Highlight(text="x", page="45-49")]
     out = hl.render_highlights(hs)
-    assert "> [!quote]+ p. 45–49" in out   # en dash in label
-    assert "^p45-49" in out                 # hyphen in anchor
+    assert "> [!quote]+ p. 45–49" in out  # en dash in label
+    assert "^p45-49" in out  # hyphen in anchor
 
 
 def test_page_same_page_collisions_dedupe():
@@ -56,7 +56,7 @@ Add `import re` near the top (after `from __future__ import annotations`).
 Add the field to the dataclass (after `segment`, before `date`):
 
 ```python
-    page: str | None = None            # human page/location (physical books), e.g. "45-49"
+page: str | None = None  # human page/location (physical books), e.g. "45-49"
 ```
 
 In `build_anchors`, replace the location block:
@@ -121,13 +121,15 @@ from pathlib import Path
 
 from books import highlighted_obsidian as hi
 
-HEADER = ("Highlight,Title,Author,ISBN,Collections,Reading Status,"
-          "Book Added Date,Location,Tags,Note,Date,Favorite\n")
+HEADER = (
+    "Highlight,Title,Author,ISBN,Collections,Reading Status,"
+    "Book Added Date,Location,Tags,Note,Date,Favorite\n"
+)
 ROWS = (
     '"Fear is the mind-killer",Stalin,Stephen Kotkin,9781594203794,,Reading,'
-    '2026-07-24,4,Stalin,That is true,2026-07-24 10:37:51,N\n'
+    "2026-07-24,4,Stalin,That is true,2026-07-24 10:37:51,N\n"
     '"A longer passage.",Stalin,Stephen Kotkin,9781594203794,,Reading,'
-    '2026-07-24,45-49,Stalin,,2026-07-24 11:15:47,N\n'
+    "2026-07-24,45-49,Stalin,,2026-07-24 11:15:47,N\n"
 )
 
 
@@ -145,7 +147,7 @@ def test_parse_and_map(tmp_path):
     assert h0.note == "That is true"
     assert h0.page == "4"
     h1 = hi.row_to_highlight(rows[1])
-    assert h1.note is None          # blank Note -> None
+    assert h1.note is None  # blank Note -> None
     assert h1.page == "45-49"
 
 
@@ -157,7 +159,7 @@ def test_convert_writes_highlights_and_embed(tmp_path):
     assert note.exists()
     note_text = note.read_text()
     assert "![](Highlights.md)" in note_text
-    assert 'isbn: "9781594203794"' in note_text     # ISBN persisted for matching
+    assert 'isbn: "9781594203794"' in note_text  # ISBN persisted for matching
     body = (note.parent / "Highlights.md").read_text()
     assert "> [!quote]+ p. 4" in body
     assert "^p45-49" in body
@@ -170,13 +172,14 @@ def test_convert_merges_into_existing_note_by_isbn(tmp_path):
     book_dir.mkdir(parents=True)
     note = book_dir / "Stalin.md"
     note.write_text(
-        '---\ntype: book\ntitle: "Stalin"\nisbn: "9781594203794"\n'
-        'status: read\n---\n\nMy body.\n', encoding="utf-8")
+        '---\ntype: book\ntitle: "Stalin"\nisbn: "9781594203794"\nstatus: read\n---\n\nMy body.\n',
+        encoding="utf-8",
+    )
     stats = hi.convert(write_csv(tmp_path), out)
     assert stats["books"] == 1
     updated = note.read_text()
-    assert "status: read" in updated       # existing value untouched
-    assert "My body." in updated           # body preserved
+    assert "status: read" in updated  # existing value untouched
+    assert "My body." in updated  # body preserved
     assert "![](Highlights.md)" in updated
 
 
@@ -264,8 +267,7 @@ def convert(csv_path: Path, output: Path) -> dict:
         isbn = (row.get("ISBN") or "").strip() or None
         author = (row.get("Author") or "").strip()
         key = isbn or title
-        group = groups.setdefault(
-            key, {"title": title, "author": author, "isbn": isbn, "rows": []})
+        group = groups.setdefault(key, {"title": title, "author": author, "isbn": isbn, "rows": []})
         group["rows"].append(row)
 
     for group in groups.values():
@@ -274,15 +276,22 @@ def convert(csv_path: Path, output: Path) -> dict:
         note_path, _ = index.find_or_create(ref)
 
         base = note_path.read_text(encoding="utf-8")
-        note_path.write_text(update_frontmatter(base, {
-            "title": yaml_quote(group["title"]),
-            "authors": link_list(authors) if authors else "",
-            "isbn": yaml_quote(group["isbn"]) if group["isbn"] else "",
-        }), encoding="utf-8")
+        note_path.write_text(
+            update_frontmatter(
+                base,
+                {
+                    "title": yaml_quote(group["title"]),
+                    "authors": link_list(authors) if authors else "",
+                    "isbn": yaml_quote(group["isbn"]) if group["isbn"] else "",
+                },
+            ),
+            encoding="utf-8",
+        )
 
         highlights = [row_to_highlight(r) for r in group["rows"]]
         write_leaf_with_embed(
-            note_path, "Highlights.md", render_highlights(highlights), "Highlights")
+            note_path, "Highlights.md", render_highlights(highlights), "Highlights"
+        )
 
         for author in authors:
             write_stub(authors_dir, author, "author")
@@ -296,12 +305,14 @@ def convert(csv_path: Path, output: Path) -> dict:
 def highlighted_to_obsidian(
     csv: Path = typer.Option(
         ...,
-        "--csv", "-c",
+        "--csv",
+        "-c",
         help="Path to the Highlighted CSV export. Relative paths resolve against the current directory.",
     ),
     output: Path = typer.Option(
         Path("Obsidian"),
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Relative paths resolve against the current directory.",
     ),
 ) -> None:
@@ -416,10 +427,14 @@ Append an end-to-end test:
 
 ```python
 def _highlighted_csv(tmp_path: Path) -> Path:
-    header = ("Highlight,Title,Author,ISBN,Collections,Reading Status,"
-              "Book Added Date,Location,Tags,Note,Date,Favorite\n")
-    row = ('"Fear is the mind-killer",Stalin,Stephen Kotkin,9781594203794,,'
-           'Reading,2026-07-24,45-49,Stalin,,2026-07-24 11:15:47,N\n')
+    header = (
+        "Highlight,Title,Author,ISBN,Collections,Reading Status,"
+        "Book Added Date,Location,Tags,Note,Date,Favorite\n"
+    )
+    row = (
+        '"Fear is the mind-killer",Stalin,Stephen Kotkin,9781594203794,,'
+        "Reading,2026-07-24,45-49,Stalin,,2026-07-24 11:15:47,N\n"
+    )
     p = tmp_path / "Highlights for Stalin.csv"
     p.write_text(header + row, encoding="utf-8")
     return p

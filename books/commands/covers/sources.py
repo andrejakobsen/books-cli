@@ -10,6 +10,7 @@ from urllib.parse import quote
 @dataclass
 class MissingBook:
     """A catalog book (row in books.csv) that has no cover yet."""
+
     book_id: str
     title: str
     authors: list[str]
@@ -20,18 +21,24 @@ class MissingBook:
 @dataclass
 class Candidate:
     """A candidate cover image found for a book."""
-    source: str          # "apple" | "google" | "openlibrary" | "amazon"
-    label: str           # matched title / author, for display
+
+    source: str  # "apple" | "google" | "openlibrary" | "amazon"
+    label: str  # matched title / author, for display
     image_url: str
-    fmt: str | None      # "paperback" | "hardcover" | None (unknown)
-    isbn: str | None = None   # ISBN learned from the source, for frontmatter backfill
+    fmt: str | None  # "paperback" | "hardcover" | None (unknown)
+    isbn: str | None = None  # ISBN learned from the source, for frontmatter backfill
 
 
 GOOGLE_API = "https://www.googleapis.com/books/v1/volumes"
 
 # imageLinks keys from best to worst.
 _GOOGLE_IMAGE_KEYS = (
-    "extraLarge", "large", "medium", "small", "thumbnail", "smallThumbnail",
+    "extraLarge",
+    "large",
+    "medium",
+    "small",
+    "thumbnail",
+    "smallThumbnail",
 )
 
 
@@ -78,7 +85,7 @@ def google_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
     if book.isbn:
         q = f"isbn:{book.isbn}"
     else:
-        parts = [f'intitle:{_clean(book.title)}']
+        parts = [f"intitle:{_clean(book.title)}"]
         if book.authors:
             parts.append(f"inauthor:{normalize_author(book.authors[0])}")
         q = " ".join(parts)
@@ -91,13 +98,15 @@ def google_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
         chosen = next((links[k] for k in _GOOGLE_IMAGE_KEYS if links.get(k)), None)
         if not chosen:
             continue
-        out.append(Candidate(
-            source="google",
-            label=_label(info.get("title", book.title), info.get("authors", [])),
-            image_url=_upgrade_google_url(chosen),
-            fmt=None,
-            isbn=_google_isbn(info),
-        ))
+        out.append(
+            Candidate(
+                source="google",
+                label=_label(info.get("title", book.title), info.get("authors", [])),
+                image_url=_upgrade_google_url(chosen),
+                fmt=None,
+                isbn=_google_isbn(info),
+            )
+        )
     return out
 
 
@@ -140,9 +149,14 @@ def openlibrary_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
         url = OL_ISBN_API.format(isbn=quote(book.isbn))
         data = fetch_json(url) or {}
         fmt = _norm_fmt(data.get("physical_format"))
-        out.append(Candidate(
-            source="openlibrary", label=label,
-            image_url=OL_COVER_ISBN.format(isbn=quote(book.isbn)), fmt=fmt))
+        out.append(
+            Candidate(
+                source="openlibrary",
+                label=label,
+                image_url=OL_COVER_ISBN.format(isbn=quote(book.isbn)),
+                fmt=fmt,
+            )
+        )
         return out
 
     params = f"title={quote(_clean(book.title))}"
@@ -166,18 +180,27 @@ def openlibrary_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
             if cid is None or cid in seen:
                 continue
             seen.add(cid)
-            out.append(Candidate(
-                source="openlibrary", label=label,
-                image_url=OL_COVER_ID.format(cid=cid),
-                fmt=_norm_fmt(ed.get("physical_format"))))
+            out.append(
+                Candidate(
+                    source="openlibrary",
+                    label=label,
+                    image_url=OL_COVER_ID.format(cid=cid),
+                    fmt=_norm_fmt(ed.get("physical_format")),
+                )
+            )
         if out:
             break
     if not out:
         for doc in docs:
             if doc.get("cover_i"):
-                out.append(Candidate(
-                    source="openlibrary", label=label,
-                    image_url=OL_COVER_ID.format(cid=doc["cover_i"]), fmt=None))
+                out.append(
+                    Candidate(
+                        source="openlibrary",
+                        label=label,
+                        image_url=OL_COVER_ID.format(cid=doc["cover_i"]),
+                        fmt=None,
+                    )
+                )
     out.sort(key=lambda c: _fmt_rank(c.fmt))
     return out
 
@@ -189,18 +212,20 @@ def amazon_candidates(book: MissingBook) -> list[Candidate]:
     """Construct an Amazon cover URL from an existing ASIN (no scraping)."""
     if not book.amazon:
         return []
-    return [Candidate(
-        source="amazon",
-        label=_label(book.title, book.authors),
-        image_url=AMAZON_IMAGE.format(asin=book.amazon),
-        fmt=None,
-    )]
+    return [
+        Candidate(
+            source="amazon",
+            label=_label(book.title, book.authors),
+            image_url=AMAZON_IMAGE.format(asin=book.amazon),
+            fmt=None,
+        )
+    ]
 
 
 ITUNES_API = "https://itunes.apple.com/search"
 ITUNES_COUNTRY = "gb"
 ITUNES_ENTITY = "ebook"
-ITUNES_ART_SIZE = "1400x1400bb"   # iTunes artwork is resizable via this token
+ITUNES_ART_SIZE = "1400x1400bb"  # iTunes artwork is resizable via this token
 
 
 def _itunes_artwork(artwork_url: str) -> str:
@@ -221,7 +246,7 @@ def _itunes_isbn(artwork_url: str) -> str | None:
     13-digit ISBN-13 or a 10-character ISBN-10 (last char may be an ``X`` check
     digit); opaque stems (e.g. ``mzi.mwffatop``) yield ``None``.
     """
-    parts = artwork_url.rsplit("/", 2)   # [prefix, "<isbn>.jpg", "100x100bb.jpg"]
+    parts = artwork_url.rsplit("/", 2)  # [prefix, "<isbn>.jpg", "100x100bb.jpg"]
     if len(parts) < 3:
         return None
     stem = parts[1].rsplit(".", 1)[0]
@@ -242,8 +267,7 @@ def apple_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
     if book.authors:
         parts.append(normalize_author(book.authors[0]))
     term = " ".join(p for p in parts if p)
-    url = (f"{ITUNES_API}?term={quote(term)}"
-           f"&entity={ITUNES_ENTITY}&country={ITUNES_COUNTRY}&limit=5")
+    url = f"{ITUNES_API}?term={quote(term)}&entity={ITUNES_ENTITY}&country={ITUNES_COUNTRY}&limit=5"
     data = fetch_json(url) or {}
     out: list[Candidate] = []
     for result in data.get("results", []):
@@ -252,13 +276,15 @@ def apple_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
             continue
         name = result.get("trackName") or result.get("collectionName") or book.title
         artist = result.get("artistName")
-        out.append(Candidate(
-            source="apple",
-            label=_label(name, [artist] if artist else []),
-            image_url=_itunes_artwork(artwork),
-            fmt=None,
-            isbn=_itunes_isbn(artwork),
-        ))
+        out.append(
+            Candidate(
+                source="apple",
+                label=_label(name, [artist] if artist else []),
+                image_url=_itunes_artwork(artwork),
+                fmt=None,
+                isbn=_itunes_isbn(artwork),
+            )
+        )
     return out
 
 

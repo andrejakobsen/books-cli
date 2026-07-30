@@ -39,15 +39,17 @@ GR_HEADER = (
 GR_ROW = (
     '1,"Napoleon: A Life",Andrew Roberts,"Roberts, Andrew",,'
     f'"=""0141032014""","=""{ISBN13}""",5.0,Penguin,Paperback,976,2015,2014,'
-    '2026/07/17,2026/05/04,history,history (#1),read,'
+    "2026/07/17,2026/05/04,history,history (#1),read,"
     '"A stirring review.",,,1,0\n'
 )
 
-HI_HEADER = ("Highlight,Title,Author,ISBN,Collections,Reading Status,"
-             "Book Added Date,Location,Tags,Note,Date,Favorite\n")
+HI_HEADER = (
+    "Highlight,Title,Author,ISBN,Collections,Reading Status,"
+    "Book Added Date,Location,Tags,Note,Date,Favorite\n"
+)
 HI_ROW = (
     f'"A memorable passage.",Napoleon: A Life,Andrew Roberts,{ISBN13},,Read,'
-    '2026-07-24,45,History,,2026-07-24 11:15:47,N\n'
+    "2026-07-24,45,History,,2026-07-24 11:15:47,N\n"
 )
 
 
@@ -96,9 +98,9 @@ def test_compose_calibre_then_goodreads_then_highlighted(tmp_path):
     out = tmp_path / "Obsidian"
     c2o.convert(_calibre_library(tmp_path), out)
     gr.convert(_goodreads_csv(tmp_path), out)
-    store.merge(out)                              # cluster layers → books.csv
-    hi.convert(_highlighted_csv(tmp_path), out)   # enrich highlights store
-    rn.render(out)                                # write the flat notes
+    store.merge(out)  # cluster layers → books.csv
+    hi.convert(_highlighted_csv(tmp_path), out)  # enrich highlights store
+    rn.render(out)  # write the flat notes
     _assert_composed(out)
 
 

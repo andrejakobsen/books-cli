@@ -36,8 +36,8 @@ from books.commands import (
 )
 from books.core import config, store
 
-
 # --- Detection helpers ------------------------------------------------------
+
 
 def _imports_folder(name: str, vault: Path) -> Path:
     """The canonical `.imports/<name>` folder inside *vault*."""
@@ -84,7 +84,9 @@ def _detect_kobo(vault: Path) -> str | None:
 
 
 def _detect_highlighted(vault: Path) -> str | None:
-    return _imports_label("highlighted") if _has_csv(_imports_folder("highlighted", vault)) else None
+    return (
+        _imports_label("highlighted") if _has_csv(_imports_folder("highlighted", vault)) else None
+    )
 
 
 def _detect_readwise(vault: Path) -> str | None:
@@ -115,6 +117,7 @@ def _detect_render(vault: Path) -> str | None:
 
 
 # --- Step runners (call each module's core function directly) ----------------
+
 
 def _run_calibre(vault: Path) -> dict:
     return calibre.convert(_calibre_library(), vault)
@@ -156,14 +159,18 @@ def _run_render(vault: Path) -> dict:
 
 # --- Summaries --------------------------------------------------------------
 
+
 def _summ_calibre(s: dict) -> str:
-    return (f"{s.get('books', 0)} books, {s.get('covers', 0)} covers, "
-            f"{len(s.get('authors', ()))} authors, {s.get('skipped', 0)} skipped")
+    return (
+        f"{s.get('books', 0)} books, {s.get('covers', 0)} covers, "
+        f"{len(s.get('authors', ()))} authors, {s.get('skipped', 0)} skipped"
+    )
 
 
 def _summ_goodreads(s: dict) -> str:
-    return (f"{s.get('books', 0)} books, {s.get('reviews', 0)} reviews, "
-            f"{s.get('skipped', 0)} skipped")
+    return (
+        f"{s.get('books', 0)} books, {s.get('reviews', 0)} reviews, {s.get('skipped', 0)} skipped"
+    )
 
 
 def _summ_highlights(s: dict) -> str:
@@ -177,11 +184,14 @@ def _summ_merge(s: dict) -> str:
 
 def _summ_render(s: dict) -> str:
     failed = f", {s['failed']} failed" if s.get("failed") else ""
-    return (f"{s.get('notes', 0)} notes, {s.get('highlights', 0)} highlights, "
-            f"{s.get('reviews', 0)} reviews, {s.get('authors', 0)} authors{failed}")
+    return (
+        f"{s.get('notes', 0)} notes, {s.get('highlights', 0)} highlights, "
+        f"{s.get('reviews', 0)} reviews, {s.get('authors', 0)} authors{failed}"
+    )
 
 
 # --- Step registry ----------------------------------------------------------
+
 
 @dataclass(frozen=True)
 class Step:
@@ -190,8 +200,9 @@ class Step:
     ``where`` is a human description of the source location, used in the
     "skipped — no source in ..." message.
     """
+
     name: str
-    detect: Callable[[Path], "str | None"]
+    detect: Callable[[Path], str | None]
     run: Callable[[Path], dict]
     summarize: Callable[[dict], str]
     where: str
@@ -206,17 +217,36 @@ def _steps() -> list[Step]:
     (kobo → highlighted → readwise → render).
     """
     return [
-        Step("calibre", _detect_calibre, _run_calibre, _summ_calibre,
-             "~/Calibre Library"),
-        Step("goodreads", _detect_goodreads, _run_goodreads, _summ_goodreads,
-             _imports_label("goodreads")),
+        Step("calibre", _detect_calibre, _run_calibre, _summ_calibre, "~/Calibre Library"),
+        Step(
+            "goodreads",
+            _detect_goodreads,
+            _run_goodreads,
+            _summ_goodreads,
+            _imports_label("goodreads"),
+        ),
         Step("merge", _detect_merge, _run_merge, _summ_merge, "Data/Sources"),
-        Step("kobo", _detect_kobo, _run_kobo, _summ_highlights,
-             f"{_imports_label('kobo')} or a mounted Kobo"),
-        Step("highlighted", _detect_highlighted, _run_highlighted,
-             _summ_highlights, _imports_label("highlighted")),
-        Step("readwise", _detect_readwise, _run_readwise, _summ_highlights,
-             _imports_label("readwise")),
+        Step(
+            "kobo",
+            _detect_kobo,
+            _run_kobo,
+            _summ_highlights,
+            f"{_imports_label('kobo')} or a mounted Kobo",
+        ),
+        Step(
+            "highlighted",
+            _detect_highlighted,
+            _run_highlighted,
+            _summ_highlights,
+            _imports_label("highlighted"),
+        ),
+        Step(
+            "readwise",
+            _detect_readwise,
+            _run_readwise,
+            _summ_highlights,
+            _imports_label("readwise"),
+        ),
         Step("render", _detect_render, _run_render, _summ_render, "Data/books.csv"),
     ]
 
@@ -224,6 +254,7 @@ def _steps() -> list[Step]:
 @dataclass
 class StepResult:
     """Outcome of one step: status is ran / skipped / failed / planned."""
+
     name: str
     status: str
     summary: str
@@ -231,6 +262,7 @@ class StepResult:
 
 
 # --- Colored output ---------------------------------------------------------
+
 
 def _header(name: str, source: str) -> None:
     typer.secho(f"▶ {name}", fg=typer.colors.CYAN, bold=True, nl=False)
@@ -274,6 +306,7 @@ def _print_summary(results: list[StepResult]) -> None:
 
 # --- Orchestration ----------------------------------------------------------
 
+
 def run_sync(vault: Path, *, dry_run: bool = False) -> list[StepResult]:
     """Run every importer whose source is present, in dependency order.
 
@@ -289,8 +322,7 @@ def run_sync(vault: Path, *, dry_run: bool = False) -> list[StepResult]:
         source = step.detect(vault)
         if source is None:
             _skip(step.name, f"no source in {step.where}")
-            results.append(StepResult(step.name, "skipped",
-                                      f"skipped ({step.where})"))
+            results.append(StepResult(step.name, "skipped", f"skipped ({step.where})"))
             continue
         if dry_run:
             _plan(step.name, source)
@@ -316,9 +348,10 @@ def run_sync(vault: Path, *, dry_run: bool = False) -> list[StepResult]:
 def sync(
     output: Path | None = typer.Option(
         None,
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
     dry_run: bool = typer.Option(
         False,

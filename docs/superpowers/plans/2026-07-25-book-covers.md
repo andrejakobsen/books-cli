@@ -53,8 +53,10 @@ def test_dataclasses_exist():
     assert mb.authors == ["An Author"]
 
     c = covers.Candidate(
-        source="google", label="A Title — An Author",
-        image_url="https://x/y.jpg", fmt=None,
+        source="google",
+        label="A Title — An Author",
+        image_url="https://x/y.jpg",
+        fmt=None,
     )
     assert c.source == "google"
     assert c.fmt is None
@@ -91,6 +93,7 @@ from pathlib import Path
 @dataclass
 class MissingBook:
     """A book note whose `cover:` frontmatter is blank/absent."""
+
     note_path: Path
     title: str
     authors: list[str]
@@ -101,10 +104,11 @@ class MissingBook:
 @dataclass
 class Candidate:
     """A candidate cover image found for a book."""
-    source: str          # "google" | "openlibrary" | "amazon"
-    label: str           # matched title / author, for display
+
+    source: str  # "google" | "openlibrary" | "amazon"
+    label: str  # matched title / author, for display
     image_url: str
-    fmt: str | None      # "paperback" | "hardcover" | None (unknown)
+    fmt: str | None  # "paperback" | "hardcover" | None (unknown)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -134,6 +138,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```python
 # tests/test_covers.py — append
 
+
 def _write_note(vault: Path, name: str, body: str) -> Path:
     books = vault / "Books"
     books.mkdir(parents=True, exist_ok=True)
@@ -144,17 +149,20 @@ def _write_note(vault: Path, name: str, body: str) -> Path:
 
 def test_find_missing_selects_blank_cover_book_notes(tmp_path):
     # blank cover -> included
-    _write_note(tmp_path, "A.md",
+    _write_note(
+        tmp_path,
+        "A.md",
         '---\ntype: book\ntitle: "A"\nauthors: ["[[Ann Author]]"]\n'
-        'isbn: "111"\namazon: "B001"\ncover:\n---\nbody\n')
+        'isbn: "111"\namazon: "B001"\ncover:\n---\nbody\n',
+    )
     # non-empty cover -> excluded
-    _write_note(tmp_path, "B.md",
-        '---\ntype: book\ntitle: "B"\ncover: "[[Exports/x/cover.jpg]]"\n---\n')
+    _write_note(
+        tmp_path, "B.md", '---\ntype: book\ntitle: "B"\ncover: "[[Exports/x/cover.jpg]]"\n---\n'
+    )
     # absent cover key -> included
-    _write_note(tmp_path, "C.md",
-        '---\ntype: book\ntitle: "C"\nauthors: ["[[Cee]]"]\n---\n')
+    _write_note(tmp_path, "C.md", '---\ntype: book\ntitle: "C"\nauthors: ["[[Cee]]"]\n---\n')
     # not a book -> excluded
-    _write_note(tmp_path, "D.md", '---\ntype: author\ncover:\n---\n')
+    _write_note(tmp_path, "D.md", "---\ntype: author\ncover:\n---\n")
 
     missing = covers.find_missing(tmp_path)
     titles = sorted(m.title for m in missing)
@@ -210,13 +218,15 @@ def find_missing(vault: Path) -> list[MissingBook]:
             continue
         if not _cover_is_blank(fm):
             continue
-        out.append(MissingBook(
-            note_path=md,
-            title=unquote(fm.get("title", "")),
-            authors=extract_wikilinks(fm.get("authors", "")),
-            isbn=(unquote(fm.get("isbn", "")).strip() or None),
-            amazon=(unquote(fm.get("amazon", "")).strip() or None),
-        ))
+        out.append(
+            MissingBook(
+                note_path=md,
+                title=unquote(fm.get("title", "")),
+                authors=extract_wikilinks(fm.get("authors", "")),
+                isbn=(unquote(fm.get("isbn", "")).strip() or None),
+                amazon=(unquote(fm.get("amazon", "")).strip() or None),
+            )
+        )
     return out
 ```
 
@@ -266,8 +276,8 @@ GOOGLE_VOLUME = {
 
 def test_google_books_prefers_largest_and_upgrades_url():
     book = covers.MissingBook(
-        note_path=None, title="The Deluge", authors=["Adam Tooze"],
-        isbn=None, amazon=None)
+        note_path=None, title="The Deluge", authors=["Adam Tooze"], isbn=None, amazon=None
+    )
     captured = {}
 
     def fake_fetch(url):
@@ -280,7 +290,7 @@ def test_google_books_prefers_largest_and_upgrades_url():
     assert c.source == "google"
     assert c.fmt is None
     # 'large' beats the thumbnails
-    assert c.image_url.startswith("https://")   # http -> https
+    assert c.image_url.startswith("https://")  # http -> https
     assert "zoom=3" in c.image_url
     # title/author query when no ISBN
     assert "intitle" in captured["url"]
@@ -289,7 +299,8 @@ def test_google_books_prefers_largest_and_upgrades_url():
 
 def test_google_books_uses_isbn_query_when_present():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn="9780141032016", amazon=None)
+        note_path=None, title="X", authors=[], isbn="9780141032016", amazon=None
+    )
     captured = {}
 
     def fake_fetch(url):
@@ -301,10 +312,10 @@ def test_google_books_uses_isbn_query_when_present():
 
 
 def test_google_books_no_images_returns_empty():
-    book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+    book = covers.MissingBook(note_path=None, title="X", authors=[], isbn=None, amazon=None)
     cands = covers.google_books_candidates(
-        book, lambda url: {"items": [{"volumeInfo": {"title": "X"}}]})
+        book, lambda url: {"items": [{"volumeInfo": {"title": "X"}}]}
+    )
     assert cands == []
 ```
 
@@ -325,7 +336,12 @@ GOOGLE_API = "https://www.googleapis.com/books/v1/volumes"
 
 # imageLinks keys from best to worst.
 _GOOGLE_IMAGE_KEYS = (
-    "extraLarge", "large", "medium", "small", "thumbnail", "smallThumbnail",
+    "extraLarge",
+    "large",
+    "medium",
+    "small",
+    "thumbnail",
+    "smallThumbnail",
 )
 
 
@@ -345,7 +361,7 @@ def google_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
     if book.isbn:
         q = f"isbn:{book.isbn}"
     else:
-        parts = [f'intitle:{book.title}']
+        parts = [f"intitle:{book.title}"]
         if book.authors:
             parts.append(f"inauthor:{book.authors[0]}")
         q = " ".join(parts)
@@ -361,12 +377,14 @@ def google_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
         chosen = next((links[k] for k in _GOOGLE_IMAGE_KEYS if links.get(k)), None)
         if not chosen:
             continue
-        out.append(Candidate(
-            source="google",
-            label=_label(info.get("title", book.title), info.get("authors", [])),
-            image_url=_upgrade_google_url(chosen),
-            fmt=None,
-        ))
+        out.append(
+            Candidate(
+                source="google",
+                label=_label(info.get("title", book.title), info.get("authors", [])),
+                image_url=_upgrade_google_url(chosen),
+                fmt=None,
+            )
+        )
     return out
 ```
 
@@ -417,8 +435,8 @@ OL_SEARCH = {
 
 def test_openlibrary_title_author_paperback_first():
     book = covers.MissingBook(
-        note_path=None, title="Napoleon", authors=["Andrew Roberts"],
-        isbn=None, amazon=None)
+        note_path=None, title="Napoleon", authors=["Andrew Roberts"], isbn=None, amazon=None
+    )
     captured = {}
 
     def fake_fetch(url):
@@ -435,12 +453,15 @@ def test_openlibrary_title_author_paperback_first():
     pb = next(c for c in cands if c.fmt == "paperback")
     assert "222-L.jpg" in pb.image_url
     assert "title=Napoleon" in captured["url"]
-    assert "author=Andrew+Roberts" in captured["url"] or "author=Andrew%20Roberts" in captured["url"]
+    assert (
+        "author=Andrew+Roberts" in captured["url"] or "author=Andrew%20Roberts" in captured["url"]
+    )
 
 
 def test_openlibrary_isbn_path_builds_isbn_cover_url():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn="9780141032016", amazon=None)
+        note_path=None, title="X", authors=[], isbn="9780141032016", amazon=None
+    )
     captured = {}
 
     def fake_fetch(url):
@@ -454,8 +475,7 @@ def test_openlibrary_isbn_path_builds_isbn_cover_url():
 
 
 def test_openlibrary_no_cover_returns_empty():
-    book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+    book = covers.MissingBook(note_path=None, title="X", authors=[], isbn=None, amazon=None)
     cands = covers.openlibrary_candidates(book, lambda url: {"docs": []})
     assert cands == []
 ```
@@ -504,9 +524,14 @@ def openlibrary_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
         except Exception:
             return []
         fmt = _norm_fmt(data.get("physical_format"))
-        out.append(Candidate(
-            source="openlibrary", label=label,
-            image_url=OL_COVER_ISBN.format(isbn=quote(book.isbn)), fmt=fmt))
+        out.append(
+            Candidate(
+                source="openlibrary",
+                label=label,
+                image_url=OL_COVER_ISBN.format(isbn=quote(book.isbn)),
+                fmt=fmt,
+            )
+        )
         return out
 
     params = f"title={quote(book.title)}"
@@ -522,14 +547,23 @@ def openlibrary_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
         for ed in editions:
             cid = ed.get("cover_i")
             if cid:
-                out.append(Candidate(
-                    source="openlibrary", label=label,
-                    image_url=OL_COVER_ID.format(cid=cid),
-                    fmt=_norm_fmt(ed.get("physical_format"))))
+                out.append(
+                    Candidate(
+                        source="openlibrary",
+                        label=label,
+                        image_url=OL_COVER_ID.format(cid=cid),
+                        fmt=_norm_fmt(ed.get("physical_format")),
+                    )
+                )
         if not editions and doc.get("cover_i"):
-            out.append(Candidate(
-                source="openlibrary", label=label,
-                image_url=OL_COVER_ID.format(cid=doc["cover_i"]), fmt=None))
+            out.append(
+                Candidate(
+                    source="openlibrary",
+                    label=label,
+                    image_url=OL_COVER_ID.format(cid=doc["cover_i"]),
+                    fmt=None,
+                )
+            )
     out.sort(key=lambda c: _fmt_rank(c.fmt))
     return out
 ```
@@ -561,9 +595,11 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```python
 # tests/test_covers.py — append
 
+
 def test_amazon_candidate_from_asin():
     book = covers.MissingBook(
-        note_path=None, title="X", authors=["Y"], isbn=None, amazon="B00ABCDEFG")
+        note_path=None, title="X", authors=["Y"], isbn=None, amazon="B00ABCDEFG"
+    )
     cands = covers.amazon_candidates(book)
     assert len(cands) == 1
     assert cands[0].source == "amazon"
@@ -571,15 +607,14 @@ def test_amazon_candidate_from_asin():
 
 
 def test_amazon_no_asin_returns_empty():
-    book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+    book = covers.MissingBook(note_path=None, title="X", authors=[], isbn=None, amazon=None)
     assert covers.amazon_candidates(book) == []
 
 
 def test_gather_candidates_source_order():
     book = covers.MissingBook(
-        note_path=None, title="Napoleon", authors=["Andrew Roberts"],
-        isbn=None, amazon="B00ABCDEFG")
+        note_path=None, title="Napoleon", authors=["Andrew Roberts"], isbn=None, amazon="B00ABCDEFG"
+    )
 
     def fake_fetch(url):
         if "googleapis" in url:
@@ -612,12 +647,14 @@ def amazon_candidates(book: MissingBook) -> list[Candidate]:
     """Construct an Amazon cover URL from an existing ASIN (no scraping)."""
     if not book.amazon:
         return []
-    return [Candidate(
-        source="amazon",
-        label=_label(book.title, book.authors),
-        image_url=AMAZON_IMAGE.format(asin=book.amazon),
-        fmt=None,
-    )]
+    return [
+        Candidate(
+            source="amazon",
+            label=_label(book.title, book.authors),
+            image_url=AMAZON_IMAGE.format(asin=book.amazon),
+            fmt=None,
+        )
+    ]
 
 
 def gather_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
@@ -656,11 +693,12 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```python
 # tests/test_covers.py — append
 
+
 def test_is_valid_image():
     assert covers.is_valid_image(b"x" * 5000, "image/jpeg") is True
-    assert covers.is_valid_image(b"x" * 5000, "text/html") is False   # wrong type
-    assert covers.is_valid_image(b"x" * 10, "image/gif") is False      # too small
-    assert covers.is_valid_image(b"x" * 5000, None) is False           # unknown type
+    assert covers.is_valid_image(b"x" * 5000, "text/html") is False  # wrong type
+    assert covers.is_valid_image(b"x" * 10, "image/gif") is False  # too small
+    assert covers.is_valid_image(b"x" * 5000, None) is False  # unknown type
 
 
 def _cand(source):
@@ -672,8 +710,8 @@ def test_pick_cover_auto_first_valid():
 
     def fetch_bytes(url):
         if url.endswith("google"):
-            return (b"x" * 5, "image/jpeg")       # too small -> invalid
-        return (b"x" * 5000, "image/jpeg")        # valid
+            return (b"x" * 5, "image/jpeg")  # too small -> invalid
+        return (b"x" * 5000, "image/jpeg")  # valid
 
     picked = covers.pick_cover(cands, fetch_bytes, interactive=False, prompt=None)
     assert picked is not None
@@ -685,7 +723,8 @@ def test_pick_cover_auto_first_valid():
 def test_pick_cover_auto_none_when_all_invalid():
     cands = [_cand("google")]
     picked = covers.pick_cover(
-        cands, lambda url: (b"", "text/html"), interactive=False, prompt=None)
+        cands, lambda url: (b"", "text/html"), interactive=False, prompt=None
+    )
     assert picked is None
 
 
@@ -696,18 +735,21 @@ def test_pick_cover_interactive_next_then_accept():
     def fetch_bytes(url):
         return (b"x" * 5000, "image/jpeg")
 
-    picked = covers.pick_cover(
-        cands, fetch_bytes, interactive=True, prompt=lambda c: next(answers))
+    picked = covers.pick_cover(cands, fetch_bytes, interactive=True, prompt=lambda c: next(answers))
     assert picked[0].source == "openlibrary"
 
 
 def test_pick_cover_interactive_quit_raises():
     cands = [_cand("google")]
     import pytest
+
     with pytest.raises(covers.QuitRequested):
         covers.pick_cover(
-            cands, lambda url: (b"x" * 5000, "image/jpeg"),
-            interactive=True, prompt=lambda c: "quit")
+            cands,
+            lambda url: (b"x" * 5000, "image/jpeg"),
+            interactive=True,
+            prompt=lambda c: "quit",
+        )
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -791,15 +833,19 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```python
 # tests/test_covers.py — append
 
+
 def test_apply_cover_writes_file_and_frontmatter(tmp_path):
     from books.obsidian import VaultIndex
 
-    note = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
+    note = _write_note(
+        tmp_path,
+        "Napoleon - Andrew Roberts.md",
         '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n\nbody\n')
+        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n\nbody\n',
+    )
     book = covers.MissingBook(
-        note_path=note, title="Napoleon", authors=["Andrew Roberts"],
-        isbn=None, amazon=None)
+        note_path=note, title="Napoleon", authors=["Andrew Roberts"], isbn=None, amazon=None
+    )
     index = VaultIndex(tmp_path)
 
     covers.apply_cover(index, book, b"\xff\xd8\xffJPEGDATA" + b"x" * 2000)
@@ -819,17 +865,17 @@ def test_apply_cover_writes_file_and_frontmatter(tmp_path):
 def test_apply_cover_idempotent(tmp_path):
     from books.obsidian import VaultIndex
 
-    note = _write_note(tmp_path, "N - A.md",
-        '---\ntype: book\ntitle: "N"\nauthors: ["[[A]]"]\ncover:\n---\n')
-    book = covers.MissingBook(
-        note_path=note, title="N", authors=["A"], isbn=None, amazon=None)
+    note = _write_note(
+        tmp_path, "N - A.md", '---\ntype: book\ntitle: "N"\nauthors: ["[[A]]"]\ncover:\n---\n'
+    )
+    book = covers.MissingBook(note_path=note, title="N", authors=["A"], isbn=None, amazon=None)
     index = VaultIndex(tmp_path)
 
     covers.apply_cover(index, book, b"x" * 2000)
     first = note.read_text(encoding="utf-8")
     covers.apply_cover(index, book, b"x" * 2000)
     second = note.read_text(encoding="utf-8")
-    assert first == second   # cover already set -> no duplicate embed/frontmatter
+    assert first == second  # cover already set -> no duplicate embed/frontmatter
     assert second.count("![[Exports/A/N/cover.jpg]]") == 1
 ```
 
@@ -859,9 +905,7 @@ from books.obsidian import (
 
 def apply_cover(index: VaultIndex, book: MissingBook, image: bytes) -> None:
     """Write the cover image and fill the note's cover frontmatter + embed."""
-    ref = BookRef(
-        title=book.title, authors=book.authors,
-        isbn=book.isbn, amazon=book.amazon)
+    ref = BookRef(title=book.title, authors=book.authors, isbn=book.isbn, amazon=book.amazon)
     export_dir = index.export_dir(ref)
     export_dir.mkdir(parents=True, exist_ok=True)
     (export_dir / "cover.jpg").write_bytes(image)
@@ -899,6 +943,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 ```python
 # tests/test_covers.py — append
+
 
 def test_terminal_prompt_maps_keys(monkeypatch):
     answers = iter(["y", "n", "s", "q", "?"])
@@ -982,13 +1027,17 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```python
 # tests/test_covers.py — append
 
+
 def test_run_fetches_and_applies(tmp_path):
-    _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
-        '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+    _write_note(
+        tmp_path,
+        "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\nauthors: ["[[Andrew Roberts]]"]\ncover:\n---\n',
+    )
     # a note that already has a cover -> untouched, not counted
-    _write_note(tmp_path, "Done.md",
-        '---\ntype: book\ntitle: "Done"\ncover: "[[x/cover.jpg]]"\n---\n')
+    _write_note(
+        tmp_path, "Done.md", '---\ntype: book\ntitle: "Done"\ncover: "[[x/cover.jpg]]"\n---\n'
+    )
 
     def fetch_json(url):
         return GOOGLE_VOLUME if "googleapis" in url else {"docs": []}
@@ -997,8 +1046,14 @@ def test_run_fetches_and_applies(tmp_path):
         return (b"x" * 3000, "image/jpeg")
 
     stats = covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=None,
-        fetch_json=fetch_json, fetch_bytes=fetch_bytes, prompt=None)
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=None,
+        fetch_json=fetch_json,
+        fetch_bytes=fetch_bytes,
+        prompt=None,
+    )
 
     assert stats["missing"] == 1
     assert stats["fetched"] == 1
@@ -1008,72 +1063,106 @@ def test_run_fetches_and_applies(tmp_path):
 
 
 def test_run_dry_run_writes_nothing(tmp_path):
-    _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
-        '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+    _write_note(
+        tmp_path,
+        "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\nauthors: ["[[Andrew Roberts]]"]\ncover:\n---\n',
+    )
 
     stats = covers.run(
-        tmp_path, interactive=False, dry_run=True, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=True,
+        limit=None,
         fetch_json=lambda url: GOOGLE_VOLUME,
-        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"), prompt=None)
+        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
+        prompt=None,
+    )
 
-    assert stats["fetched"] == 1   # would-fetch is still counted
+    assert stats["fetched"] == 1  # would-fetch is still counted
     assert not (tmp_path / "Exports").exists()
 
 
 def test_run_limit_caps_processing(tmp_path):
     for i in range(3):
-        _write_note(tmp_path, f"B{i} - A.md",
-            f'---\ntype: book\ntitle: "B{i}"\nauthors: ["[[A]]"]\ncover:\n---\n')
+        _write_note(
+            tmp_path,
+            f"B{i} - A.md",
+            f'---\ntype: book\ntitle: "B{i}"\nauthors: ["[[A]]"]\ncover:\n---\n',
+        )
 
     stats = covers.run(
-        tmp_path, interactive=False, dry_run=True, limit=2,
+        tmp_path,
+        interactive=False,
+        dry_run=True,
+        limit=2,
         fetch_json=lambda url: GOOGLE_VOLUME,
-        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"), prompt=None)
+        fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
+        prompt=None,
+    )
     assert stats["processed"] == 2
 
 
 def test_run_quit_stops_early(tmp_path):
     for i in range(3):
-        _write_note(tmp_path, f"B{i} - A.md",
-            f'---\ntype: book\ntitle: "B{i}"\nauthors: ["[[A]]"]\ncover:\n---\n')
+        _write_note(
+            tmp_path,
+            f"B{i} - A.md",
+            f'---\ntype: book\ntitle: "B{i}"\nauthors: ["[[A]]"]\ncover:\n---\n',
+        )
 
     stats = covers.run(
-        tmp_path, interactive=True, dry_run=False, limit=None,
+        tmp_path,
+        interactive=True,
+        dry_run=False,
+        limit=None,
         fetch_json=lambda url: GOOGLE_VOLUME,
         fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
-        prompt=lambda c: "quit")
+        prompt=lambda c: "quit",
+    )
     assert stats["fetched"] == 0
 
 
 def test_note_to_missing_eligible_and_ineligible(tmp_path):
-    note = _write_note(tmp_path, "A - Ann.md",
-        '---\ntype: book\ntitle: "A"\nauthors: ["[[Ann]]"]\ncover:\n---\n')
+    note = _write_note(
+        tmp_path, "A - Ann.md", '---\ntype: book\ntitle: "A"\nauthors: ["[[Ann]]"]\ncover:\n---\n'
+    )
     mb = covers.note_to_missing(note)
     assert mb is not None
     assert mb.title == "A" and mb.authors == ["Ann"]
 
-    has_cover = _write_note(tmp_path, "B - Bee.md",
-        '---\ntype: book\ntitle: "B"\ncover: "[[x/cover.jpg]]"\n---\n')
-    assert covers.note_to_missing(has_cover) is None   # cover already set
+    has_cover = _write_note(
+        tmp_path, "B - Bee.md", '---\ntype: book\ntitle: "B"\ncover: "[[x/cover.jpg]]"\n---\n'
+    )
+    assert covers.note_to_missing(has_cover) is None  # cover already set
 
-    not_book = _write_note(tmp_path, "C.md", '---\ntype: author\ncover:\n---\n')
-    assert covers.note_to_missing(not_book) is None    # wrong type
+    not_book = _write_note(tmp_path, "C.md", "---\ntype: author\ncover:\n---\n")
+    assert covers.note_to_missing(not_book) is None  # wrong type
 
 
 def test_run_single_book_only_processes_that_note(tmp_path):
-    target = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
-        '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+    target = _write_note(
+        tmp_path,
+        "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\nauthors: ["[[Andrew Roberts]]"]\ncover:\n---\n',
+    )
     # another missing-cover book that must NOT be touched
-    _write_note(tmp_path, "Other - X.md",
-        '---\ntype: book\ntitle: "Other"\nauthors: ["[[X]]"]\ncover:\n---\n')
+    _write_note(
+        tmp_path,
+        "Other - X.md",
+        '---\ntype: book\ntitle: "Other"\nauthors: ["[[X]]"]\ncover:\n---\n',
+    )
 
     stats = covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=None,
         fetch_json=lambda url: GOOGLE_VOLUME,
         fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
-        prompt=None, book_path=target)
+        prompt=None,
+        book_path=target,
+    )
 
     assert stats["scanned"] == 1
     assert stats["missing"] == 1
@@ -1083,13 +1172,19 @@ def test_run_single_book_only_processes_that_note(tmp_path):
 
 
 def test_run_single_book_ineligible_is_no_op(tmp_path):
-    target = _write_note(tmp_path, "Done - Y.md",
-        '---\ntype: book\ntitle: "Done"\ncover: "[[x/cover.jpg]]"\n---\n')
+    target = _write_note(
+        tmp_path, "Done - Y.md", '---\ntype: book\ntitle: "Done"\ncover: "[[x/cover.jpg]]"\n---\n'
+    )
     stats = covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=None,
         fetch_json=lambda url: GOOGLE_VOLUME,
         fetch_bytes=lambda url: (b"x" * 3000, "image/jpeg"),
-        prompt=None, book_path=target)
+        prompt=None,
+        book_path=target,
+    )
     assert stats["missing"] == 0
     assert stats["fetched"] == 0
 ```
@@ -1148,8 +1243,7 @@ Then add `run`, which processes a single note when `book_path` is given, else
 scans the whole vault:
 
 ```python
-def run(vault, *, interactive, dry_run, limit,
-        fetch_json, fetch_bytes, prompt, book_path=None):
+def run(vault, *, interactive, dry_run, limit, fetch_json, fetch_bytes, prompt, book_path=None):
     """Fetch a cover for books missing one.
 
     When *book_path* is given, only that single note is processed (the rest of the
@@ -1162,8 +1256,11 @@ def run(vault, *, interactive, dry_run, limit,
         scanned = 1
     else:
         missing = find_missing(vault)
-        scanned = (len(list((vault / BOOKS_DIRNAME).glob("*.md")))
-                   if (vault / BOOKS_DIRNAME).is_dir() else 0)
+        scanned = (
+            len(list((vault / BOOKS_DIRNAME).glob("*.md")))
+            if (vault / BOOKS_DIRNAME).is_dir()
+            else 0
+        )
     index = VaultIndex(vault)
     stats = {
         "scanned": scanned,
@@ -1180,8 +1277,7 @@ def run(vault, *, interactive, dry_run, limit,
             print(f"\n{book.title} — {', '.join(book.authors) or 'Unknown'}")
         candidates = gather_candidates(book, fetch_json)
         try:
-            picked = pick_cover(
-                candidates, fetch_bytes, interactive=interactive, prompt=prompt)
+            picked = pick_cover(candidates, fetch_bytes, interactive=interactive, prompt=prompt)
         except QuitRequested:
             print("Quit.")
             break
@@ -1228,21 +1324,22 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 ```python
 # tests/test_covers.py — append
 
+
 def test_cli_covers_dry_run(tmp_path, monkeypatch):
     from typer.testing import CliRunner
     from books.cli import app
 
-    _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
-        '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+    _write_note(
+        tmp_path,
+        "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\nauthors: ["[[Andrew Roberts]]"]\ncover:\n---\n',
+    )
 
     # stub the network so the CLI test stays offline
     monkeypatch.setattr(covers, "default_fetch_json", lambda url: GOOGLE_VOLUME)
-    monkeypatch.setattr(
-        covers, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
+    monkeypatch.setattr(covers, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
 
-    result = CliRunner().invoke(
-        app, ["covers", "-o", str(tmp_path), "--dry-run"])
+    result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0, result.output
     assert "missing" in result.output.lower()
     assert not (tmp_path / "Exports").exists()
@@ -1250,6 +1347,7 @@ def test_cli_covers_dry_run(tmp_path, monkeypatch):
 
 def test_cli_covers_registered():
     from books.cli import app
+
     names = {c.name for c in app.registered_commands}
     assert "covers" in names
 
@@ -1258,16 +1356,20 @@ def test_cli_covers_single_book_interactive_by_default(tmp_path, monkeypatch):
     from typer.testing import CliRunner
     from books.cli import app
 
-    note = _write_note(tmp_path, "Napoleon - Andrew Roberts.md",
-        '---\ntype: book\ntitle: "Napoleon"\n'
-        'authors: ["[[Andrew Roberts]]"]\ncover:\n---\n')
+    note = _write_note(
+        tmp_path,
+        "Napoleon - Andrew Roberts.md",
+        '---\ntype: book\ntitle: "Napoleon"\nauthors: ["[[Andrew Roberts]]"]\ncover:\n---\n',
+    )
     # another missing-cover book that must NOT be touched
-    _write_note(tmp_path, "Other - X.md",
-        '---\ntype: book\ntitle: "Other"\nauthors: ["[[X]]"]\ncover:\n---\n')
+    _write_note(
+        tmp_path,
+        "Other - X.md",
+        '---\ntype: book\ntitle: "Other"\nauthors: ["[[X]]"]\ncover:\n---\n',
+    )
 
     monkeypatch.setattr(covers, "default_fetch_json", lambda url: GOOGLE_VOLUME)
-    monkeypatch.setattr(
-        covers, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
+    monkeypatch.setattr(covers, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
     # single-book mode is interactive by default -> the prompt is used; accept it.
     monkeypatch.setattr(covers, "_terminal_prompt", lambda c: "accept")
 
@@ -1305,25 +1407,31 @@ from books import resolve_path
 def covers_command(
     output: Path = typer.Option(
         Path("Obsidian"),
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Obsidian vault to scan. Relative paths resolve against the current directory.",
     ),
     book: Path | None = typer.Option(
-        None, "--book", "-b",
+        None,
+        "--book",
+        "-b",
         help="Fetch a cover for a single book note (path to a file under Books/). "
-             "Interactive by default; the vault is inferred from the path, so --output is ignored.",
+        "Interactive by default; the vault is inferred from the path, so --output is ignored.",
     ),
     interactive: bool | None = typer.Option(
-        None, "--interactive/--no-interactive",
+        None,
+        "--interactive/--no-interactive",
         help="Confirm each candidate: accept / next / skip book / quit. "
-             "Defaults on for a single --book, off for a full-vault scan.",
+        "Defaults on for a single --book, off for a full-vault scan.",
     ),
     dry_run: bool = typer.Option(
-        False, "--dry-run",
+        False,
+        "--dry-run",
         help="Report the chosen cover per book without writing anything.",
     ),
     limit: int | None = typer.Option(
-        None, "--limit",
+        None,
+        "--limit",
         help="Process at most this many books missing a cover (ignored with --book).",
     ),
 ) -> None:
@@ -1345,14 +1453,14 @@ def covers_command(
         if note.parent.name != BOOKS_DIRNAME:
             raise typer.BadParameter(
                 f"book note must live under a '{BOOKS_DIRNAME}/' folder: {note}",
-                param_hint="--book")
+                param_hint="--book",
+            )
         vault = note.parents[1]
     else:
         note = None
         vault = resolve_path(output, Path.cwd())
         if not (vault / BOOKS_DIRNAME).is_dir():
-            raise typer.BadParameter(
-                f"no Books/ folder in vault: {vault}", param_hint="--output")
+            raise typer.BadParameter(f"no Books/ folder in vault: {vault}", param_hint="--output")
 
     # Interactive is on by default for a single book, off for a full scan,
     # unless the user set it explicitly with --interactive/--no-interactive.
@@ -1360,9 +1468,14 @@ def covers_command(
         interactive = book is not None
 
     stats = run(
-        vault, interactive=interactive, dry_run=dry_run, limit=limit,
-        fetch_json=default_fetch_json, fetch_bytes=default_fetch_bytes,
-        prompt=_terminal_prompt, book_path=note,
+        vault,
+        interactive=interactive,
+        dry_run=dry_run,
+        limit=limit,
+        fetch_json=default_fetch_json,
+        fetch_bytes=default_fetch_bytes,
+        prompt=_terminal_prompt,
+        book_path=note,
     )
     bs = stats["by_source"]
     typer.echo(
@@ -1557,16 +1670,18 @@ function in `tests/test_covers.py` and replace BOTH with:
 # Open Library title/author path: search.json returns a work key; then
 # /works/<id>/editions.json returns editions with physical_format + covers.
 OL_SEARCH = {"docs": [{"key": "/works/OL1W", "cover_i": 999}]}
-OL_EDITIONS = {"entries": [
-    {"physical_format": "Hardcover", "covers": [111]},
-    {"physical_format": "Paperback", "covers": [222]},
-]}
+OL_EDITIONS = {
+    "entries": [
+        {"physical_format": "Hardcover", "covers": [111]},
+        {"physical_format": "Paperback", "covers": [222]},
+    ]
+}
 
 
 def test_openlibrary_title_author_paperback_first():
     book = covers.MissingBook(
-        note_path=None, title="Napoleon", authors=["Andrew Roberts"],
-        isbn=None, amazon=None)
+        note_path=None, title="Napoleon", authors=["Andrew Roberts"], isbn=None, amazon=None
+    )
     urls = []
 
     def fake_fetch(url):
@@ -1587,8 +1702,7 @@ def test_openlibrary_title_author_paperback_first():
 
 
 def test_openlibrary_falls_back_to_search_cover_when_no_editions():
-    book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+    book = covers.MissingBook(note_path=None, title="X", authors=[], isbn=None, amazon=None)
 
     def fake_fetch(url):
         if "editions.json" in url:
@@ -1621,50 +1735,59 @@ editions for format-aware, paperback-first candidates and falls back to the
 work-level `cover_i` when no edition cover is found:
 
 ```python
-    params = f"title={quote(book.title)}"
-    if book.authors:
-        params += f"&author={quote(book.authors[0])}"
-    url = f"{OL_SEARCH_API}?{params}&fields=key,cover_i&limit=5"
+params = f"title={quote(book.title)}"
+if book.authors:
+    params += f"&author={quote(book.authors[0])}"
+url = f"{OL_SEARCH_API}?{params}&fields=key,cover_i&limit=5"
+try:
+    data = fetch_json(url) or {}
+except Exception:
+    return []
+docs = data.get("docs", [])
+
+# Expand the best-matching work's editions so we can prefer paperback where
+# the format is known. Only the first work with editions is expanded (bounds
+# the number of requests); other works fall back to their work-level cover.
+for doc in docs:
+    work_key = doc.get("key")
+    if not work_key:
+        continue
     try:
-        data = fetch_json(url) or {}
+        eds = fetch_json(OL_WORK_EDITIONS.format(work=work_key)) or {}
     except Exception:
-        return []
-    docs = data.get("docs", [])
-
-    # Expand the best-matching work's editions so we can prefer paperback where
-    # the format is known. Only the first work with editions is expanded (bounds
-    # the number of requests); other works fall back to their work-level cover.
-    for doc in docs:
-        work_key = doc.get("key")
-        if not work_key:
+        eds = {}
+    seen: set[int] = set()
+    for ed in eds.get("entries", []):
+        covers_list = ed.get("covers") or []
+        cid = next((c for c in covers_list if isinstance(c, int) and c > 0), None)
+        if cid is None or cid in seen:
             continue
-        try:
-            eds = fetch_json(OL_WORK_EDITIONS.format(work=work_key)) or {}
-        except Exception:
-            eds = {}
-        seen: set[int] = set()
-        for ed in eds.get("entries", []):
-            covers_list = ed.get("covers") or []
-            cid = next((c for c in covers_list if isinstance(c, int) and c > 0), None)
-            if cid is None or cid in seen:
-                continue
-            seen.add(cid)
-            out.append(Candidate(
-                source="openlibrary", label=label,
+        seen.add(cid)
+        out.append(
+            Candidate(
+                source="openlibrary",
+                label=label,
                 image_url=OL_COVER_ID.format(cid=cid),
-                fmt=_norm_fmt(ed.get("physical_format"))))
-        if out:
-            break
+                fmt=_norm_fmt(ed.get("physical_format")),
+            )
+        )
+    if out:
+        break
 
-    # Fallback: no edition covers found -> use work-level cover thumbnails.
-    if not out:
-        for doc in docs:
-            if doc.get("cover_i"):
-                out.append(Candidate(
-                    source="openlibrary", label=label,
-                    image_url=OL_COVER_ID.format(cid=doc["cover_i"]), fmt=None))
-    out.sort(key=lambda c: _fmt_rank(c.fmt))
-    return out
+# Fallback: no edition covers found -> use work-level cover thumbnails.
+if not out:
+    for doc in docs:
+        if doc.get("cover_i"):
+            out.append(
+                Candidate(
+                    source="openlibrary",
+                    label=label,
+                    image_url=OL_COVER_ID.format(cid=doc["cover_i"]),
+                    fmt=None,
+                )
+            )
+out.sort(key=lambda c: _fmt_rank(c.fmt))
+return out
 ```
 
 - [ ] **Step 4: Run the tests to verify they pass**

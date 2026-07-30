@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 @dataclass
 class BookRef:
     """Source-neutral book identity used for matching and note creation."""
+
     title: str
     authors: list[str] = field(default_factory=list)
     isbn: str | None = None

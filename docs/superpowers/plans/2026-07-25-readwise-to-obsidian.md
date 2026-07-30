@@ -66,9 +66,9 @@ In `books/highlights.py`, inside the `Highlight` dataclass, add the field
 immediately after the `page` field (keep the existing comment style):
 
 ```python
-    page: str | None = None            # human page/location (physical books), e.g. "45-49"
-    location_label: str | None = None  # display prefix for `page`; defaults to "p." when None
-    date: str | None = None
+page: str | None = None  # human page/location (physical books), e.g. "45-49"
+location_label: str | None = None  # display prefix for `page`; defaults to "p." when None
+date: str | None = None
 ```
 
 - [ ] **Step 4: Use the field in `_label()`**
@@ -128,12 +128,12 @@ def test_vaultindex_matches_existing_note_by_amazon(tmp_path):
     books = vault / "Books"
     books.mkdir(parents=True)
     (books / "Stalin.md").write_text(
-        '---\ntype: book\ntitle: "Stalin"\namazon: "B00INIXPYE"\n---\n\nBody.\n',
-        encoding="utf-8")
+        '---\ntype: book\ntitle: "Stalin"\namazon: "B00INIXPYE"\n---\n\nBody.\n', encoding="utf-8"
+    )
     index = ob.VaultIndex(vault)
     dest = index.find_or_create(
-        ob.BookRef(title="Totally Different Title", authors=["Someone Else"],
-                   amazon="b00inixpye"))
+        ob.BookRef(title="Totally Different Title", authors=["Someone Else"], amazon="b00inixpye")
+    )
     assert dest.created is False
     assert dest.note_path.name == "Stalin.md"
 ```
@@ -169,6 +169,7 @@ In `books/obsidian.py`, extend the `BookRef` dataclass:
 @dataclass
 class BookRef:
     """Source-neutral book identity used for matching and note creation."""
+
     title: str
     authors: list[str] = field(default_factory=list)
     isbn: str | None = None
@@ -215,14 +216,13 @@ def build_index(vault: Path) -> tuple[dict[str, Path], dict[tuple, Path], dict[s
 In `books/obsidian.py`, in `VaultIndex.__init__`, unpack the new tuple:
 
 ```python
-    def __init__(self, vault: Path) -> None:
-        self.vault = vault
-        self.by_isbn, self.by_ta, self.by_amazon = build_index(vault)
-        books_dir = vault / BOOKS_DIRNAME
-        self.used_stems: set[str] = (
-            {p.stem.lower() for p in books_dir.glob("*.md")}
-            if books_dir.is_dir() else set()
-        )
+def __init__(self, vault: Path) -> None:
+    self.vault = vault
+    self.by_isbn, self.by_ta, self.by_amazon = build_index(vault)
+    books_dir = vault / BOOKS_DIRNAME
+    self.used_stems: set[str] = (
+        {p.stem.lower() for p in books_dir.glob("*.md")} if books_dir.is_dir() else set()
+    )
 ```
 
 In `_match`, try amazon right after ISBN:
@@ -245,16 +245,15 @@ In `_match`, try amazon right after ISBN:
 In `_register`, register the amazon id too:
 
 ```python
-    def _register(self, ref: BookRef, note: Path) -> None:
-        isbn = norm_isbn(ref.isbn)
-        if isbn:
-            self.by_isbn.setdefault(isbn, note)
-        amazon = norm_amazon(ref.amazon)
-        if amazon:
-            self.by_amazon.setdefault(amazon, note)
-        if ref.title and ref.authors:
-            self.by_ta.setdefault(
-                (norm_title(ref.title), author_key(ref.authors[0])), note)
+def _register(self, ref: BookRef, note: Path) -> None:
+    isbn = norm_isbn(ref.isbn)
+    if isbn:
+        self.by_isbn.setdefault(isbn, note)
+    amazon = norm_amazon(ref.amazon)
+    if amazon:
+        self.by_amazon.setdefault(amazon, note)
+    if ref.title and ref.authors:
+        self.by_ta.setdefault((norm_title(ref.title), author_key(ref.authors[0])), note)
 ```
 
 - [ ] **Step 7: Run the obsidian tests to verify they pass**
@@ -298,7 +297,8 @@ from books import readwise_obsidian as rw
 
 def test_split_series_extracts_name_and_index():
     title, series, index = rw.split_series(
-        "Stalin: Volume I: Paradoxes of Power, 1878-1928 (Stalin #1)")
+        "Stalin: Volume I: Paradoxes of Power, 1878-1928 (Stalin #1)"
+    )
     assert title == "Stalin: Volume I: Paradoxes of Power, 1878-1928"
     assert series == "Stalin"
     assert index == "1"
@@ -409,10 +409,16 @@ Add to `tests/test_readwise.py`:
 
 ```python
 def test_row_to_highlight_page_location():
-    h = rw.row_to_highlight({
-        "Highlight": "A passage", "Note": "my note",
-        "Location Type": "page", "Location": "3",
-        "Highlighted at": "2026-07-17 14:00:25.470174+00:00", "Tags": ""})
+    h = rw.row_to_highlight(
+        {
+            "Highlight": "A passage",
+            "Note": "my note",
+            "Location Type": "page",
+            "Location": "3",
+            "Highlighted at": "2026-07-17 14:00:25.470174+00:00",
+            "Tags": "",
+        }
+    )
     assert h.text == "A passage"
     assert h.note == "my note"
     assert h.page == "3"
@@ -421,22 +427,21 @@ def test_row_to_highlight_page_location():
 
 
 def test_row_to_highlight_kindle_location():
-    h = rw.row_to_highlight({
-        "Highlight": "x", "Location Type": "location", "Location": "1234"})
+    h = rw.row_to_highlight({"Highlight": "x", "Location Type": "location", "Location": "1234"})
     assert h.page == "1234"
     assert h.location_label == "loc."
 
 
 def test_row_to_highlight_order_has_no_page():
-    h = rw.row_to_highlight({
-        "Highlight": "x", "Location Type": "order", "Location": "7"})
+    h = rw.row_to_highlight({"Highlight": "x", "Location Type": "order", "Location": "7"})
     assert h.page is None
     assert h.location_label is None
 
 
 def test_row_to_highlight_blank_note_is_none():
-    h = rw.row_to_highlight({"Highlight": "x", "Note": "", "Location Type": "page",
-                             "Location": "1"})
+    h = rw.row_to_highlight(
+        {"Highlight": "x", "Note": "", "Location Type": "page", "Location": "1"}
+    )
     assert h.note is None
 
 
@@ -514,13 +519,15 @@ git commit -m "feat(readwise): map CSV rows to Highlights with type-aware locati
 Add to `tests/test_readwise.py` (top-level, after the imports add the fixtures):
 
 ```python
-HEADER = ("Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
-          "Location Type,Location,Highlighted at,Document tags\n")
+HEADER = (
+    "Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
+    "Location Type,Location,Highlighted at,Document tags\n"
+)
 ROWS = (
     '"First passage.","Stalin: Volume I (Stalin #1)",Stephen Kotkin,B00INIXPYE,'
-    'my note,,history,page,3,2026-07-17 14:00:25+00:00,favorites\n'
+    "my note,,history,page,3,2026-07-17 14:00:25+00:00,favorites\n"
     '"Second passage.","Stalin: Volume I (Stalin #1)",Stephen Kotkin,B00INIXPYE,'
-    ',,,,page,10,2026-07-19 17:36:30+00:00,favorites\n'
+    ",,,,page,10,2026-07-19 17:36:30+00:00,favorites\n"
 )
 
 
@@ -548,8 +555,9 @@ def test_convert_writes_highlights_and_frontmatter(tmp_path):
     assert 'series: "Stalin"' in note_text
     assert "series_index: 1" in note_text
     assert 'shelves: ["favorites"]' in note_text
-    highlights_md = (out / "Exports" / "Stephen Kotkin" / "Stalin_ Volume I"
-                     / "Highlights.md").read_text()
+    highlights_md = (
+        out / "Exports" / "Stephen Kotkin" / "Stalin_ Volume I" / "Highlights.md"
+    ).read_text()
     assert "source: readwise" in highlights_md
     assert "> [!quote]+ p. 3" in highlights_md
     assert "First passage." in highlights_md
@@ -562,13 +570,14 @@ def test_convert_merges_into_existing_note_by_amazon(tmp_path):
     books.mkdir(parents=True)
     note = books / "Existing.md"
     note.write_text(
-        '---\ntype: book\ntitle: "Stalin"\namazon: "B00INIXPYE"\n'
-        'status: read\n---\n\nMy body.\n', encoding="utf-8")
+        '---\ntype: book\ntitle: "Stalin"\namazon: "B00INIXPYE"\nstatus: read\n---\n\nMy body.\n',
+        encoding="utf-8",
+    )
     stats = rw.convert(write_csv(tmp_path), out)
     assert stats["books"] == 1
     updated = note.read_text()
-    assert "status: read" in updated       # existing value untouched
-    assert "My body." in updated           # body preserved
+    assert "status: read" in updated  # existing value untouched
+    assert "My body." in updated  # body preserved
     assert "![[Exports/Stephen Kotkin/Stalin_ Volume I/Highlights.md]]" in updated
 
 
@@ -618,13 +627,20 @@ def convert(csv_path: Path, output: Path) -> dict:
         title, series, series_index = split_series(raw_title)
         amazon = (row.get("Amazon Book ID") or "").strip() or None
         author = (row.get("Book Author") or "").strip()
-        doc_tags = [t.strip() for t in (row.get("Document tags") or "").split(",")
-                    if t.strip()]
+        doc_tags = [t.strip() for t in (row.get("Document tags") or "").split(",") if t.strip()]
         key = amazon or title
-        group = groups.setdefault(key, {
-            "title": title, "author": author, "amazon": amazon,
-            "series": series, "series_index": series_index,
-            "shelves": doc_tags, "rows": []})
+        group = groups.setdefault(
+            key,
+            {
+                "title": title,
+                "author": author,
+                "amazon": amazon,
+                "series": series,
+                "series_index": series_index,
+                "shelves": doc_tags,
+                "rows": [],
+            },
+        )
         group["rows"].append(row)
 
     for group in groups.values():
@@ -648,8 +664,12 @@ def convert(csv_path: Path, output: Path) -> dict:
 
         highlights = [row_to_highlight(r) for r in group["rows"]]
         write_leaf_with_embed(
-            dest.note_path, dest.export_dir, "Highlights.md",
-            with_source("readwise", render_highlights(highlights)), "Highlights")
+            dest.note_path,
+            dest.export_dir,
+            "Highlights.md",
+            with_source("readwise", render_highlights(highlights)),
+            "Highlights",
+        )
 
         for author in authors:
             write_stub(authors_dir, author, "author")
@@ -694,8 +714,7 @@ def test_readwise_command_end_to_end(tmp_path):
     app = typer.Typer()
     rw.register(app)
     out = tmp_path / "Obsidian"
-    result = CliRunner().invoke(
-        app, ["--csv", str(write_csv(tmp_path)), "--output", str(out)])
+    result = CliRunner().invoke(app, ["--csv", str(write_csv(tmp_path)), "--output", str(out)])
     assert result.exit_code == 0, result.output
     assert (out / "Books" / "Stalin_ Volume I.md").exists()
     assert "2 highlights" in result.output
@@ -705,7 +724,8 @@ def test_readwise_missing_csv_errors(tmp_path):
     app = typer.Typer()
     rw.register(app)
     result = CliRunner().invoke(
-        app, ["--csv", str(tmp_path / "nope.csv"), "--output", str(tmp_path / "o")])
+        app, ["--csv", str(tmp_path / "nope.csv"), "--output", str(tmp_path / "o")]
+    )
     assert result.exit_code != 0
 ```
 
@@ -725,12 +745,14 @@ Append to `books/readwise_obsidian.py`:
 def readwise_to_obsidian(
     csv: Path = typer.Option(
         ...,
-        "--csv", "-c",
+        "--csv",
+        "-c",
         help="Path to the Readwise CSV export. Relative paths resolve against the current directory.",
     ),
     output: Path = typer.Option(
         Path("Obsidian"),
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Relative paths resolve against the current directory.",
     ),
 ) -> None:
@@ -818,7 +840,8 @@ def _readwise_csv(tmp_path: Path) -> Path:
         "Location Type,Location,Highlighted at,Document tags\n"
         '"A passage.","Stalin (Stalin #1)",Stephen Kotkin,B00INIXPYE,,,,'
         "page,3,2026-07-17 14:00:25+00:00,\n",
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     return p
 
 

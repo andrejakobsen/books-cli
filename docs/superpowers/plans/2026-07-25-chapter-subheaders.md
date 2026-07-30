@@ -32,9 +32,18 @@ Add these to the end of `tests/test_highlights.py`:
 ```python
 # --- chapter subheaders ------------------------------------------------------
 
+
 def test_grouped_emits_title_header_and_hidden_index_comment():
-    hs = [hl.Highlight(text="a", chapter_index=12, chapter_title="The Battle",
-                       progress=0.42, block="3", segment="5")]
+    hs = [
+        hl.Highlight(
+            text="a",
+            chapter_index=12,
+            chapter_title="The Battle",
+            progress=0.42,
+            block="3",
+            segment="5",
+        )
+    ]
     out = hl.render_highlights(hs, chapter_label="Kobo ch.")
     assert "## The Battle" in out
     assert "%% Kobo ch. 12 %%" in out
@@ -44,8 +53,16 @@ def test_grouped_emits_title_header_and_hidden_index_comment():
 
 
 def test_grouped_no_label_omits_comment():
-    hs = [hl.Highlight(text="a", chapter_index=12, chapter_title="The Battle",
-                       progress=0.42, block="3", segment="5")]
+    hs = [
+        hl.Highlight(
+            text="a",
+            chapter_index=12,
+            chapter_title="The Battle",
+            progress=0.42,
+            block="3",
+            segment="5",
+        )
+    ]
     out = hl.render_highlights(hs)  # no chapter_label
     assert "## The Battle" in out
     assert "%%" not in out
@@ -54,23 +71,19 @@ def test_grouped_no_label_omits_comment():
 
 def test_grouped_one_header_per_chapter_run():
     hs = [
-        hl.Highlight(text="a", chapter_index=1, chapter_title="One",
-                     progress=0.1, block="1"),
-        hl.Highlight(text="b", chapter_index=1, chapter_title="One",
-                     progress=0.2, block="2"),
-        hl.Highlight(text="c", chapter_index=2, chapter_title="Two",
-                     progress=0.3, block="3"),
+        hl.Highlight(text="a", chapter_index=1, chapter_title="One", progress=0.1, block="1"),
+        hl.Highlight(text="b", chapter_index=1, chapter_title="One", progress=0.2, block="2"),
+        hl.Highlight(text="c", chapter_index=2, chapter_title="Two", progress=0.3, block="3"),
     ]
     out = hl.render_highlights(hs, chapter_label="Kobo ch.")
-    assert out.count("## One") == 1   # consecutive same-chapter share one header
+    assert out.count("## One") == 1  # consecutive same-chapter share one header
     assert out.count("## Two") == 1
     assert out.index("## One") < out.index("## Two")
 
 
 def test_flat_fallback_when_no_chapter_title():
     # No chapter_title anywhere -> flat output, unchanged, no "##" headers.
-    hs = [hl.Highlight(text="a", chapter_index=2, progress=0.42,
-                       block="17", segment="5")]
+    hs = [hl.Highlight(text="a", chapter_index=2, progress=0.42, block="17", segment="5")]
     out = hl.render_highlights(hs, chapter_label="Kobo ch.")
     assert "## " not in out
     assert "> [!quote]+ ch. 2 · 42%" in out  # locator keeps chapter in flat mode
@@ -79,10 +92,8 @@ def test_flat_fallback_when_no_chapter_title():
 def test_grouped_index_only_run_gets_chapter_fallback_header():
     # A title-less highlight among titled ones gets "## Chapter {index}", no comment.
     hs = [
-        hl.Highlight(text="a", chapter_index=1, chapter_title="Intro",
-                     progress=0.1, block="1"),
-        hl.Highlight(text="b", chapter_index=2, chapter_title=None,
-                     progress=0.2, block="2"),
+        hl.Highlight(text="a", chapter_index=1, chapter_title="Intro", progress=0.1, block="1"),
+        hl.Highlight(text="b", chapter_index=2, chapter_title=None, progress=0.2, block="2"),
     ]
     out = hl.render_highlights(hs, chapter_label="Kobo ch.")
     assert "## Intro" in out
@@ -155,8 +166,7 @@ def _chapter_header(h: Highlight, chapter_label: str | None) -> str | None:
 Then replace the `render_highlights` function (currently ~196-222) with:
 
 ```python
-def render_highlights(highlights: list[Highlight],
-                      chapter_label: str | None = None) -> str:
+def render_highlights(highlights: list[Highlight], chapter_label: str | None = None) -> str:
     """Render an ordered list of highlights as an Obsidian ``Highlights.md`` body.
 
     When any highlight carries a ``chapter_title`` the output is *grouped*: a
@@ -215,8 +225,8 @@ def test_render_chapter_title_becomes_header_index_absent_no_comment():
     hs = [hl.Highlight(text="x", chapter_title="Intro", progress=0.1, block="2")]
     out = hl.render_highlights(hs, chapter_label="Kobo ch.")
     assert "## Intro" in out
-    assert "%%" not in out               # no index -> no hidden comment
-    assert "> [!quote]+ 10%" in out      # locator dropped the title, kept percent
+    assert "%%" not in out  # no index -> no hidden comment
+    assert "> [!quote]+ 10%" in out  # locator dropped the title, kept percent
 
 
 def test_render_no_chapter_locator_is_percent_only():
@@ -255,9 +265,9 @@ In `tests/test_kobo_export.py`, inside `test_export_obsidian_writes_highlights_a
 with:
 
 ```python
-    assert "## Chapter 2" in highlights          # chapter title header
-    assert "%% Kobo ch. 2 %%" in highlights      # hidden reading-order comment
-    assert "> [!quote]+ 42%" in highlights       # locator drops the chapter
+assert "## Chapter 2" in highlights  # chapter title header
+assert "%% Kobo ch. 2 %%" in highlights  # hidden reading-order comment
+assert "> [!quote]+ 42%" in highlights  # locator drops the chapter
 ```
 
 (The chapter row inserted by `_make_db` has title `"Chapter 2"` and VolumeIndex `2`.)
@@ -272,18 +282,25 @@ Expected: FAIL — the export still calls `render_highlights` without a label, s
 In `books/kobo_export.py`, in `export_obsidian` (~line 171-173), change:
 
 ```python
-        write_leaf_with_embed(
-            dest.note_path, dest.export_dir, "Highlights.md",
-            with_source("kobo", render_highlights(highlights)), "Highlights")
+write_leaf_with_embed(
+    dest.note_path,
+    dest.export_dir,
+    "Highlights.md",
+    with_source("kobo", render_highlights(highlights)),
+    "Highlights",
+)
 ```
 
 to:
 
 ```python
-        write_leaf_with_embed(
-            dest.note_path, dest.export_dir, "Highlights.md",
-            with_source("kobo", render_highlights(highlights, chapter_label="Kobo ch.")),
-            "Highlights")
+write_leaf_with_embed(
+    dest.note_path,
+    dest.export_dir,
+    "Highlights.md",
+    with_source("kobo", render_highlights(highlights, chapter_label="Kobo ch.")),
+    "Highlights",
+)
 ```
 
 - [ ] **Step 4: Run the test to verify it passes**

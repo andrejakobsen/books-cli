@@ -87,8 +87,9 @@ def _default_kobo_db(output: Path | None) -> Path:
         if sqlites:
             return max(sqlites, key=lambda p: p.stat().st_mtime)
     raise typer.BadParameter(
-        f"no Kobo device mounted and no KoboReader.sqlite (or *.sqlite) found in "
-        f"{folder}", param_hint="DB")
+        f"no Kobo device mounted and no KoboReader.sqlite (or *.sqlite) found in {folder}",
+        param_hint="DB",
+    )
 
 
 # One row per highlight/note. Kobo stores chapters as content rows
@@ -134,9 +135,15 @@ ORDER BY book_title,
 """
 
 CSV_HEADER = [
-    "Book Title", "Author", "Chapter Number", "Chapter",
-    "Highlight", "Note",
-    "Location in Chapter (%)", "KoboSpan Block (N)", "KoboSpan Segment (M)",
+    "Book Title",
+    "Author",
+    "Chapter Number",
+    "Chapter",
+    "Highlight",
+    "Note",
+    "Location in Chapter (%)",
+    "KoboSpan Block (N)",
+    "KoboSpan Segment (M)",
     "Date Created",
 ]
 
@@ -225,12 +232,10 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
         if book_id is None:
             skipped += 1
             continue
-        by_book.setdefault(book_id, []).extend(
-            row_to_highlight(r) for r in book_rows)
+        by_book.setdefault(book_id, []).extend(row_to_highlight(r) for r in book_rows)
 
     for book_id, highlights in by_book.items():
-        hl_rows = [store.highlight_to_row(h, "kobo", str(i))
-                   for i, h in enumerate(highlights)]
+        hl_rows = [store.highlight_to_row(h, "kobo", str(i)) for i, h in enumerate(highlights)]
         store.write_highlights(vault, book_id, "kobo", hl_rows)
         entries += len(hl_rows)
 
@@ -283,18 +288,20 @@ def export(db_path: Path, out_path: Path) -> dict:
             writer.writerow(CSV_HEADER)
             for r in book_rows:
                 block, segment = parse_container(r["container_path"])
-                writer.writerow([
-                    r["book_title"],
-                    r["author"],
-                    "" if r["chapter_index"] is None else int(r["chapter_index"]),
-                    r["chapter"],
-                    r["highlight"],
-                    r["note"],
-                    pct(r["chapter_progress"]),
-                    block,
-                    segment,
-                    r["date_created"],
-                ])
+                writer.writerow(
+                    [
+                        r["book_title"],
+                        r["author"],
+                        "" if r["chapter_index"] is None else int(r["chapter_index"]),
+                        r["chapter"],
+                        r["highlight"],
+                        r["note"],
+                        pct(r["chapter_progress"]),
+                        block,
+                        segment,
+                        r["date_created"],
+                    ]
+                )
                 total_entries += 1
 
             # utf-8-sig so titles with accents open cleanly in Excel.
@@ -308,33 +315,37 @@ def kobo_export(
     db: Path | None = typer.Argument(
         None,
         help="Path to KoboReader.sqlite. Relative paths resolve against the current "
-             "directory. When omitted, a mounted Kobo's DB "
-             "(/Volumes/KOBOeReader/.kobo/KoboReader.sqlite) is safely copied into "
-             "<vault>/Data/Imports/kobo/ and used; otherwise the existing copy there "
-             "is used. [default: <vault>/Data/Imports/kobo/KoboReader.sqlite]",
+        "directory. When omitted, a mounted Kobo's DB "
+        "(/Volumes/KOBOeReader/.kobo/KoboReader.sqlite) is safely copied into "
+        "<vault>/Data/Imports/kobo/ and used; otherwise the existing copy there "
+        "is used. [default: <vault>/Data/Imports/kobo/KoboReader.sqlite]",
     ),
     input_path: Path | None = typer.Option(
         None, "--input", "-i", help="Alternative way to specify the sqlite path."
     ),
     output: Path | None = typer.Option(
-        None, "--output", "-o",
+        None,
+        "--output",
+        "-o",
         help="Output path. CSV mode: a .zip [default: ./kobo_highlights.zip]. "
-             "Obsidian mode: a vault directory "
-             "[default: the vault from ~/.config/books/config.toml]. "
-             "Relative paths resolve against the current directory.",
+        "Obsidian mode: a vault directory "
+        "[default: the vault from ~/.config/books/config.toml]. "
+        "Relative paths resolve against the current directory.",
     ),
     csv_out: bool = typer.Option(
-        True, "--csv",
+        True,
+        "--csv",
         help="Export highlights as per-book CSV files bundled in a zip. This is "
-             "the default output mode; pass --obsidian to write an Obsidian vault "
-             "instead.",
+        "the default output mode; pass --obsidian to write an Obsidian vault "
+        "instead.",
     ),
     obsidian: bool = typer.Option(
-        False, "--obsidian",
+        False,
+        "--obsidian",
         help="Write highlights into the CSV highlights store (resolved to a book "
-             "via the merged Data/books.csv) instead of CSV/zip. In this mode "
-             "--output is the vault directory "
-             "[default: the vault from ~/.config/books/config.toml].",
+        "via the merged Data/books.csv) instead of CSV/zip. In this mode "
+        "--output is the vault directory "
+        "[default: the vault from ~/.config/books/config.toml].",
     ),
 ) -> None:
     """Export Kobo highlights & notes to per-book CSV files inside a zip archive.
@@ -369,36 +380,36 @@ def kobo_export(
         vault = config.resolve_vault(output)
         try:
             stats = export_obsidian(db_path, vault)
-        except FileNotFoundError:
-            raise typer.BadParameter(f"database not found: {db_path}", param_hint="DB")
+        except FileNotFoundError as exc:
+            raise typer.BadParameter(f"database not found: {db_path}", param_hint="DB") from exc
         skipped = stats.get("skipped", 0)
-        skip_note = (f" ({skipped} book(s) skipped — no book note)"
-                     if skipped else "")
+        skip_note = f" ({skipped} book(s) skipped — no book note)" if skipped else ""
         if stats["entries"] == 0:
             if skipped:
                 typer.echo(
                     f"No highlights written{skip_note}. Import these books with "
-                    f"calibre/goodreads first.")
+                    f"calibre/goodreads first."
+                )
             else:
                 typer.echo("No highlights or notes found.")
             return
         typer.echo(
             f"Exported {stats['entries']} highlights from {stats['books']} book(s)"
-            f"{skip_note} -> {vault}")
+            f"{skip_note} -> {vault}"
+        )
         return
 
     if not csv_out:
         raise typer.BadParameter(
-            "CSV is currently the only non-Obsidian output mode; drop --no-csv "
-            "or pass --obsidian.",
+            "CSV is currently the only non-Obsidian output mode; drop --no-csv or pass --obsidian.",
             param_hint="--csv",
         )
 
     out_path = resolve_path(output or Path("kobo_highlights.zip"), Path.cwd())
     try:
         stats = export(db_path, out_path)
-    except FileNotFoundError:
-        raise typer.BadParameter(f"database not found: {db_path}", param_hint="DB")
+    except FileNotFoundError as exc:
+        raise typer.BadParameter(f"database not found: {db_path}", param_hint="DB") from exc
 
     if stats["entries"] == 0:
         typer.echo("No highlights or notes found.")
@@ -406,10 +417,7 @@ def kobo_export(
 
     for fname, count in stats["files"]:
         typer.echo(f"  {fname}: {count} entries")
-    typer.echo(
-        f"\nExported {stats['entries']} entries from {stats['books']} book(s) "
-        f"-> {out_path}"
-    )
+    typer.echo(f"\nExported {stats['entries']} entries from {stats['books']} book(s) -> {out_path}")
 
 
 def register(app: typer.Typer) -> None:

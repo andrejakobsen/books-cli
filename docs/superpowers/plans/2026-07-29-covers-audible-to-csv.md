@@ -34,6 +34,7 @@ In `books/commands/covers/sources.py`, replace:
 @dataclass
 class MissingBook:
     """A book note whose `cover:` frontmatter is blank/absent."""
+
     note_path: Path
     title: str
     authors: list[str]
@@ -47,6 +48,7 @@ with:
 @dataclass
 class MissingBook:
     """A catalog book (row in books.csv) that has no cover yet."""
+
     book_id: str
     title: str
     authors: list[str]
@@ -101,13 +103,18 @@ def _seed_catalog(vault, rows):
 
 
 def test_books_missing_cover_selects_blank_and_no_disk_file(tmp_path):
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"],
-                      isbn="111", amazon="B001", cover=""),          # blank -> included
-        store.BookRow(book_id="B - Bee", title="B", authors=["Bee"],
-                      cover="Data/Sources/_covers/x.jpg"),            # has cover -> excluded
-        store.BookRow(book_id="C - Cee", title="C", authors=["Cee"]),# blank -> included
-    ])
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(
+                book_id="A - Ann", title="A", authors=["Ann"], isbn="111", amazon="B001", cover=""
+            ),  # blank -> included
+            store.BookRow(
+                book_id="B - Bee", title="B", authors=["Bee"], cover="Data/Sources/_covers/x.jpg"
+            ),  # has cover -> excluded
+            store.BookRow(book_id="C - Cee", title="C", authors=["Cee"]),  # blank -> included
+        ],
+    )
     # C already has a materialized on-disk cover -> excluded despite blank field
     disk = tmp_path / "Data" / "Covers"
     disk.mkdir(parents=True)
@@ -199,13 +206,15 @@ def books_missing_cover(vault: Path) -> list[MissingBook]:
             continue
         if (covers_dir / f"{row.book_id}.jpg").is_file():
             continue
-        out.append(MissingBook(
-            book_id=row.book_id,
-            title=row.title,
-            authors=list(row.authors),
-            isbn=(row.isbn or "").strip() or None,
-            amazon=(row.amazon or "").strip() or None,
-        ))
+        out.append(
+            MissingBook(
+                book_id=row.book_id,
+                title=row.title,
+                authors=list(row.authors),
+                isbn=(row.isbn or "").strip() or None,
+                amazon=(row.amazon or "").strip() or None,
+            )
+        )
     return out
 ```
 
@@ -241,24 +250,40 @@ Add these store-based replacements:
 
 ```python
 def _google_volume_with_isbn(isbn):
-    return {"items": [{"volumeInfo": {
-        "title": "T", "authors": ["Ann"],
-        "industryIdentifiers": [{"type": "ISBN_13", "identifier": isbn}],
-        "imageLinks": {"thumbnail": "http://x/y?zoom=1"}}}]}
+    return {
+        "items": [
+            {
+                "volumeInfo": {
+                    "title": "T",
+                    "authors": ["Ann"],
+                    "industryIdentifiers": [{"type": "ISBN_13", "identifier": isbn}],
+                    "imageLinks": {"thumbnail": "http://x/y?zoom=1"},
+                }
+            }
+        ]
+    }
 
 
 def test_run_stages_image_and_writes_covers_layer(tmp_path):
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
-    ])
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
+        ],
+    )
 
     def fetch_json(url):
         return GOOGLE_VOLUME if "googleapis" in url else {"docs": []}
 
     stats = covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=None,
         fetch_json=fetch_json,
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None,
+    )
 
     assert stats["missing"] == 1 and stats["fetched"] == 1
     assert stats["by_source"]["google"] == 1
@@ -273,14 +298,22 @@ def test_run_stages_image_and_writes_covers_layer(tmp_path):
 
 
 def test_run_records_learned_isbn_in_layer(tmp_path):
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"], isbn=""),
-    ])
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(book_id="A - Ann", title="A", authors=["Ann"], isbn=""),
+        ],
+    )
     volume = _google_volume_with_isbn("9780141032184")
     covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=None,
         fetch_json=lambda url: volume if "googleapis" in url else {"docs": []},
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None,
+    )
     rows = store.read_layer(tmp_path, "covers")
     assert rows[0].isbn == "9780141032184"
 
@@ -288,39 +321,61 @@ def test_run_records_learned_isbn_in_layer(tmp_path):
 def test_run_dry_run_writes_nothing(tmp_path):
     _seed_catalog(tmp_path, [store.BookRow(book_id="A - Ann", title="A", authors=["Ann"])])
     stats = covers.run(
-        tmp_path, interactive=False, dry_run=True, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=True,
+        limit=None,
         fetch_json=lambda url: GOOGLE_VOLUME,
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
-    assert stats["fetched"] == 1                       # would-fetch still counted
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None,
+    )
+    assert stats["fetched"] == 1  # would-fetch still counted
     assert not (tmp_path / "Data" / "Sources" / "_covers").exists()
     assert store.read_layer(tmp_path, "covers") == []
 
 
 def test_run_limit_preserves_existing_layer_rows(tmp_path):
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
-        store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
-    ])
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
+            store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
+        ],
+    )
     # pre-existing covers layer for a previously-fetched book
-    store.write_layer(tmp_path, "covers", [
-        store.BookRow(title="Z", authors=["Zed"],
-                      cover="Data/Sources/_covers/covers/Z - Zed.jpg")])
+    store.write_layer(
+        tmp_path,
+        "covers",
+        [
+            store.BookRow(
+                title="Z", authors=["Zed"], cover="Data/Sources/_covers/covers/Z - Zed.jpg"
+            )
+        ],
+    )
 
     covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=1,
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=1,
         fetch_json=lambda url: GOOGLE_VOLUME if "googleapis" in url else {"docs": []},
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None,
+    )
 
     stems = sorted(Path(r.cover).stem for r in store.read_layer(tmp_path, "covers"))
-    assert "Z - Zed" in stems           # prior row preserved
-    assert "A - Ann" in stems           # newly staged
-    assert len(stems) == 2              # limit=1 processed one new book
+    assert "Z - Zed" in stems  # prior row preserved
+    assert "A - Ann" in stems  # newly staged
+    assert len(stems) == 2  # limit=1 processed one new book
 
 
 def test_run_counts_errored_sources(tmp_path):
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="X - Y", title="X", authors=["Y"], amazon="B00ABCDEFG"),
-    ])
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(book_id="X - Y", title="X", authors=["Y"], amazon="B00ABCDEFG"),
+        ],
+    )
 
     def fetch_json(url):
         if "googleapis" in url:
@@ -328,23 +383,36 @@ def test_run_counts_errored_sources(tmp_path):
         return {"docs": []}
 
     stats = covers.run(
-        tmp_path, interactive=False, dry_run=True, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=True,
+        limit=None,
         fetch_json=fetch_json,
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None,
+    )
     assert stats["errored"]["google"] == 1
-    assert stats["fetched"] == 1        # amazon still succeeded
+    assert stats["fetched"] == 1  # amazon still succeeded
 
 
 def test_run_single_book_only_processes_that_book(tmp_path):
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
-        store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
-    ])
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
+            store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
+        ],
+    )
     covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=None,
         fetch_json=lambda url: GOOGLE_VOLUME if "googleapis" in url else {"docs": []},
         fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
-        prompt=None, book_id="A - Ann")
+        prompt=None,
+        book_id="A - Ann",
+    )
     stems = [Path(r.cover).stem for r in store.read_layer(tmp_path, "covers")]
     assert stems == ["A - Ann"]
 ```
@@ -379,6 +447,7 @@ def _existing_covers_layer(vault: Path) -> dict[str, "store.BookRow"]:
     instead of overwriting the layer with only this run's rows.
     """
     from pathlib import Path as _P
+
     out: dict[str, store.BookRow] = {}
     for row in store.read_layer(vault, "covers"):
         if row.cover:
@@ -386,8 +455,7 @@ def _existing_covers_layer(vault: Path) -> dict[str, "store.BookRow"]:
     return out
 
 
-def run(vault, *, interactive, dry_run, limit,
-        fetch_json, fetch_bytes, prompt, book_id=None):
+def run(vault, *, interactive, dry_run, limit, fetch_json, fetch_bytes, prompt, book_id=None):
     """Fetch covers for catalog books missing one, into the ``covers`` layer.
 
     Reads books.csv for cover-less books (:func:`books_missing_cover`), fetches an
@@ -424,8 +492,7 @@ def run(vault, *, interactive, dry_run, limit,
         errored: list[str] = []
         candidates = iter_candidates(book, fetch_json, errored)
         try:
-            picked = pick_cover(
-                candidates, fetch_bytes, interactive=interactive, prompt=prompt)
+            picked = pick_cover(candidates, fetch_bytes, interactive=interactive, prompt=prompt)
         except QuitRequested:
             print("Quit.")
             break
@@ -494,7 +561,8 @@ def test_cli_covers_dry_run(tmp_path, monkeypatch):
     _seed_catalog(tmp_path, [store.BookRow(book_id="A - Ann", title="A", authors=["Ann"])])
     monkeypatch.setattr(covers.command, "default_fetch_json", lambda url: GOOGLE_VOLUME)
     monkeypatch.setattr(
-        covers.command, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
+        covers.command, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg")
+    )
 
     result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0, result.output
@@ -505,6 +573,7 @@ def test_cli_covers_dry_run(tmp_path, monkeypatch):
 def test_cli_covers_errors_without_catalog(tmp_path):
     from typer.testing import CliRunner
     from books.cli import app
+
     result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path)])
     assert result.exit_code != 0
     assert "books.csv" in result.output.lower()
@@ -514,14 +583,21 @@ def test_cli_covers_single_book_by_id(tmp_path, monkeypatch):
     from typer.testing import CliRunner
     from books.cli import app
 
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
-        store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
-    ])
-    monkeypatch.setattr(covers.command, "default_fetch_json",
-                        lambda url: GOOGLE_VOLUME if "googleapis" in url else {"docs": []})
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
+            store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
+        ],
+    )
     monkeypatch.setattr(
-        covers.command, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg"))
+        covers.command,
+        "default_fetch_json",
+        lambda url: GOOGLE_VOLUME if "googleapis" in url else {"docs": []},
+    )
+    monkeypatch.setattr(
+        covers.command, "default_fetch_bytes", lambda url: (b"x" * 3000, "image/jpeg")
+    )
     monkeypatch.setattr(covers.command, "_terminal_prompt", lambda c: "accept")
 
     result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path), "-b", "A - Ann"])
@@ -532,6 +608,7 @@ def test_cli_covers_single_book_by_id(tmp_path, monkeypatch):
 
 def test_cli_covers_registered():
     from books.cli import app
+
     names = {c.name for c in app.registered_commands}
     assert "covers" in names
 ```
@@ -550,25 +627,33 @@ In `books/commands/covers/command.py`, replace `covers_command` with:
 ```python
 def covers_command(
     output: Path | None = typer.Option(
-        None, "--output", "-o",
+        None,
+        "--output",
+        "-o",
         help="Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
     book: str | None = typer.Option(
-        None, "--book", "-b",
+        None,
+        "--book",
+        "-b",
         help="Fetch a cover for a single catalog book by its book_id (the "
-             "'<Title> - <Author>' stem in Data/books.csv). Interactive by default."),
+        "'<Title> - <Author>' stem in Data/books.csv). Interactive by default.",
+    ),
     interactive: bool | None = typer.Option(
-        None, "--interactive/--no-interactive",
+        None,
+        "--interactive/--no-interactive",
         help="Confirm each candidate: accept / next / skip book / quit. "
-             "Defaults on for a single --book, off for a full scan.",
+        "Defaults on for a single --book, off for a full scan.",
     ),
     dry_run: bool = typer.Option(
-        False, "--dry-run",
+        False,
+        "--dry-run",
         help="Report the chosen cover per book without writing anything.",
     ),
     limit: int | None = typer.Option(
-        None, "--limit",
+        None,
+        "--limit",
         help="Process at most this many books missing a cover (ignored with --book).",
     ),
 ) -> None:
@@ -594,9 +679,14 @@ def covers_command(
         interactive = book is not None
 
     stats = run(
-        vault, interactive=interactive, dry_run=dry_run, limit=limit,
-        fetch_json=default_fetch_json, fetch_bytes=default_fetch_bytes,
-        prompt=_terminal_prompt, book_id=book,
+        vault,
+        interactive=interactive,
+        dry_run=dry_run,
+        limit=limit,
+        fetch_json=default_fetch_json,
+        fetch_bytes=default_fetch_bytes,
+        prompt=_terminal_prompt,
+        book_id=book,
     )
     bs = stats["by_source"]
     typer.echo(
@@ -651,25 +741,31 @@ Add to `tests/commands/test_covers.py`:
 ```python
 def test_covers_merge_render_materializes_cover(tmp_path):
     from books.commands import render
+
     # a goodreads-style source layer with one cover-less book
-    store.write_layer(tmp_path, "goodreads", [
-        store.BookRow(title="A", authors=["Ann"], isbn="")])
-    store.merge(tmp_path)                       # -> books.csv with a book_id
+    store.write_layer(tmp_path, "goodreads", [store.BookRow(title="A", authors=["Ann"], isbn="")])
+    store.merge(tmp_path)  # -> books.csv with a book_id
 
     covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=None,
-        fetch_json=lambda url: _google_volume_with_isbn("9780141032184")
-        if "googleapis" in url else {"docs": []},
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=None,
+        fetch_json=lambda url: (
+            _google_volume_with_isbn("9780141032184") if "googleapis" in url else {"docs": []}
+        ),
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None,
+    )
 
-    store.merge(tmp_path)                       # fold covers layer into books.csv
+    store.merge(tmp_path)  # fold covers layer into books.csv
     row = next(r for r in store.read_books_csv(tmp_path) if r.title == "A")
-    assert row.isbn == "9780141032184"          # learned isbn folded in
-    assert row.cover.endswith(".jpg")           # staged path folded in
+    assert row.isbn == "9780141032184"  # learned isbn folded in
+    assert row.cover.endswith(".jpg")  # staged path folded in
 
     render.render(tmp_path)
     cover_file = tmp_path / "Data" / "Covers" / f"{row.book_id}.jpg"
-    assert cover_file.is_file()                  # materialized
+    assert cover_file.is_file()  # materialized
     note = (tmp_path / "Books" / f"{row.book_id}.md").read_text()
     assert f"![[Data/Covers/{row.book_id}.jpg|150]]" in note
 
@@ -719,10 +815,24 @@ Delete these note-based tests: `test_render_note_writes_frontmatter_and_marked_s
 ```python
 def test_book_highlight_rows_maps_clips_with_annotation_ids():
     clips = {
-        "a1": {"text": "First clip.", "start_ms": 120_000, "end_ms": 150_000,
-               "note": None, "date": None, "chapter": "The Rise", "chapter_index": 2},
-        "a2": {"text": "", "start_ms": 0, "end_ms": None, "note": None,
-               "date": None, "chapter": None, "chapter_index": None},  # empty -> dropped
+        "a1": {
+            "text": "First clip.",
+            "start_ms": 120_000,
+            "end_ms": 150_000,
+            "note": None,
+            "date": None,
+            "chapter": "The Rise",
+            "chapter_index": 2,
+        },
+        "a2": {
+            "text": "",
+            "start_ms": 0,
+            "end_ms": None,
+            "note": None,
+            "date": None,
+            "chapter": None,
+            "chapter_index": None,
+        },  # empty -> dropped
     }
     rows = ao.book_highlight_rows(clips)
     assert [r.annotation_id for r in rows] == ["a1"]
@@ -734,13 +844,19 @@ def test_book_highlight_rows_maps_clips_with_annotation_ids():
 def _catalog_and_library(tmp_path):
     out = tmp_path / "V"
     out.mkdir(parents=True)
-    _seed_catalog(out, [store.BookRow(
-        book_id="Stalin - Stephen Kotkin", title="Stalin",
-        authors=["Stephen Kotkin"], amazon="B0STALIN")])
-    book = ao.LibraryBook(asin="B0STALIN", title="Stalin",
-                          authors=["Stephen Kotkin"])
-    anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=120_000,
-                                       end_ms=150_000, note="Nice")]}
+    _seed_catalog(
+        out,
+        [
+            store.BookRow(
+                book_id="Stalin - Stephen Kotkin",
+                title="Stalin",
+                authors=["Stephen Kotkin"],
+                amazon="B0STALIN",
+            )
+        ],
+    )
+    book = ao.LibraryBook(asin="B0STALIN", title="Stalin", authors=["Stephen Kotkin"])
+    anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=120_000, end_ms=150_000, note="Nice")]}
     return out, book, anns
 
 
@@ -749,9 +865,15 @@ def test_run_writes_highlights_and_audible_layer(tmp_path):
     client = FakeClient([book], anns)
     cache_path = out / "Data" / "Imports" / "audible" / "cache.json"
     down, cut = FakeDownloader(), FakeCutter()
-    stats = ao.run(out, client=client, downloader=down, cutter=cut,
-                   transcriber=_fake_transcriber, cache_path=cache_path,
-                   clip_window=30)
+    stats = ao.run(
+        out,
+        client=client,
+        downloader=down,
+        cutter=cut,
+        transcriber=_fake_transcriber,
+        cache_path=cache_path,
+        clip_window=30,
+    )
     assert stats["books"] == 1 and stats["entries"] == 1
     assert stats["downloaded"] == 1 and stats["transcribed"] == 1
     hl = store.read_highlights(out, "Stalin - Stephen Kotkin")
@@ -767,13 +889,19 @@ def test_run_writes_highlights_and_audible_layer(tmp_path):
 def test_run_skips_unmatched_without_download(tmp_path):
     out = tmp_path / "V"
     out.mkdir(parents=True)
-    _seed_catalog(out, [])                     # empty catalog -> no match
+    _seed_catalog(out, [])  # empty catalog -> no match
     book = ao.LibraryBook(asin="B0X", title="Unknown", authors=["Nobody"])
     client = FakeClient([book], {"B0X": [ao.Annotation(id="a1", start_ms=0, end_ms=10)]})
     down = FakeDownloader()
-    stats = ao.run(out, client=client, downloader=down, cutter=FakeCutter(),
-                   transcriber=_fake_transcriber,
-                   cache_path=out / "c.json", clip_window=30)
+    stats = ao.run(
+        out,
+        client=client,
+        downloader=down,
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=out / "c.json",
+        clip_window=30,
+    )
     assert stats["skipped"] == 1 and stats["books"] == 0
     assert down.calls == []
     assert store.read_layer(out, "audible") == []
@@ -782,15 +910,28 @@ def test_run_skips_unmatched_without_download(tmp_path):
 def test_run_no_highlights_writes_nothing(tmp_path):
     out = tmp_path / "V"
     out.mkdir(parents=True)
-    _seed_catalog(out, [store.BookRow(
-        book_id="Stalin - Stephen Kotkin", title="Stalin",
-        authors=["Stephen Kotkin"], amazon="B0STALIN")])
+    _seed_catalog(
+        out,
+        [
+            store.BookRow(
+                book_id="Stalin - Stephen Kotkin",
+                title="Stalin",
+                authors=["Stephen Kotkin"],
+                amazon="B0STALIN",
+            )
+        ],
+    )
     book = ao.LibraryBook(asin="B0STALIN", title="Stalin", authors=["Stephen Kotkin"])
     anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=0, end_ms=10, note=None)]}
-    stats = ao.run(out, client=FakeClient([book], anns),
-                   downloader=FakeDownloader(), cutter=FakeCutter(),
-                   transcriber=lambda path: "", cache_path=out / "c.json",
-                   clip_window=30)
+    stats = ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=FakeDownloader(),
+        cutter=FakeCutter(),
+        transcriber=lambda path: "",
+        cache_path=out / "c.json",
+        clip_window=30,
+    )
     assert stats["books"] == 0 and stats["entries"] == 0
     assert store.read_highlights(out, "Stalin - Stephen Kotkin") == []
     assert store.read_layer(out, "audible") == []
@@ -799,11 +940,18 @@ def test_run_no_highlights_writes_nothing(tmp_path):
 def test_run_replaces_only_audible_highlights(tmp_path):
     out, book, anns = _catalog_and_library(tmp_path)
     # a pre-existing highlight from another source must survive an audible run
-    store.write_highlights(out, "Stalin - Stephen Kotkin", "kobo",
-                           [store.HighlightRow(source="kobo", text="kept")])
-    ao.run(out, client=FakeClient([book], anns), downloader=FakeDownloader(),
-           cutter=FakeCutter(), transcriber=_fake_transcriber,
-           cache_path=out / "c.json", clip_window=30)
+    store.write_highlights(
+        out, "Stalin - Stephen Kotkin", "kobo", [store.HighlightRow(source="kobo", text="kept")]
+    )
+    ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=FakeDownloader(),
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=out / "c.json",
+        clip_window=30,
+    )
     hl = store.read_highlights(out, "Stalin - Stephen Kotkin")
     sources = sorted(r.source for r in hl)
     assert sources == ["audible", "kobo"]
@@ -813,14 +961,26 @@ def test_run_idempotent_uses_cache_no_redownload(tmp_path):
     out, book, anns = _catalog_and_library(tmp_path)
     cache_path = out / "Data" / "Imports" / "audible" / "cache.json"
     down1 = FakeDownloader()
-    ao.run(out, client=FakeClient([book], anns), downloader=down1,
-           cutter=FakeCutter(), transcriber=_fake_transcriber,
-           cache_path=cache_path, clip_window=30)
+    ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=down1,
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=cache_path,
+        clip_window=30,
+    )
     before = store.read_highlights(out, "Stalin - Stephen Kotkin")
     down2 = FakeDownloader()
-    ao.run(out, client=FakeClient([book], anns), downloader=down2,
-           cutter=FakeCutter(), transcriber=_fake_transcriber,
-           cache_path=cache_path, clip_window=30)
+    ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=down2,
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=cache_path,
+        clip_window=30,
+    )
     after = store.read_highlights(out, "Stalin - Stephen Kotkin")
     assert down2.calls == []
     assert [r.to_csv_dict() for r in before] == [r.to_csv_dict() for r in after]
@@ -829,12 +989,23 @@ def test_run_idempotent_uses_cache_no_redownload(tmp_path):
 def test_run_continues_when_one_book_fails(tmp_path):
     out = tmp_path / "V"
     out.mkdir(parents=True)
-    _seed_catalog(out, [
-        store.BookRow(book_id="Stalin - Stephen Kotkin", title="Stalin",
-                      authors=["Stephen Kotkin"], amazon="B0BAD"),
-        store.BookRow(book_id="Peace - Leo Tolstoy", title="Peace",
-                      authors=["Leo Tolstoy"], amazon="B0GOOD"),
-    ])
+    _seed_catalog(
+        out,
+        [
+            store.BookRow(
+                book_id="Stalin - Stephen Kotkin",
+                title="Stalin",
+                authors=["Stephen Kotkin"],
+                amazon="B0BAD",
+            ),
+            store.BookRow(
+                book_id="Peace - Leo Tolstoy",
+                title="Peace",
+                authors=["Leo Tolstoy"],
+                amazon="B0GOOD",
+            ),
+        ],
+    )
     bad = ao.LibraryBook(asin="B0BAD", title="Stalin", authors=["Stephen Kotkin"])
     good = ao.LibraryBook(asin="B0GOOD", title="Peace", authors=["Leo Tolstoy"])
     anns = {
@@ -848,10 +1019,15 @@ def test_run_continues_when_one_book_fails(tmp_path):
                 raise RuntimeError("boom")
             return super().download(asin, dest_dir)
 
-    stats = ao.run(out, client=FakeClient([bad, good], anns),
-                   downloader=BoomDownloader(), cutter=FakeCutter(),
-                   transcriber=_fake_transcriber, cache_path=out / "c.json",
-                   clip_window=30)
+    stats = ao.run(
+        out,
+        client=FakeClient([bad, good], anns),
+        downloader=BoomDownloader(),
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=out / "c.json",
+        clip_window=30,
+    )
     assert stats["failed"] == 1
     assert stats["books"] == 1 and stats["entries"] == 1
     assert store.read_highlights(out, "Peace - Leo Tolstoy")[0].text == "transcribed text"
@@ -860,9 +1036,16 @@ def test_run_continues_when_one_book_fails(tmp_path):
 def test_run_dry_run_writes_nothing(tmp_path):
     out, book, anns = _catalog_and_library(tmp_path)
     down = FakeDownloader()
-    stats = ao.run(out, client=FakeClient([book], anns), downloader=down,
-                   cutter=FakeCutter(), transcriber=_fake_transcriber,
-                   cache_path=out / "c.json", clip_window=30, dry_run=True)
+    stats = ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=down,
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=out / "c.json",
+        clip_window=30,
+        dry_run=True,
+    )
     assert down.calls == []
     assert store.read_highlights(out, "Stalin - Stephen Kotkin") == []
     assert store.read_layer(out, "audible") == []
@@ -928,9 +1111,20 @@ def book_highlight_rows(clips: dict) -> list["store.HighlightRow"]:
 Then replace `run` with (only the sink + resolution differ from the current body — keep the download/transcribe block verbatim):
 
 ```python
-def run(vault, *, client, downloader, cutter, transcriber, cache_path,
-        clip_window, limit=None, asin=None, dry_run=False,
-        echo=lambda *_: None) -> dict:
+def run(
+    vault,
+    *,
+    client,
+    downloader,
+    cutter,
+    transcriber,
+    cache_path,
+    clip_window,
+    limit=None,
+    asin=None,
+    dry_run=False,
+    echo=lambda *_: None,
+) -> dict:
     """Import Audible clips into the CSV store. All heavy I/O is injected.
 
     Resolves each library book to a book_id via the merged catalog
@@ -942,9 +1136,15 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
     vault.mkdir(parents=True, exist_ok=True)
     catalog = store.Catalog(vault)
     cache = load_cache(cache_path)
-    stats = {"books": 0, "entries": 0, "skipped": 0,
-             "downloaded": 0, "transcribed": 0, "failed": 0,
-             "est_seconds": 0.0}
+    stats = {
+        "books": 0,
+        "entries": 0,
+        "skipped": 0,
+        "downloaded": 0,
+        "transcribed": 0,
+        "failed": 0,
+        "est_seconds": 0.0,
+    }
 
     # Preserve other audiobooks' layer rows across partial (--asin/--limit) runs.
     layer = {r.amazon: r for r in store.read_layer(vault, "audible") if r.amazon}
@@ -965,9 +1165,11 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
                     anns = client.annotations(book.asin)
                     secs = _clip_seconds(anns, clip_window)
                     stats["est_seconds"] += secs
-                    echo(f"[dry-run] SKIP (no book): {book.title} — {authors} "
-                         f"[asin {book.asin}] — {len(anns)} clip(s), "
-                         f"~{secs/60:.1f} min, ~${secs * COST_PER_SECOND:.2f}")
+                    echo(
+                        f"[dry-run] SKIP (no book): {book.title} — {authors} "
+                        f"[asin {book.asin}] — {len(anns)} clip(s), "
+                        f"~{secs / 60:.1f} min, ~${secs * COST_PER_SECOND:.2f}"
+                    )
                 continue
             if limit is not None and matched >= limit:
                 break
@@ -977,17 +1179,18 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
             if not annotations:
                 continue
 
-            book_cache = cache.setdefault(book.asin,
-                                          {"title": book.title, "clips": {}})
+            book_cache = cache.setdefault(book.asin, {"title": book.title, "clips": {}})
             clips = book_cache.setdefault("clips", {})
             new = uncached(annotations, clips)
 
             if dry_run:
                 secs = _clip_seconds(new, clip_window)
                 stats["est_seconds"] += secs
-                echo(f"[dry-run] {book.title}: {len(annotations)} annotations, "
-                     f"{len(new)} new to transcribe — ~{secs/60:.1f} min, "
-                     f"~${secs * COST_PER_SECOND:.2f}")
+                echo(
+                    f"[dry-run] {book.title}: {len(annotations)} annotations, "
+                    f"{len(new)} new to transcribe — ~{secs / 60:.1f} min, "
+                    f"~${secs * COST_PER_SECOND:.2f}"
+                )
                 continue
 
             if new:
@@ -998,8 +1201,7 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
                     stats["downloaded"] += 1
                     for ann in new:
                         start, end = _clip_bounds(ann, clip_window)
-                        clip_path = cutter.cut(audio, start, end,
-                                               tmp / f"{ann.id}.wav")
+                        clip_path = cutter.cut(audio, start, end, tmp / f"{ann.id}.wav")
                         text = transcriber(clip_path)
                         clips[ann.id] = annotation_to_record(ann, text, chapters)
                         stats["transcribed"] += 1
@@ -1010,8 +1212,8 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
                 continue
             store.write_highlights(vault, book_id, "audible", rows)
             layer[book.asin] = store.BookRow(
-                title=book.title, authors=list(book.authors),
-                amazon=book.asin, format="audiobook")
+                title=book.title, authors=list(book.authors), amazon=book.asin, format="audiobook"
+            )
             stats["books"] += 1
             stats["entries"] += len(rows)
         except Exception as exc:  # noqa: BLE001 — continue-on-error per book
@@ -1057,15 +1259,14 @@ Replace `test_cli_enriches_note_end_to_end` with:
 ```python
 def test_cli_enriches_book_end_to_end(monkeypatch, tmp_path):
     from books.core import config, store
+
     out, book, anns = _catalog_and_library(tmp_path)
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: out)
     monkeypatch.setattr(
-        config, "resolve_imports",
-        lambda name, output=None: out / "Data" / "Imports" / name)
-    monkeypatch.setattr(ao, "_build_client",
-                        lambda quality="normal": FakeClient([book], anns))
-    monkeypatch.setattr(ao, "_build_transcriber",
-                        lambda kind, model: _fake_transcriber)
+        config, "resolve_imports", lambda name, output=None: out / "Data" / "Imports" / name
+    )
+    monkeypatch.setattr(ao, "_build_client", lambda quality="normal": FakeClient([book], anns))
+    monkeypatch.setattr(ao, "_build_transcriber", lambda kind, model: _fake_transcriber)
     monkeypatch.setattr(ao, "_build_cutter", lambda: FakeCutter())
     monkeypatch.setattr(ao, "_build_downloader", lambda client: FakeDownloader())
 

@@ -98,9 +98,9 @@ class Highlight:
     note: str | None = None
     chapter_index: int | None = None
     chapter_title: str | None = None
-    progress: float | None = None      # 0.0-1.0 within the chapter
-    block: str | None = None           # stable location component (e.g. KoboSpan block)
-    segment: str | None = None         # secondary location component
+    progress: float | None = None  # 0.0-1.0 within the chapter
+    block: str | None = None  # stable location component (e.g. KoboSpan block)
+    segment: str | None = None  # secondary location component
     date: str | None = None
 
 
@@ -156,8 +156,7 @@ Append to `tests/test_highlights.py`:
 
 ```python
 def test_render_single_highlight_no_note():
-    hs = [hl.Highlight(text="A line", chapter_index=2, progress=0.42,
-                       block="17", segment="5")]
+    hs = [hl.Highlight(text="A line", chapter_index=2, progress=0.42, block="17", segment="5")]
     out = hl.render_highlights(hs)
     assert "> [!quote]+ ch. 2 · 42%" in out
     assert "> A line" in out
@@ -166,8 +165,11 @@ def test_render_single_highlight_no_note():
 
 
 def test_render_highlight_with_note():
-    hs = [hl.Highlight(text="A line", note="my thought", chapter_index=2,
-                       progress=0.5, block="1", segment="0")]
+    hs = [
+        hl.Highlight(
+            text="A line", note="my thought", chapter_index=2, progress=0.5, block="1", segment="0"
+        )
+    ]
     out = hl.render_highlights(hs)
     assert "> [!note]-" in out
     assert "> my thought" in out
@@ -215,8 +217,7 @@ def _callout(kind: str, title: str, body: str, expanded: bool) -> str:
     head = f"> [!{kind}]{marker}"
     if title:
         head += f" {title}"
-    body_lines = "\n".join(f"> {ln}" if ln.strip() else ">"
-                           for ln in body.split("\n"))
+    body_lines = "\n".join(f"> {ln}" if ln.strip() else ">" for ln in body.split("\n"))
     return f"{head}\n{body_lines}"
 
 
@@ -259,7 +260,7 @@ Append to `tests/test_obsidian.py`:
 
 ```python
 def test_ensure_embed_section_adds_when_absent():
-    note = '---\ntype: book\n---\n\nBody.\n'
+    note = "---\ntype: book\n---\n\nBody.\n"
     out = ob.ensure_embed_section(note, "Highlights", "Highlights.md")
     assert "## Highlights" in out
     assert "![](Highlights.md)" in out
@@ -267,7 +268,7 @@ def test_ensure_embed_section_adds_when_absent():
 
 
 def test_ensure_embed_section_noop_when_present():
-    note = '---\ntype: book\n---\n\n## Highlights\n![](Highlights.md)\n'
+    note = "---\ntype: book\n---\n\n## Highlights\n![](Highlights.md)\n"
     assert ob.ensure_embed_section(note, "Highlights", "Highlights.md") == note
 ```
 
@@ -337,10 +338,13 @@ def test_vaultindex_matches_existing_by_title_author(tmp_path):
     note = book_dir / "Napoleon A Life.md"
     note.write_text(
         '---\ntype: book\ntitle: "Napoleon - A Life"\n'
-        'authors: ["[[Andrew Roberts]]"]\n---\nBody.\n', encoding="utf-8")
+        'authors: ["[[Andrew Roberts]]"]\n---\nBody.\n',
+        encoding="utf-8",
+    )
     idx = ob.VaultIndex(tmp_path)
     found, created = idx.find_or_create(
-        ob.BookRef(title="Napoleon: A Life", authors=["Andrew Roberts"], isbn=None))
+        ob.BookRef(title="Napoleon: A Life", authors=["Andrew Roberts"], isbn=None)
+    )
     assert created is False
     assert found == note
 
@@ -348,7 +352,7 @@ def test_vaultindex_matches_existing_by_title_author(tmp_path):
 def test_write_leaf_with_embed_overwrites_and_embeds(tmp_path):
     note = tmp_path / "Book" / "Book.md"
     note.parent.mkdir(parents=True)
-    note.write_text('---\ntype: book\n---\n\nBody.\n', encoding="utf-8")
+    note.write_text("---\ntype: book\n---\n\nBody.\n", encoding="utf-8")
     wrote = ob.write_leaf_with_embed(note, "Highlights.md", "content v1\n", "Highlights")
     assert wrote is True
     assert (note.parent / "Highlights.md").read_text() == "content v1\n"
@@ -362,7 +366,7 @@ def test_write_leaf_with_embed_overwrites_and_embeds(tmp_path):
 def test_write_leaf_with_embed_no_overwrite_keeps_existing(tmp_path):
     note = tmp_path / "Book" / "Book.md"
     note.parent.mkdir(parents=True)
-    note.write_text('---\ntype: book\n---\n', encoding="utf-8")
+    note.write_text("---\ntype: book\n---\n", encoding="utf-8")
     (note.parent / "Review.md").write_text("original\n", encoding="utf-8")
     wrote = ob.write_leaf_with_embed(note, "Review.md", "new\n", "Review", overwrite=False)
     assert wrote is False
@@ -388,9 +392,11 @@ Add this new section after the "Frontmatter merge" section:
 ```python
 # --- Book-note orchestration (shared by importers) --------------------------
 
+
 @dataclass
 class BookRef:
     """Source-neutral book identity used for matching and note creation."""
+
     title: str
     authors: list[str] = field(default_factory=list)
     isbn: str | None = None
@@ -442,8 +448,7 @@ class VaultIndex:
         if isbn:
             self.by_isbn.setdefault(isbn, note)
         if ref.title and ref.authors:
-            self.by_ta.setdefault(
-                (norm_title(ref.title), author_key(ref.authors[0])), note)
+            self.by_ta.setdefault((norm_title(ref.title), author_key(ref.authors[0])), note)
 
     def find_or_create(self, ref: BookRef) -> tuple[Path, bool]:
         """Return (note_path, created). Creates a stub note+folder when absent."""
@@ -454,17 +459,23 @@ class VaultIndex:
             folder = self.vault / safe_filename(author) / safe_filename(ref.title)
             folder.mkdir(parents=True, exist_ok=True)
             note = folder / f"{safe_filename(ref.title)}.md"
-            stub = update_frontmatter("---\ntype: book\n---\n", {
-                "title": yaml_quote(ref.title) if ref.title else "",
-                "authors": link_list(ref.authors) if ref.authors else "",
-            })
+            stub = update_frontmatter(
+                "---\ntype: book\n---\n",
+                {
+                    "title": yaml_quote(ref.title) if ref.title else "",
+                    "authors": link_list(ref.authors) if ref.authors else "",
+                },
+            )
             note.write_text(stub, encoding="utf-8")
         self._register(ref, note)
         return note, created
 
 
 def write_leaf_with_embed(
-    note_path: Path, leaf_name: str, content: str, heading: str,
+    note_path: Path,
+    leaf_name: str,
+    content: str,
+    heading: str,
     overwrite: bool = True,
 ) -> bool:
     """Write ``<folder>/<leaf_name>`` and ensure a '## heading' embed in the note.
@@ -570,14 +581,12 @@ def convert(csv_path: Path, output: Path, shelf: str = "read") -> dict:
             stats["skipped"] += 1
             continue
 
-        ref = BookRef(title=book.title, authors=book.authors,
-                      isbn=book.isbn13 or book.isbn)
+        ref = BookRef(title=book.title, authors=book.authors, isbn=book.isbn13 or book.isbn)
         note_path, created = index.find_or_create(ref)
         stats["created" if created else "merged"] += 1
 
         base = note_path.read_text(encoding="utf-8")
-        note_path.write_text(
-            update_frontmatter(base, _goodreads_updates(book)), encoding="utf-8")
+        note_path.write_text(update_frontmatter(base, _goodreads_updates(book)), encoding="utf-8")
 
         for author in book.authors:
             write_stub(authors_dir, author, "author")
@@ -585,7 +594,8 @@ def convert(csv_path: Path, output: Path, shelf: str = "read") -> dict:
 
         review = _review_markdown(book)
         if review and write_leaf_with_embed(
-                note_path, "Review.md", review, "Review", overwrite=False):
+            note_path, "Review.md", review, "Review", overwrite=False
+        ):
             stats["reviews"] += 1
 
     return stats
@@ -639,16 +649,40 @@ def _make_db(path: Path) -> None:
         """
     )
     # One book, one chapter (ContentType 899), two highlights (one annotated).
-    conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
-                 ("book1", 6, "The Great Gatsby", None, "F. Scott Fitzgerald", None, "9780743273565"))
-    conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
-                 ("book1-ch2", 899, "Chapter 2", None, None, 2, None))
-    conn.execute("INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
-                 ("book1", "book1-ch2", 0.42, "First highlight", "my note",
-                  "2026-07-01", r"span#kobo\.17\.5", "false"))
-    conn.execute("INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
-                 ("book1", "book1-ch2", 0.55, "Second highlight", None,
-                  "2026-07-02", r"span#kobo\.20\.1", "false"))
+    conn.execute(
+        "INSERT INTO content VALUES (?,?,?,?,?,?,?)",
+        ("book1", 6, "The Great Gatsby", None, "F. Scott Fitzgerald", None, "9780743273565"),
+    )
+    conn.execute(
+        "INSERT INTO content VALUES (?,?,?,?,?,?,?)",
+        ("book1-ch2", 899, "Chapter 2", None, None, 2, None),
+    )
+    conn.execute(
+        "INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "book1",
+            "book1-ch2",
+            0.42,
+            "First highlight",
+            "my note",
+            "2026-07-01",
+            r"span#kobo\.17\.5",
+            "false",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "book1",
+            "book1-ch2",
+            0.55,
+            "Second highlight",
+            None,
+            "2026-07-02",
+            r"span#kobo\.20\.1",
+            "false",
+        ),
+    )
     conn.commit()
     conn.close()
 
@@ -657,9 +691,16 @@ def test_row_to_highlight_maps_fields():
     class R(dict):
         def __getitem__(self, k):
             return dict.get(self, k)
-    row = R(chapter_index=2, chapter="Chapter 2", chapter_progress=0.42,
-            container_path=r"span#kobo\.17\.5", highlight="Hi", note="note",
-            date_created="2026-07-01")
+
+    row = R(
+        chapter_index=2,
+        chapter="Chapter 2",
+        chapter_progress=0.42,
+        container_path=r"span#kobo\.17\.5",
+        highlight="Hi",
+        note="note",
+        date_created="2026-07-01",
+    )
     h = ke.row_to_highlight(row)
     assert h.text == "Hi" and h.note == "note"
     assert h.chapter_index == 2 and h.block == "17" and h.segment == "5"
@@ -677,8 +718,8 @@ def test_export_obsidian_writes_highlights_and_embed(tmp_path):
     highlights = (folder / "Highlights.md").read_text()
     assert "> [!quote]+ ch. 2 · 42%" in highlights
     assert "^ch2-b17-5" in highlights
-    assert "> [!note]-" in highlights          # first highlight has an annotation
-    assert highlights.count("[!note]") == 1    # second has none
+    assert "> [!note]-" in highlights  # first highlight has an annotation
+    assert highlights.count("[!note]") == 1  # second has none
 
     note = (folder / "The Great Gatsby.md").read_text()
     assert "![](Highlights.md)" in note
@@ -775,7 +816,8 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
         note_path, _ = index.find_or_create(ref)
         highlights = [row_to_highlight(r) for r in book_rows]
         write_leaf_with_embed(
-            note_path, "Highlights.md", render_highlights(highlights), "Highlights")
+            note_path, "Highlights.md", render_highlights(highlights), "Highlights"
+        )
         for a in authors:
             write_stub(authors_dir, a, "author")
         entries += len(highlights)
@@ -786,67 +828,68 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
 3d. Add the `--obsidian` option to `kobo_export` and branch on it. Change the signature to add (after `csv_out`):
 
 ```python
-    obsidian: bool = typer.Option(
-        False, "--obsidian",
+obsidian: bool = (
+    typer.Option(
+        False,
+        "--obsidian",
         help="Write highlights into an Obsidian vault (folder-per-book) instead "
-             "of CSV/zip. In this mode --output is the vault directory "
-             "[default: ./Obsidian].",
+        "of CSV/zip. In this mode --output is the vault directory "
+        "[default: ./Obsidian].",
     ),
+)
 ```
 
 Change `output` to allow a mode-dependent default:
 
 ```python
-    output: Optional[Path] = typer.Option(
-        None, "--output", "-o",
+output: Optional[Path] = (
+    typer.Option(
+        None,
+        "--output",
+        "-o",
         help="Output path. CSV mode: a .zip [default: ./kobo_highlights.zip]. "
-             "Obsidian mode: a vault directory [default: ./Obsidian]. "
-             "Relative paths resolve against the current directory.",
+        "Obsidian mode: a vault directory [default: ./Obsidian]. "
+        "Relative paths resolve against the current directory.",
     ),
+)
 ```
 
 Replace the body from the `if not csv_out:` block through the final echo with:
 
 ```python
-    db_path = resolve_path(input_path or db or Path("KoboReader.sqlite"), Path.cwd())
+db_path = resolve_path(input_path or db or Path("KoboReader.sqlite"), Path.cwd())
 
-    if obsidian:
-        vault = resolve_path(output or Path("Obsidian"), Path.cwd())
-        try:
-            stats = export_obsidian(db_path, vault)
-        except FileNotFoundError:
-            raise typer.BadParameter(f"database not found: {db_path}", param_hint="DB")
-        if stats["entries"] == 0:
-            typer.echo("No highlights or notes found.")
-            return
-        typer.echo(
-            f"Exported {stats['entries']} highlights from {stats['books']} book(s) "
-            f"-> {vault}")
-        return
-
-    if not csv_out:
-        raise typer.BadParameter(
-            "CSV is currently the only non-Obsidian output mode; drop --no-csv "
-            "or pass --obsidian.",
-            param_hint="--csv",
-        )
-
-    out_path = resolve_path(output or Path("kobo_highlights.zip"), Path.cwd())
+if obsidian:
+    vault = resolve_path(output or Path("Obsidian"), Path.cwd())
     try:
-        stats = export(db_path, out_path)
+        stats = export_obsidian(db_path, vault)
     except FileNotFoundError:
         raise typer.BadParameter(f"database not found: {db_path}", param_hint="DB")
-
     if stats["entries"] == 0:
         typer.echo("No highlights or notes found.")
         return
+    typer.echo(f"Exported {stats['entries']} highlights from {stats['books']} book(s) -> {vault}")
+    return
 
-    for fname, count in stats["files"]:
-        typer.echo(f"  {fname}: {count} entries")
-    typer.echo(
-        f"\nExported {stats['entries']} entries from {stats['books']} book(s) "
-        f"-> {out_path}"
+if not csv_out:
+    raise typer.BadParameter(
+        "CSV is currently the only non-Obsidian output mode; drop --no-csv or pass --obsidian.",
+        param_hint="--csv",
     )
+
+out_path = resolve_path(output or Path("kobo_highlights.zip"), Path.cwd())
+try:
+    stats = export(db_path, out_path)
+except FileNotFoundError:
+    raise typer.BadParameter(f"database not found: {db_path}", param_hint="DB")
+
+if stats["entries"] == 0:
+    typer.echo("No highlights or notes found.")
+    return
+
+for fname, count in stats["files"]:
+    typer.echo(f"  {fname}: {count} entries")
+typer.echo(f"\nExported {stats['entries']} entries from {stats['books']} book(s) -> {out_path}")
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -877,6 +920,7 @@ Append to `tests/test_cli.py`:
 ```python
 def _kobo_db(tmp_path: Path) -> Path:
     import sqlite3
+
     db = tmp_path / "KoboReader.sqlite"
     conn = sqlite3.connect(db)
     conn.executescript(
@@ -887,14 +931,28 @@ def _kobo_db(tmp_path: Path) -> Path:
         CREATE TABLE Bookmark (
             VolumeID TEXT, ContentID TEXT, ChapterProgress REAL, Text TEXT,
             Annotation TEXT, DateCreated TEXT, StartContainerPath TEXT, Hidden TEXT);
-        """)
-    conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
-                 ("b1", 6, "Dune", None, "Frank Herbert", None, None))
-    conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
-                 ("b1-c1", 899, "One", None, None, 1, None))
-    conn.execute("INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
-                 ("b1", "b1-c1", 0.1, "Fear is the mind-killer", None,
-                  "2026-07-01", r"span#kobo\.3\.0", "false"))
+        """
+    )
+    conn.execute(
+        "INSERT INTO content VALUES (?,?,?,?,?,?,?)",
+        ("b1", 6, "Dune", None, "Frank Herbert", None, None),
+    )
+    conn.execute(
+        "INSERT INTO content VALUES (?,?,?,?,?,?,?)", ("b1-c1", 899, "One", None, None, 1, None)
+    )
+    conn.execute(
+        "INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "b1",
+            "b1-c1",
+            0.1,
+            "Fear is the mind-killer",
+            None,
+            "2026-07-01",
+            r"span#kobo\.3\.0",
+            "false",
+        ),
+    )
     conn.commit()
     conn.close()
     return db

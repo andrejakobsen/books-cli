@@ -171,11 +171,14 @@ Expected: FAIL (stub has no `highlighted`/`reviewed` lines).
 In `find_or_create`, extend the stub `update_frontmatter` call:
 
 ```python
-            stub = update_frontmatter("---\ntype: book\n---\n", {
-                "title": yaml_quote(ref.title) if ref.title else "",
-                "authors": link_list(ref.authors) if ref.authors else "",
-                **BOOK_FLAG_DEFAULTS,
-            })
+stub = update_frontmatter(
+    "---\ntype: book\n---\n",
+    {
+        "title": yaml_quote(ref.title) if ref.title else "",
+        "authors": link_list(ref.authors) if ref.authors else "",
+        **BOOK_FLAG_DEFAULTS,
+    },
+)
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
@@ -209,6 +212,7 @@ Add to `tests/test_calibre_to_obsidian.py` (adapt the import alias to the file's
 def test_calibre_updates_emit_flag_defaults():
     from books.calibre_obsidian import _calibre_updates
     from books.calibre_obsidian import BookMetadata
+
     meta = BookMetadata(title="T", authors=["A"])
     u = _calibre_updates(meta, "")
     assert u["highlighted"] == "false"
@@ -220,6 +224,7 @@ If `BookMetadata` requires more fields, construct it the same way the existing c
 ```python
 def test_goodreads_updates_emit_flag_defaults():
     from books.goodreads_obsidian import _goodreads_updates, GoodreadsBook
+
     book = GoodreadsBook(title="T", authors=["A"])
     u = _goodreads_updates(book)
     assert u["highlighted"] == "false"
@@ -315,13 +320,19 @@ In `books/kobo_export.py`, add to the `updates` dict:
 In `books/highlighted_obsidian.py`, add `"highlighted": "true"` to the update dict passed to `update_frontmatter`:
 
 ```python
-        dest.note_path.write_text(update_frontmatter(base, {
+dest.note_path.write_text(
+    update_frontmatter(
+        base,
+        {
             "title": yaml_quote(group["title"]),
             "authors": link_list(authors) if authors else "",
             "isbn": yaml_quote(group["isbn"]) if group["isbn"] else "",
             "source": "highlighted",
             "highlighted": "true",
-        }), encoding="utf-8")
+        },
+    ),
+    encoding="utf-8",
+)
 ```
 
 - [ ] **Step 5: Add the flag in readwise_obsidian**

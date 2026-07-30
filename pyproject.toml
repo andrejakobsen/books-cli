@@ -49,3 +49,7 @@ line-length = 100
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
+
+[tool.ruff.lint.flake8-bugbear]
+# Typer's idiomatic pattern is `param: T = typer.Option(...)` in defaults.
+extend-immutable-calls = ["typer.Option", "typer.Argument"]

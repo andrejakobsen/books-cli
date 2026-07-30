@@ -138,9 +138,7 @@ DEFAULT_OBSIDIAN_PATH = "~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian
 DEFAULT_VAULT = "History"
 
 _DEFAULT_FILE = (
-    "# books configuration\n"
-    f'obsidian_path = "{DEFAULT_OBSIDIAN_PATH}"\n'
-    f'vault = "{DEFAULT_VAULT}"\n'
+    f'# books configuration\nobsidian_path = "{DEFAULT_OBSIDIAN_PATH}"\nvault = "{DEFAULT_VAULT}"\n'
 )
 
 
@@ -260,6 +258,7 @@ def test_importers_use_config_default(monkeypatch, tmp_path):
     cfg_file.write_text('obsidian_path = "/vaults"\nvault = "History"\n')
     monkeypatch.setattr(config, "config_path", lambda: cfg_file)
     from books import config as cfg_mod
+
     assert cfg_mod.resolve_vault(None) == Path("/vaults/History")
 ```
 
@@ -277,22 +276,28 @@ from books import config
 Change the `output` option (lines ~278-282) from:
 
 ```python
-    output: Path = typer.Option(
+output: Path = (
+    typer.Option(
         Path("Obsidian"),
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Relative paths resolve against the current directory.",
     ),
+)
 ```
 
 to:
 
 ```python
-    output: Path | None = typer.Option(
+output: Path | None = (
+    typer.Option(
         None,
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
+)
 ```
 
 Change the resolution line (~line 299) from:
@@ -314,22 +319,28 @@ Add `from books import config` near the top.
 Change the `output` option (lines ~240-244) from:
 
 ```python
-    output: Path = typer.Option(
+output: Path = (
+    typer.Option(
         Path("Obsidian"),
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Relative paths resolve against the current directory.",
     ),
+)
 ```
 
 to:
 
 ```python
-    output: Path | None = typer.Option(
+output: Path | None = (
+    typer.Option(
         None,
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
+)
 ```
 
 Change the resolution line (~line 262) from:
@@ -351,22 +362,28 @@ Add `from books import config` near the top.
 Change the `output` option (lines ~111-115) from:
 
 ```python
-    output: Path = typer.Option(
+output: Path = (
+    typer.Option(
         Path("Obsidian"),
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Relative paths resolve against the current directory.",
     ),
+)
 ```
 
 to:
 
 ```python
-    output: Path | None = typer.Option(
+output: Path | None = (
+    typer.Option(
         None,
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
+)
 ```
 
 Change the resolution line (~line 126) from:
@@ -388,22 +405,28 @@ Add `from books import config` near the top.
 Change the `output` option (lines ~152-156) from:
 
 ```python
-    output: Path = typer.Option(
+output: Path = (
+    typer.Option(
         Path("Obsidian"),
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Relative paths resolve against the current directory.",
     ),
+)
 ```
 
 to:
 
 ```python
-    output: Path | None = typer.Option(
+output: Path | None = (
+    typer.Option(
         None,
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
+)
 ```
 
 Change the resolution line (~line 167) from:
@@ -470,23 +493,29 @@ to:
 Change the `--obsidian` option help (lines ~270-275) from:
 
 ```python
-    obsidian: bool = typer.Option(
-        False, "--obsidian",
+obsidian: bool = (
+    typer.Option(
+        False,
+        "--obsidian",
         help="Write highlights into an Obsidian vault (flat note + Exports/) instead "
-             "of CSV/zip. In this mode --output is the vault directory "
-             "[default: ./Obsidian].",
+        "of CSV/zip. In this mode --output is the vault directory "
+        "[default: ./Obsidian].",
     ),
+)
 ```
 
 to:
 
 ```python
-    obsidian: bool = typer.Option(
-        False, "--obsidian",
+obsidian: bool = (
+    typer.Option(
+        False,
+        "--obsidian",
         help="Write highlights into an Obsidian vault (flat note + Exports/) instead "
-             "of CSV/zip. In this mode --output is the vault directory "
-             "[default: the vault from ~/.config/books/config.toml].",
+        "of CSV/zip. In this mode --output is the vault directory "
+        "[default: the vault from ~/.config/books/config.toml].",
     ),
+)
 ```
 
 - [ ] **Step 4: Run the full suite**
@@ -527,22 +556,28 @@ from books import config, resolve_path
 Change (lines ~392-396) from:
 
 ```python
-    output: Path = typer.Option(
+output: Path = (
+    typer.Option(
         Path("Obsidian"),
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Obsidian vault to scan. Relative paths resolve against the current directory.",
     ),
+)
 ```
 
 to:
 
 ```python
-    output: Path | None = typer.Option(
+output: Path | None = (
+    typer.Option(
         None,
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Obsidian vault to scan. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
+)
 ```
 
 - [ ] **Step 3: Update the full-scan resolution**

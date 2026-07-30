@@ -1,4 +1,3 @@
-
 from books.core import store
 from books.core.highlights import Highlight
 from books.renderers.obsidian import BookRef
@@ -186,8 +185,8 @@ def test_coalesce_higher_precedence_wins_and_fills_blanks():
         ("audible", store.BookRow(title="X", format="audiobook")),
     ]
     merged = store.coalesce(members)
-    assert merged.format == "audiobook"   # audible > goodreads
-    assert merged.rating == "4"           # only goodreads had it
+    assert merged.format == "audiobook"  # audible > goodreads
+    assert merged.rating == "4"  # only goodreads had it
 
 
 def test_coalesce_is_order_independent():
@@ -211,19 +210,29 @@ def test_coalesce_merges_list_fields_by_precedence():
 
 def test_merge_clusters_across_layers_and_assigns_book_id(tmp_path):
     vault = tmp_path / "vault"
-    store.write_layer(vault, "calibre", [
-        store.BookRow(title="The Deluge", authors=["Adam Tooze"], format="ebook",
-                      isbn="9780141032184"),
-    ])
-    store.write_layer(vault, "audible", [
-        store.BookRow(title="The Deluge", authors=["Adam Tooze"], format="audiobook",
-                      isbn="0-14-103218-9"),  # same edition, ISBN-10 form
-    ])
+    store.write_layer(
+        vault,
+        "calibre",
+        [
+            store.BookRow(
+                title="The Deluge", authors=["Adam Tooze"], format="ebook", isbn="9780141032184"
+            ),
+        ],
+    )
+    store.write_layer(
+        vault,
+        "audible",
+        [
+            store.BookRow(
+                title="The Deluge", authors=["Adam Tooze"], format="audiobook", isbn="0-14-103218-9"
+            ),  # same edition, ISBN-10 form
+        ],
+    )
     catalog = store.merge(vault)
     assert len(catalog) == 1
     book = catalog[0]
     assert book.book_id == "The Deluge - Adam Tooze"
-    assert book.format == "audiobook"           # audible wins format
+    assert book.format == "audiobook"  # audible wins format
     assert store.books_csv_path(vault).is_file()
 
 
@@ -266,8 +275,7 @@ def test_merge_is_order_independent(tmp_path):
 
 def test_merge_read_books_csv_roundtrip(tmp_path):
     vault = tmp_path / "vault"
-    store.write_layer(vault, "calibre",
-                      [store.BookRow(title="X", authors=["A"], shelves=["read"])])
+    store.write_layer(vault, "calibre", [store.BookRow(title="X", authors=["A"], shelves=["read"])])
     store.merge(vault)
     rows = store.read_books_csv(vault)
     assert rows[0].book_id == "X - A"
@@ -314,35 +322,49 @@ def test_merge_book_id_assignment_is_stable_across_row_order(tmp_path):
 
 def test_catalog_find_by_isbn_amazon_and_title_author(tmp_path):
     vault = tmp_path / "vault"
-    store.write_layer(vault, "calibre", [
-        store.BookRow(title="The Deluge", authors=["Adam Tooze"],
-                      isbn="9780141032184", amazon="B00DELUGE"),
-    ])
+    store.write_layer(
+        vault,
+        "calibre",
+        [
+            store.BookRow(
+                title="The Deluge", authors=["Adam Tooze"], isbn="9780141032184", amazon="B00DELUGE"
+            ),
+        ],
+    )
     store.merge(vault)
     cat = store.Catalog(vault)
 
-    assert cat.find(BookRef(title="whatever", isbn="0-14-103218-9")) == \
-        "The Deluge - Adam Tooze"
-    assert cat.find(BookRef(title="whatever", amazon="b00deluge")) == \
-        "The Deluge - Adam Tooze"
-    assert cat.find(BookRef(title="The Deluge", authors=["Tooze, Adam"])) == \
-        "The Deluge - Adam Tooze"
+    assert cat.find(BookRef(title="whatever", isbn="0-14-103218-9")) == "The Deluge - Adam Tooze"
+    assert cat.find(BookRef(title="whatever", amazon="b00deluge")) == "The Deluge - Adam Tooze"
+    assert (
+        cat.find(BookRef(title="The Deluge", authors=["Tooze, Adam"])) == "The Deluge - Adam Tooze"
+    )
     assert cat.find(BookRef(title="Nonexistent", authors=["Nobody"])) is None
 
 
 def test_catalog_find_fuzzy_title(tmp_path):
     vault = tmp_path / "vault"
-    store.write_layer(vault, "calibre",
-                      [store.BookRow(title="The Deluge: The Great War", authors=["Adam Tooze"])])
+    store.write_layer(
+        vault, "calibre", [store.BookRow(title="The Deluge: The Great War", authors=["Adam Tooze"])]
+    )
     store.merge(vault)
     cat = store.Catalog(vault)
-    assert cat.find(BookRef(title="The Deluge", authors=["Adam Tooze"])) == \
-        "The Deluge - Adam Tooze"
+    assert (
+        cat.find(BookRef(title="The Deluge", authors=["Adam Tooze"])) == "The Deluge - Adam Tooze"
+    )
 
 
 def test_highlight_to_row_percent():
-    h = Highlight(text="t", progress=0.42, chapter_index=3, chapter_title="Ch",
-                  tags=["war"], links=["Trotsky"], note="n", date="2020")
+    h = Highlight(
+        text="t",
+        progress=0.42,
+        chapter_index=3,
+        chapter_title="Ch",
+        tags=["war"],
+        links=["Trotsky"],
+        note="n",
+        date="2020",
+    )
     row = store.highlight_to_row(h, "kobo", "a1")
     assert row.source == "kobo"
     assert row.annotation_id == "a1"
@@ -357,11 +379,13 @@ def test_highlight_to_row_page_and_kindle_and_timestamp():
     assert (page.location, page.location_kind) == ("45-49", "page")
 
     kindle = store.highlight_to_row(
-        Highlight(text="t", page="1234", location_label="loc."), "readwise", "2")
+        Highlight(text="t", page="1234", location_label="loc."), "readwise", "2"
+    )
     assert (kindle.location, kindle.location_kind) == ("1234", "kindle_loc")
 
     ts = store.highlight_to_row(
-        Highlight(text="t", page="3:24:15", location_label=""), "audible", "3")
+        Highlight(text="t", page="3:24:15", location_label=""), "audible", "3"
+    )
     assert (ts.location, ts.location_kind) == ("3:24:15", "timestamp")
 
 
@@ -396,10 +420,12 @@ def test_write_and_read_highlights_roundtrip(tmp_path):
     vault = tmp_path / "vault"
     bid = "The Deluge - Adam Tooze"
     rows = [
-        store.HighlightRow(source="kobo", annotation_id="1", text="a",
-                           location="10", location_kind="percent"),
-        store.HighlightRow(source="kobo", annotation_id="2", text="b",
-                           location="20", location_kind="percent"),
+        store.HighlightRow(
+            source="kobo", annotation_id="1", text="a", location="10", location_kind="percent"
+        ),
+        store.HighlightRow(
+            source="kobo", annotation_id="2", text="b", location="20", location_kind="percent"
+        ),
     ]
     store.write_highlights(vault, bid, "kobo", rows)
     back = store.read_highlights(vault, bid)
@@ -409,13 +435,19 @@ def test_write_and_read_highlights_roundtrip(tmp_path):
 def test_write_highlights_replaces_only_its_own_source(tmp_path):
     vault = tmp_path / "vault"
     bid = "X - A"
-    store.write_highlights(vault, bid, "kobo",
-                           [store.HighlightRow(source="kobo", annotation_id="1", text="kobo1")])
-    store.write_highlights(vault, bid, "readwise",
-                           [store.HighlightRow(source="readwise", annotation_id="1", text="rw1")])
+    store.write_highlights(
+        vault, bid, "kobo", [store.HighlightRow(source="kobo", annotation_id="1", text="kobo1")]
+    )
+    store.write_highlights(
+        vault,
+        bid,
+        "readwise",
+        [store.HighlightRow(source="readwise", annotation_id="1", text="rw1")],
+    )
     # re-run kobo with new content: only kobo rows replaced, readwise preserved
-    store.write_highlights(vault, bid, "kobo",
-                           [store.HighlightRow(source="kobo", annotation_id="1", text="kobo2")])
+    store.write_highlights(
+        vault, bid, "kobo", [store.HighlightRow(source="kobo", annotation_id="1", text="kobo2")]
+    )
     back = store.read_highlights(vault, bid)
     texts = {(r.source, r.text) for r in back}
     assert texts == {("kobo", "kobo2"), ("readwise", "rw1")}
@@ -426,7 +458,6 @@ def test_read_highlights_missing_returns_empty(tmp_path):
 
 
 def test_row_to_highlight_sets_source():
-    row = store.HighlightRow(source="readwise", text="t",
-                             location="42", location_kind="percent")
+    row = store.HighlightRow(source="readwise", text="t", location="42", location_kind="percent")
     h = store.row_to_highlight(row)
     assert h.source == "readwise"

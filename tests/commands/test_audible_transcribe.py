@@ -15,7 +15,7 @@ def test_check_ffmpeg_raises_when_missing(monkeypatch):
 
 def test_check_ffmpeg_ok_when_present(monkeypatch):
     monkeypatch.setattr(at.shutil, "which", lambda name: "/usr/bin/ffmpeg")
-    at.check_ffmpeg()   # no raise
+    at.check_ffmpeg()  # no raise
 
 
 def test_cut_clip_builds_plain_ffmpeg_command(monkeypatch, tmp_path):
@@ -33,14 +33,13 @@ def test_cut_clip_builds_plain_ffmpeg_command(monkeypatch, tmp_path):
     assert cmd[0] == "ffmpeg"
     assert "-ss" in cmd and "60.000" in cmd
     assert "-to" in cmd and "90.000" in cmd
-    assert "-audible_key" not in cmd            # no DRM key -> no decrypt flags
+    assert "-audible_key" not in cmd  # no DRM key -> no decrypt flags
     assert str(dest) in cmd
 
 
 def test_cut_clip_passes_audible_key_iv_when_present(monkeypatch, tmp_path):
     calls = {}
-    monkeypatch.setattr(at.subprocess, "run",
-                        lambda cmd, **k: calls.setdefault("cmd", cmd))
+    monkeypatch.setattr(at.subprocess, "run", lambda cmd, **k: calls.setdefault("cmd", cmd))
     audio = at.DownloadedAudio(path=tmp_path / "b.aaxc", key="KEY", iv="IV")
     at.cut_clip(audio, 0, 5_000, tmp_path / "c.wav")
     cmd = calls["cmd"]

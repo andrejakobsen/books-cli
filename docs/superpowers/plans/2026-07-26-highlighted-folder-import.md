@@ -62,8 +62,7 @@ def resolve_csv_paths(csv_path: Path) -> list[Path]:
     if csv_path.is_dir():
         paths = sorted(csv_path.glob("*.csv"))
         if not paths:
-            raise typer.BadParameter(
-                f"no CSV files found in {csv_path}", param_hint="--csv")
+            raise typer.BadParameter(f"no CSV files found in {csv_path}", param_hint="--csv")
         return paths
     return [csv_path]
 ```
@@ -103,7 +102,7 @@ runner = CliRunner()
 # A second book, distinct ISBN, for the multi-file folder test.
 ROWS_TROTSKY = (
     '"Ideas are more powerful than guns.",The Prophet Armed,Isaac Deutscher,'
-    '9781781683118,,Read,2026-07-25,88,Trotsky,,2026-07-25 09:00:00,N\n'
+    "9781781683118,,Read,2026-07-25,88,Trotsky,,2026-07-25 09:00:00,N\n"
 )
 
 
@@ -130,7 +129,9 @@ def test_cli_folder_merges_same_book_across_files(tmp_path):
     # same ISBN -> same book, one more highlight
     (src / "b.csv").write_text(
         HEADER + '"Another line.",Stalin,Stephen Kotkin,9781594203794,,Reading,'
-        '2026-07-24,60,Stalin,,2026-07-24 12:00:00,N\n', encoding="utf-8")
+        "2026-07-24,60,Stalin,,2026-07-24 12:00:00,N\n",
+        encoding="utf-8",
+    )
     out = tmp_path / "Obsidian"
     result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
     assert result.exit_code == 0, result.output

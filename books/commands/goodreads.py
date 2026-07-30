@@ -19,7 +19,6 @@ import typer
 
 from books.core import config, store
 
-
 GOODREADS_BOOK_URL = "https://www.goodreads.com/book/show/"
 
 
@@ -33,11 +32,11 @@ class GoodreadsBook:
     rating: int | None = None
     publisher: str | None = None
     pages: str | None = None
-    published: str | None = None      # year only
-    binding: str | None = None        # Goodreads "Binding" (Hardcover, Kindle Edition, ...)
+    published: str | None = None  # year only
+    binding: str | None = None  # Goodreads "Binding" (Hardcover, Kindle Edition, ...)
     date_read: str | None = None
     date_added: str | None = None
-    status: str | None = None         # reading status (Exclusive Shelf)
+    status: str | None = None  # reading status (Exclusive Shelf)
     shelves: list[str] = field(default_factory=list)
     review: str | None = None
     private_notes: str | None = None
@@ -100,24 +99,28 @@ def parse_csv(path: Path) -> list[GoodreadsBook]:
             except ValueError:
                 rating = 0
             shelves = [s.strip() for s in (row.get("Bookshelves") or "").split(",") if s.strip()]
-            books.append(GoodreadsBook(
-                title=(row.get("Title") or "").strip(),
-                book_id=(row.get("Book Id") or "").strip() or None,
-                authors=_split_authors(row.get("Author", ""), row.get("Additional Authors", "")),
-                isbn=_strip_isbn(row.get("ISBN", "")),
-                isbn13=_strip_isbn(row.get("ISBN13", "")),
-                rating=rating if rating > 0 else None,
-                publisher=(row.get("Publisher") or "").strip() or None,
-                pages=(row.get("Number of Pages") or "").strip() or None,
-                published=(row.get("Year Published") or "").strip() or None,
-                binding=(row.get("Binding") or "").strip() or None,
-                date_read=_norm_date(row.get("Date Read", "")),
-                date_added=_norm_date(row.get("Date Added", "")),
-                status=_norm_status(row.get("Exclusive Shelf", "")),
-                shelves=shelves,
-                review=(row.get("My Review") or "").strip() or None,
-                private_notes=(row.get("Private Notes") or "").strip() or None,
-            ))
+            books.append(
+                GoodreadsBook(
+                    title=(row.get("Title") or "").strip(),
+                    book_id=(row.get("Book Id") or "").strip() or None,
+                    authors=_split_authors(
+                        row.get("Author", ""), row.get("Additional Authors", "")
+                    ),
+                    isbn=_strip_isbn(row.get("ISBN", "")),
+                    isbn13=_strip_isbn(row.get("ISBN13", "")),
+                    rating=rating if rating > 0 else None,
+                    publisher=(row.get("Publisher") or "").strip() or None,
+                    pages=(row.get("Number of Pages") or "").strip() or None,
+                    published=(row.get("Year Published") or "").strip() or None,
+                    binding=(row.get("Binding") or "").strip() or None,
+                    date_read=_norm_date(row.get("Date Read", "")),
+                    date_added=_norm_date(row.get("Date Added", "")),
+                    status=_norm_status(row.get("Exclusive Shelf", "")),
+                    shelves=shelves,
+                    review=(row.get("My Review") or "").strip() or None,
+                    private_notes=(row.get("Private Notes") or "").strip() or None,
+                )
+            )
     return books
 
 
@@ -179,22 +182,24 @@ def convert(csv_path: Path, output: Path, shelf: str = DEFAULT_SHELVES) -> dict:
 def goodreads_to_obsidian(
     csv: Path | None = typer.Option(
         None,
-        "--csv", "-c",
+        "--csv",
+        "-c",
         help="Path to a Goodreads CSV export, or a folder of exports (the newest "
-             "*.csv is used). Defaults to <vault>/Data/Imports/goodreads. Relative "
-             "paths resolve against the current directory.",
+        "*.csv is used). Defaults to <vault>/Data/Imports/goodreads. Relative "
+        "paths resolve against the current directory.",
     ),
     output: Path | None = typer.Option(
         None,
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
     shelf: str = typer.Option(
         DEFAULT_SHELVES,
         "--shelf",
         help="Accepted for compatibility; no longer gates output — every shelf is "
-             "written to the store (books.csv is the whole library).",
+        "written to the store (books.csv is the whole library).",
     ),
 ) -> None:
     """Write a Goodreads CSV export into the CSV metadata store.
@@ -207,7 +212,7 @@ def goodreads_to_obsidian(
     try:
         csv = config.resolve_csv_arg(csv, "goodreads", output)
     except FileNotFoundError as exc:
-        raise typer.BadParameter(str(exc), param_hint="--csv")
+        raise typer.BadParameter(str(exc), param_hint="--csv") from exc
     output = config.resolve_vault(output)
 
     if not csv.is_file():

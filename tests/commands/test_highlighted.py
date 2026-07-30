@@ -13,19 +13,21 @@ from books.core import store
 
 runner = CliRunner()
 
-HEADER = ("Highlight,Title,Author,ISBN,Collections,Reading Status,"
-          "Book Added Date,Location,Tags,Note,Date,Favorite\n")
+HEADER = (
+    "Highlight,Title,Author,ISBN,Collections,Reading Status,"
+    "Book Added Date,Location,Tags,Note,Date,Favorite\n"
+)
 ROWS = (
     '"Fear is the mind-killer",Stalin,Stephen Kotkin,9781594203794,,Reading,'
-    '2026-07-24,4,Stalin,That is true,2026-07-24 10:37:51,N\n'
+    "2026-07-24,4,Stalin,That is true,2026-07-24 10:37:51,N\n"
     '"A longer passage.",Stalin,Stephen Kotkin,9781594203794,,Reading,'
-    '2026-07-24,45-49,Stalin,,2026-07-24 11:15:47,N\n'
+    "2026-07-24,45-49,Stalin,,2026-07-24 11:15:47,N\n"
 )
 
 # A second book, distinct ISBN, for the multi-file folder test.
 ROWS_TROTSKY = (
     '"Ideas are more powerful than guns.",The Prophet Armed,Isaac Deutscher,'
-    '9781781683118,,Read,2026-07-25,88,Trotsky,,2026-07-25 09:00:00,N\n'
+    "9781781683118,,Read,2026-07-25,88,Trotsky,,2026-07-25 09:00:00,N\n"
 )
 
 
@@ -41,12 +43,21 @@ def seed_books(vault: Path, rows: list[store.BookRow]) -> None:
 
 
 def seed_stalin(vault: Path) -> None:
-    seed_books(vault, [store.BookRow(
-        book_id="Stalin - Stephen Kotkin", title="Stalin",
-        authors=["Stephen Kotkin"], isbn="9781594203794")])
+    seed_books(
+        vault,
+        [
+            store.BookRow(
+                book_id="Stalin - Stephen Kotkin",
+                title="Stalin",
+                authors=["Stephen Kotkin"],
+                isbn="9781594203794",
+            )
+        ],
+    )
 
 
 # --- CSV parsing / mapping helpers (unchanged, store-agnostic) ----------------
+
 
 def test_resolve_csv_paths_single_file(tmp_path):
     p = write_csv(tmp_path)
@@ -74,7 +85,7 @@ def test_parse_and_map(tmp_path):
     assert h0.note == "That is true"
     assert h0.page == "4"
     h1 = hi.row_to_highlight(rows[1])
-    assert h1.note is None          # blank Note -> None
+    assert h1.note is None  # blank Note -> None
     assert h1.page == "45-49"
 
 
@@ -118,9 +129,17 @@ _HL_CSV = (
 
 
 def _seed_deluge(vault: Path) -> None:
-    seed_books(vault, [store.BookRow(
-        book_id="The Deluge - Adam Tooze", title="The Deluge",
-        authors=["Adam Tooze"], isbn="9780141032184")])
+    seed_books(
+        vault,
+        [
+            store.BookRow(
+                book_id="The Deluge - Adam Tooze",
+                title="The Deluge",
+                authors=["Adam Tooze"],
+                isbn="9780141032184",
+            )
+        ],
+    )
 
 
 def test_highlighted_writes_highlights_to_store(tmp_path):
@@ -171,7 +190,8 @@ def test_convert_two_groups_same_book_id_keeps_all(tmp_path):
         "Highlight,Title,Author,ISBN,Location,Tags,Note,Date\n"
         "with isbn,The Deluge,Adam Tooze,9780141032184,10,,,\n"
         "no isbn,The Deluge,Adam Tooze,,20,,,\n",
-        encoding="utf-8")
+        encoding="utf-8",
+    )
 
     stats = highlighted.convert(csv, vault)
 
@@ -190,19 +210,30 @@ def test_convert_rerun_replaces_own_rows(tmp_path):
 
 # --- CLI (folder mode) --------------------------------------------------------
 
+
 def test_cli_folder_imports_all_and_sums(tmp_path):
     src = tmp_path / "src"
     src.mkdir()
     (src / "stalin.csv").write_text(HEADER + ROWS, encoding="utf-8")
     (src / "trotsky.csv").write_text(HEADER + ROWS_TROTSKY, encoding="utf-8")
     out = tmp_path / "Obsidian"
-    seed_books(out, [
-        store.BookRow(book_id="Stalin - Stephen Kotkin", title="Stalin",
-                      authors=["Stephen Kotkin"], isbn="9781594203794"),
-        store.BookRow(book_id="The Prophet Armed - Isaac Deutscher",
-                      title="The Prophet Armed", authors=["Isaac Deutscher"],
-                      isbn="9781781683118"),
-    ])
+    seed_books(
+        out,
+        [
+            store.BookRow(
+                book_id="Stalin - Stephen Kotkin",
+                title="Stalin",
+                authors=["Stephen Kotkin"],
+                isbn="9781594203794",
+            ),
+            store.BookRow(
+                book_id="The Prophet Armed - Isaac Deutscher",
+                title="The Prophet Armed",
+                authors=["Isaac Deutscher"],
+                isbn="9781781683118",
+            ),
+        ],
+    )
     result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "2 files" in result.output
@@ -220,7 +251,9 @@ def test_cli_folder_same_book_last_file_wins(tmp_path):
     # same ISBN -> confirmed same book; the later file's highlights win
     (src / "b.csv").write_text(
         HEADER + '"Another line.",Stalin,Stephen Kotkin,9781594203794,,Reading,'
-        '2026-07-24,60,Stalin,,2026-07-24 12:00:00,N\n', encoding="utf-8")
+        "2026-07-24,60,Stalin,,2026-07-24 12:00:00,N\n",
+        encoding="utf-8",
+    )
     out = tmp_path / "Obsidian"
     seed_stalin(out)
     result = runner.invoke(app, ["highlighted", "-c", str(src), "-o", str(out)])
@@ -253,7 +286,7 @@ def test_cli_single_file_shows_one_file(tmp_path):
     result = runner.invoke(app, ["highlighted", "-c", str(csv), "-o", str(out)])
     assert result.exit_code == 0, result.output
     assert "1 file" in result.output
-    assert "authors" not in result.output   # folder-mode echo drops authors
+    assert "authors" not in result.output  # folder-mode echo drops authors
     assert len(store.read_highlights(out, "Stalin - Stephen Kotkin")) == 2
 
 
@@ -275,13 +308,20 @@ def test_highlighted_defaults_csv_to_imports(monkeypatch, tmp_path):
         "Highlight,Title,Author,ISBN,Collections,Reading Status,"
         "Book Added Date,Location,Tags,Note,Date,Favorite\n"
         '"A line.","The Deluge","Adam Tooze",,,,,42,,,,\n',
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
-    monkeypatch.setattr(config, "resolve_imports",
-                        lambda name, output=None: vault / ".imports" / name)
-    seed_books(vault, [store.BookRow(
-        book_id="The Deluge - Adam Tooze", title="The Deluge",
-        authors=["Adam Tooze"])])
+    monkeypatch.setattr(
+        config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
+    )
+    seed_books(
+        vault,
+        [
+            store.BookRow(
+                book_id="The Deluge - Adam Tooze", title="The Deluge", authors=["Adam Tooze"]
+            )
+        ],
+    )
 
     app = typer.Typer()
     hi.register(app)

@@ -64,6 +64,7 @@ ITUNES_COUNTRY = "gb"
 ITUNES_ENTITY = "ebook"
 ITUNES_ART_SIZE = "1400x1400bb"
 
+
 def apple_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
     """Query the iTunes Search API (Apple Books); one candidate per ebook result.
 

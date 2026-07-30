@@ -21,19 +21,22 @@ def test_yaml_quote_and_links():
 def test_format_rating():
     assert ob.format_rating(3) == "⭐⭐⭐"
     assert ob.format_rating(5) == "⭐⭐⭐⭐⭐"
-    assert ob.format_rating(3.5) == "⭐⭐⭐⭐"   # rounds to nearest whole star
-    assert ob.format_rating(0) == "⭐"           # present 0 -> one star
-    assert ob.format_rating(0.4) == "⭐"         # rounds down to 0 -> one star
-    assert ob.format_rating(None) == ""          # unrated -> blank
+    assert ob.format_rating(3.5) == "⭐⭐⭐⭐"  # rounds to nearest whole star
+    assert ob.format_rating(0) == "⭐"  # present 0 -> one star
+    assert ob.format_rating(0.4) == "⭐"  # rounds down to 0 -> one star
+    assert ob.format_rating(None) == ""  # unrated -> blank
 
 
 def test_update_frontmatter_fills_blank_only():
     note = '---\ntype: book\ntitle: "Keep"\nrating:\n---\n\nbody text\n'
-    out = ob.update_frontmatter(note, {
-        "title": ob.yaml_quote("New"),   # existing non-empty -> untouched
-        "rating": "5",                   # existing blank -> filled
-        "status": ob.yaml_quote("read"), # absent -> added
-    })
+    out = ob.update_frontmatter(
+        note,
+        {
+            "title": ob.yaml_quote("New"),  # existing non-empty -> untouched
+            "rating": "5",  # existing blank -> filled
+            "status": ob.yaml_quote("read"),  # absent -> added
+        },
+    )
     assert 'title: "Keep"' in out
     assert "rating: 5" in out
     assert 'status: "read"' in out
@@ -53,7 +56,10 @@ def test_update_frontmatter_empty_update_adds_placeholder():
 
 
 def test_frontmatter_values_and_extractors():
-    note = '---\ntype: book\ntitle: "Napoleon: A Life"\nisbn: "9780698176287"\nauthors: ["[[Andrew Roberts]]"]\n---\nbody\n'
+    note = (
+        '---\ntype: book\ntitle: "Napoleon: A Life"\nisbn: "9780698176287"\n'
+        'authors: ["[[Andrew Roberts]]"]\n---\nbody\n'
+    )
     fm = ob.frontmatter_values(note)
     assert ob.unquote(fm["title"]) == "Napoleon: A Life"
     assert ob.unquote(fm["isbn"]) == "9780698176287"
@@ -66,7 +72,7 @@ def test_html_to_markdown_list():
 
 
 def test_render_marked_section_inserts_when_absent():
-    note = '---\ntype: book\n---\n\nBody.\n'
+    note = "---\ntype: book\n---\n\nBody.\n"
     out = ob.render_marked_section(note, "Highlights", "highlights", "> quote one\n")
     assert "## Highlights" in out
     assert "%% books:highlights:start %%" in out
@@ -77,27 +83,27 @@ def test_render_marked_section_inserts_when_absent():
 
 def test_render_marked_section_replaces_only_between_markers():
     note = (
-        '---\ntype: book\n---\n\n'
-        '## Review\nMy own words.\n\n'
-        '## Highlights\n%% books:highlights:start %%\nOLD\n%% books:highlights:end %%\n'
+        "---\ntype: book\n---\n\n"
+        "## Review\nMy own words.\n\n"
+        "## Highlights\n%% books:highlights:start %%\nOLD\n%% books:highlights:end %%\n"
     )
     out = ob.render_marked_section(note, "Highlights", "highlights", "NEW\n")
     assert "NEW" in out
     assert "OLD" not in out
-    assert "My own words." in out            # content outside markers untouched
-    assert out.count("## Highlights") == 1    # heading not duplicated
+    assert "My own words." in out  # content outside markers untouched
+    assert out.count("## Highlights") == 1  # heading not duplicated
     assert out.count("%% books:highlights:start %%") == 1
 
 
 def test_render_marked_section_idempotent():
-    note = '---\ntype: book\n---\n'
+    note = "---\ntype: book\n---\n"
     once = ob.render_marked_section(note, "Highlights", "highlights", "A\n")
     twice = ob.render_marked_section(once, "Highlights", "highlights", "A\n")
     assert once == twice
 
 
 def test_ensure_section_appends_once():
-    note = '---\ntype: book\n---\n\nBody.\n'
+    note = "---\ntype: book\n---\n\nBody.\n"
     out = ob.ensure_section(note, "Review", "My review.\n")
     assert "## Review" in out
     assert "My review." in out
@@ -118,13 +124,15 @@ def test_ensure_top_embed_inserts_after_frontmatter():
 
 
 def test_ensure_top_embed_noop_when_present():
-    note = '---\ntype: book\n---\n\n![[Covers/T.jpg|150]]\n\nBody.\n'
+    note = "---\ntype: book\n---\n\n![[Covers/T.jpg|150]]\n\nBody.\n"
     assert ob.ensure_top_embed(note, "![[Covers/T.jpg|150]]") == note
 
 
 def test_cover_path_is_flat_keyed_to_note_stem(tmp_path):
     note_path = tmp_path / "Books" / "Napoleon - Andrew Roberts.md"
-    assert ob.cover_path(note_path) == tmp_path / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg"
+    assert (
+        ob.cover_path(note_path) == tmp_path / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg"
+    )
 
 
 def test_cover_refs_builds_vault_relative_wikilinks_with_width(tmp_path):
@@ -142,12 +150,14 @@ def test_property_order_uses_topics_not_genres():
 
 def test_source_in_property_order():
     from books.renderers import obsidian as ob
+
     assert "source" in ob.BOOK_PROPERTY_ORDER
 
 
 def test_source_never_overwrites_existing():
     # "First metadata importer wins" on a shared note (spec addendum).
     from books.renderers import obsidian as ob
+
     note = "---\ntype: book\nsource: calibre\n---\n\nBody.\n"
     out = ob.update_frontmatter(note, {"source": "goodreads"})
     assert "source: calibre" in out

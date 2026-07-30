@@ -27,8 +27,7 @@ Add to `tests/test_config.py`:
 ```python
 def test_load_config_reads_imports_key(tmp_path):
     cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text(
-        'obsidian_path = "~/Obs"\nvault = "History"\nimports = "Sources"\n')
+    cfg_file.write_text('obsidian_path = "~/Obs"\nvault = "History"\nimports = "Sources"\n')
     cfg = config.load_config(cfg_file)
     assert cfg.imports == "Sources"
 
@@ -132,11 +131,9 @@ Add to `tests/test_config.py`:
 ```python
 def test_resolve_imports_joins_onto_vault(tmp_path, monkeypatch):
     cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text(
-        'obsidian_path = "/data/Obs"\nvault = "History"\nimports = ".imports"\n')
+    cfg_file.write_text('obsidian_path = "/data/Obs"\nvault = "History"\nimports = ".imports"\n')
     monkeypatch.setattr(config, "config_path", lambda: cfg_file)
-    assert config.resolve_imports("goodreads", None) == Path(
-        "/data/Obs/History/.imports/goodreads")
+    assert config.resolve_imports("goodreads", None) == Path("/data/Obs/History/.imports/goodreads")
 
 
 def test_resolve_imports_respects_output_override(tmp_path, monkeypatch):
@@ -144,14 +141,12 @@ def test_resolve_imports_respects_output_override(tmp_path, monkeypatch):
     cfg_file.write_text('imports = ".imports"\n')
     monkeypatch.setattr(config, "config_path", lambda: cfg_file)
     monkeypatch.setattr(Path, "cwd", classmethod(lambda cls: Path("/work")))
-    assert config.resolve_imports("kobo", Path("MyVault")) == Path(
-        "/work/MyVault/.imports/kobo")
+    assert config.resolve_imports("kobo", Path("MyVault")) == Path("/work/MyVault/.imports/kobo")
 
 
 def test_resolve_imports_honors_absolute_imports(tmp_path, monkeypatch):
     cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text(
-        'obsidian_path = "/data/Obs"\nvault = "History"\nimports = "/srv/raw"\n')
+    cfg_file.write_text('obsidian_path = "/data/Obs"\nvault = "History"\nimports = "/srv/raw"\n')
     monkeypatch.setattr(config, "config_path", lambda: cfg_file)
     assert config.resolve_imports("calibre", None) == Path("/srv/raw/calibre")
 ```
@@ -212,6 +207,7 @@ def test_newest_csv_picks_most_recent(tmp_path):
     old.write_text("a")
     new.write_text("b")
     import os
+
     os.utime(old, (1000, 1000))
     os.utime(new, (2000, 2000))
     assert config.newest_csv(tmp_path) == new
@@ -225,12 +221,14 @@ def test_newest_csv_single_file(tmp_path):
 
 def test_newest_csv_empty_folder_raises(tmp_path):
     import pytest
+
     with pytest.raises(FileNotFoundError):
         config.newest_csv(tmp_path)
 
 
 def test_newest_csv_missing_folder_raises(tmp_path):
     import pytest
+
     with pytest.raises(FileNotFoundError):
         config.newest_csv(tmp_path / "nope")
 ```
@@ -295,8 +293,9 @@ def test_calibre_defaults_library_to_imports(monkeypatch, tmp_path):
     lib = vault / ".imports" / "calibre"
     lib.mkdir(parents=True)  # empty library -> convert() finds no books
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
-    monkeypatch.setattr(config, "resolve_imports",
-                        lambda name, output=None: vault / ".imports" / name)
+    monkeypatch.setattr(
+        config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
+    )
 
     app = typer.Typer()
     cal.register(app)
@@ -316,12 +315,15 @@ Expected: FAIL (calibre resolves the default `Calibre Library` against home, not
 In `books/calibre_obsidian.py`, change the `library` option default to `None`:
 
 ```python
-    library: Path | None = typer.Option(
+library: Path | None = (
+    typer.Option(
         None,
-        "--library", "-l",
+        "--library",
+        "-l",
         help="Path to the Calibre library. Defaults to <vault>/.imports/calibre. "
-             "Relative paths resolve against your home directory.",
+        "Relative paths resolve against your home directory.",
     ),
+)
 ```
 
 Replace the resolution line `library = resolve_path(library, Path.home())` with:
@@ -366,7 +368,8 @@ def _minimal_goodreads_csv(path):
         "Original Publication Year,Date Read,Date Added,Bookshelves,"
         "Exclusive Shelf,My Review\n"
         '"The Deluge","Adam Tooze",,,,,,,,,,read,\n',
-        encoding="utf-8")
+        encoding="utf-8",
+    )
 
 
 def test_goodreads_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
@@ -379,8 +382,9 @@ def test_goodreads_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
     folder.mkdir(parents=True)
     _minimal_goodreads_csv(folder / "export.csv")
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
-    monkeypatch.setattr(config, "resolve_imports",
-                        lambda name, output=None: vault / ".imports" / name)
+    monkeypatch.setattr(
+        config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
+    )
 
     app = typer.Typer()
     gr.register(app)
@@ -424,13 +428,16 @@ Expected: FAIL (`--csv` is currently required, so running with no `--csv` errors
 In `books/goodreads_obsidian.py`, change the `csv` option to optional:
 
 ```python
-    csv: Path | None = typer.Option(
+csv: Path | None = (
+    typer.Option(
         None,
-        "--csv", "-c",
+        "--csv",
+        "-c",
         help="Path to a Goodreads CSV export, or a folder of exports (the newest "
-             "*.csv is used). Defaults to <vault>/.imports/goodreads. Relative "
-             "paths resolve against the current directory.",
+        "*.csv is used). Defaults to <vault>/.imports/goodreads. Relative "
+        "paths resolve against the current directory.",
     ),
+)
 ```
 
 Replace the resolution block (the `csv = resolve_path(...)` line and the following `if not csv.is_file(): raise ...` block) with:
@@ -487,10 +494,12 @@ Add to `tests/test_readwise.py`:
 ```python
 _READWISE_HEADER = (
     "Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
-    "Location Type,Location,Highlighted at,Document tags\n")
+    "Location Type,Location,Highlighted at,Document tags\n"
+)
 _READWISE_ROW = (
     '"A passage.","Stalin: Volume I (Stalin #1)",Stephen Kotkin,B00INIXPYE,'
-    ',,,page,3,2026-07-17 14:00:25+00:00,\n')
+    ",,,page,3,2026-07-17 14:00:25+00:00,\n"
+)
 
 
 def test_readwise_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
@@ -503,8 +512,9 @@ def test_readwise_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
     folder.mkdir(parents=True)
     (folder / "export.csv").write_text(_READWISE_HEADER + _READWISE_ROW, encoding="utf-8")
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
-    monkeypatch.setattr(config, "resolve_imports",
-                        lambda name, output=None: vault / ".imports" / name)
+    monkeypatch.setattr(
+        config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
+    )
 
     app = typer.Typer()
     rw.register(app)
@@ -548,13 +558,16 @@ Expected: FAIL (`--csv` currently required; folder path fails `csv.is_file()`).
 In `books/readwise_obsidian.py`, change the `csv` option to optional:
 
 ```python
-    csv: Path | None = typer.Option(
+csv: Path | None = (
+    typer.Option(
         None,
-        "--csv", "-c",
+        "--csv",
+        "-c",
         help="Path to a Readwise CSV export, or a folder of exports (the newest "
-             "*.csv is used). Defaults to <vault>/.imports/readwise. Relative "
-             "paths resolve against the current directory.",
+        "*.csv is used). Defaults to <vault>/.imports/readwise. Relative "
+        "paths resolve against the current directory.",
     ),
+)
 ```
 
 Replace the resolution block (`csv = resolve_path(...)` and the following
@@ -618,10 +631,12 @@ def test_highlighted_defaults_csv_to_imports(monkeypatch, tmp_path):
         "Highlight,Title,Author,ISBN,Collections,Reading Status,"
         "Book Added Date,Location,Tags,Note,Date,Favorite\n"
         '"A line.","The Deluge","Adam Tooze",,,,,42,,,,\n',
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
-    monkeypatch.setattr(config, "resolve_imports",
-                        lambda name, output=None: vault / ".imports" / name)
+    monkeypatch.setattr(
+        config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
+    )
 
     app = typer.Typer()
     hl.register(app)
@@ -641,13 +656,16 @@ Expected: FAIL (`--csv` is currently required — missing option error).
 In `books/highlighted_obsidian.py`, change the `csv` option to optional:
 
 ```python
-    csv: Path | None = typer.Option(
+csv: Path | None = (
+    typer.Option(
         None,
-        "--csv", "-c",
+        "--csv",
+        "-c",
         help="Path to a Highlighted CSV export, or a folder of CSV exports (every "
-             "top-level *.csv is imported). Defaults to <vault>/.imports/highlighted. "
-             "Relative paths resolve against the current directory.",
+        "top-level *.csv is imported). Defaults to <vault>/.imports/highlighted. "
+        "Relative paths resolve against the current directory.",
     ),
+)
 ```
 
 Replace the line `csv = resolve_path(csv, Path.cwd())` with:
@@ -716,8 +734,9 @@ def test_kobo_copies_from_mounted_device(monkeypatch, tmp_path):
     device.parent.mkdir(parents=True)
     _make_db(device)
     monkeypatch.setattr(ke, "KOBO_DEVICE_DB", device)
-    monkeypatch.setattr(config, "resolve_imports",
-                        lambda name, output=None: vault / ".imports" / name)
+    monkeypatch.setattr(
+        config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
+    )
 
     out_zip = tmp_path / "out.zip"
     app = typer.Typer()
@@ -743,8 +762,9 @@ def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
     _make_db(folder / "KoboReader.sqlite")
     # No device mounted.
     monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
-    monkeypatch.setattr(config, "resolve_imports",
-                        lambda name, output=None: vault / ".imports" / name)
+    monkeypatch.setattr(
+        config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
+    )
 
     out_zip = tmp_path / "out.zip"
     app = typer.Typer()
@@ -762,8 +782,9 @@ def test_kobo_default_missing_everything_errors(monkeypatch, tmp_path):
 
     vault = tmp_path / "Vault"
     monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
-    monkeypatch.setattr(config, "resolve_imports",
-                        lambda name, output=None: vault / ".imports" / name)
+    monkeypatch.setattr(
+        config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
+    )
 
     app = typer.Typer()
     ke.register(app)
@@ -828,8 +849,9 @@ def _default_kobo_db(output: Path | None) -> Path:
         if sqlites:
             return max(sqlites, key=lambda p: p.stat().st_mtime)
     raise typer.BadParameter(
-        f"no Kobo device mounted and no KoboReader.sqlite (or *.sqlite) found in "
-        f"{folder}", param_hint="DB")
+        f"no Kobo device mounted and no KoboReader.sqlite (or *.sqlite) found in {folder}",
+        param_hint="DB",
+    )
 ```
 
 Replace the resolution line:
@@ -851,14 +873,16 @@ with:
 Update the `db` argument help text:
 
 ```python
-    db: Path | None = typer.Argument(
+db: Path | None = (
+    typer.Argument(
         None,
         help="Path to KoboReader.sqlite. Relative paths resolve against the current "
-             "directory. When omitted, a mounted Kobo's DB "
-             "(/Volumes/KOBOeReader/.kobo/KoboReader.sqlite) is safely copied into "
-             "<vault>/.imports/kobo/ and used; otherwise the existing copy there is "
-             "used. [default: <vault>/.imports/kobo/KoboReader.sqlite]",
+        "directory. When omitted, a mounted Kobo's DB "
+        "(/Volumes/KOBOeReader/.kobo/KoboReader.sqlite) is safely copied into "
+        "<vault>/.imports/kobo/ and used; otherwise the existing copy there is "
+        "used. [default: <vault>/.imports/kobo/KoboReader.sqlite]",
     ),
+)
 ```
 
 Also update the INPUT paragraph of the `kobo_export` docstring to describe the

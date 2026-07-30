@@ -5,7 +5,6 @@ from pathlib import Path
 from books.commands import goodreads as gr
 from books.core import store
 
-
 HEADER = (
     "Book Id,Title,Author,Author l-f,Additional Authors,ISBN,ISBN13,My Rating,"
     "Publisher,Binding,Number of Pages,Year Published,Original Publication Year,"
@@ -17,14 +16,14 @@ HEADER = (
 ROWS = (
     '1,"Napoleon: A Life",Andrew Roberts,"Roberts, Andrew",,'
     '"=""0141032014""","=""9780141032016""",5.0,Penguin,Paperback,976,2015,2014,'
-    '2026/07/17,2026/05/04,history,history (#1),read,'
+    "2026/07/17,2026/05/04,history,history (#1),read,"
     '"Great book.<br/><br/>Loved it.",,note-to-self,1,0\n'
     '2,"The Cold War: A New History",John Lewis Gaddis,"Gaddis, John Lewis",,'
     '"=""0143038273""","=""9780143038276""",0,Penguin,Paperback,352,2006,2005,,'
-    '2026/07/14,to-read,to-read (#2),to-read,,,,0,0\n'
+    "2026/07/14,to-read,to-read (#2),to-read,,,,0,0\n"
     '3,"Stalin: Paradoxes of Power",Stephen Kotkin,"Kotkin, Stephen",,'
     '"=""1594203792""","=""9781594203794""",0,Penguin,Hardcover,976,2014,2014,,'
-    '2026/04/30,,,currently-reading,,,,1,0\n'
+    "2026/04/30,,,currently-reading,,,,1,0\n"
 )
 
 
@@ -35,6 +34,7 @@ def write_csv(tmp_path: Path) -> Path:
 
 
 # --- Pure parsing helpers ---------------------------------------------------
+
 
 def test_parse_csv_fields(tmp_path):
     books = gr.parse_csv(write_csv(tmp_path))
@@ -54,18 +54,20 @@ def test_parse_csv_fields(tmp_path):
     assert "Great book." in nap.review
 
     unrated = books[1]
-    assert unrated.rating is None          # My Rating 0 -> unrated
+    assert unrated.rating is None  # My Rating 0 -> unrated
     assert unrated.status == "to-read"
 
     reading = books[2]
-    assert reading.status == "reading"     # currently-reading normalized
+    assert reading.status == "reading"  # currently-reading normalized
 
 
 def test_normalization_helpers():
     from books.renderers import obsidian as ob
+
     assert ob.norm_isbn('="9780698176287"') == "9780698176287"
-    assert ob.norm_title("The Cold War: A New History") == \
-        ob.norm_title("The Cold War - A New History")
+    assert ob.norm_title("The Cold War: A New History") == ob.norm_title(
+        "The Cold War - A New History"
+    )
     assert ob.author_key("Terry Martin") == ob.author_key("Terry L. Martin")
     assert ob.author_key("Roberts, Andrew") == ob.author_key("Andrew Roberts")
     assert ob.author_key("Broué, Pierre") == ob.author_key("Pierre Broue")
@@ -78,7 +80,7 @@ def test_norm_format_maps_bindings():
     assert gr._norm_format("Kindle Edition") == "ebook"
     assert gr._norm_format("ebook") == "ebook"
     assert gr._norm_format("Audiobook") == "audiobook"
-    assert gr._norm_format(None) == "physical"   # unknown/missing -> physical
+    assert gr._norm_format(None) == "physical"  # unknown/missing -> physical
     assert gr._norm_format("") == "physical"
 
 
@@ -137,7 +139,8 @@ def test_goodreads_review_concatenates_private_notes(tmp_path):
     (tmp_path / "pn.csv").write_text(
         "Title,Author,My Review,Private Notes,Book Id\n"
         "The Deluge,Adam Tooze,Great book,secret thoughts,1\n",
-        encoding="utf-8")
+        encoding="utf-8",
+    )
     gr.convert(tmp_path / "pn.csv", vault)
     row = store.read_layer(vault, "goodreads")[0]
     assert row.review == "Great book\n\n### Private Notes\n\nsecret thoughts"
@@ -145,8 +148,7 @@ def test_goodreads_review_concatenates_private_notes(tmp_path):
 
 def test_goodreads_skips_titleless_or_authorless(tmp_path):
     vault = tmp_path / "vault"
-    (tmp_path / "g.csv").write_text(
-        "Title,Author,Book Id\n,,1\nOnly Title,,2\n", encoding="utf-8")
+    (tmp_path / "g.csv").write_text("Title,Author,Book Id\n,,1\nOnly Title,,2\n", encoding="utf-8")
     stats = gr.convert(tmp_path / "g.csv", vault)
     assert stats["skipped"] == 2
     assert store.read_layer(vault, "goodreads") == []
@@ -161,18 +163,21 @@ def test_goodreads_rerun_replaces_layer(tmp_path):
 
 # --- CLI wiring -------------------------------------------------------------
 
+
 def _minimal_goodreads_csv(path):
     path.write_text(
         "Title,Author,ISBN,ISBN13,My Rating,Average Rating,Number of Pages,"
         "Original Publication Year,Date Read,Date Added,Bookshelves,"
         "Exclusive Shelf,My Review\n"
         '"The Deluge","Adam Tooze",,,,,,,,,,read,\n',
-        encoding="utf-8")
+        encoding="utf-8",
+    )
 
 
 def test_goodreads_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
+
     from books.commands import goodreads as gr
     from books.core import config
 
@@ -181,8 +186,9 @@ def test_goodreads_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
     folder.mkdir(parents=True)
     _minimal_goodreads_csv(folder / "export.csv")
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
-    monkeypatch.setattr(config, "resolve_imports",
-                        lambda name, output=None: vault / ".imports" / name)
+    monkeypatch.setattr(
+        config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
+    )
 
     app = typer.Typer()
     gr.register(app)
@@ -195,8 +201,10 @@ def test_goodreads_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
 
 def test_goodreads_folder_arg_picks_newest(monkeypatch, tmp_path):
     import os
+
     import typer
     from typer.testing import CliRunner
+
     from books.commands import goodreads as gr
     from books.core import config
 

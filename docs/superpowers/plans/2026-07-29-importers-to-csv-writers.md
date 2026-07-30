@@ -92,7 +92,7 @@ def test_calibre_writes_layer_csv(tmp_path):
     assert row.authors == ["Adam Tooze"]
     assert row.isbn == "9780141032184"
     assert row.format == "ebook"
-    assert row.rating == "4"          # calibre 8/2 = 4.0 -> "4"
+    assert row.rating == "4"  # calibre 8/2 = 4.0 -> "4"
     assert stats["books"] == 1
 
 
@@ -316,8 +316,7 @@ def test_goodreads_row_fields_and_review(tmp_path):
 
 def test_goodreads_skips_titleless_or_authorless(tmp_path):
     vault = tmp_path / "vault"
-    (tmp_path / "g.csv").write_text(
-        "Title,Author,Book Id\n,,1\nOnly Title,,2\n", encoding="utf-8")
+    (tmp_path / "g.csv").write_text("Title,Author,Book Id\n,,1\nOnly Title,,2\n", encoding="utf-8")
     stats = goodreads.convert(tmp_path / "g.csv", vault)
     assert stats["skipped"] == 2
     assert store.read_layer(vault, "goodreads") == []
@@ -402,12 +401,14 @@ Update the CLI wrapper `goodreads_to_obsidian` echo (it currently reads `created
 Keep the `--shelf` option definition (still accepted) but update its help text to note it no longer gates output:
 
 ```python
-    shelf: str = typer.Option(
+shelf: str = (
+    typer.Option(
         DEFAULT_SHELVES,
         "--shelf",
         help="Accepted for compatibility; no longer gates output — every shelf is "
-             "written to the store (books.csv is the whole library).",
+        "written to the store (books.csv is the whole library).",
     ),
+)
 ```
 
 - [ ] **Step 4: Run to verify they pass**
@@ -437,22 +438,26 @@ Append to `tests/commands/test_render.py`:
 ```python
 def test_render_materializes_staged_cover(tmp_path):
     from books.commands import render as R
+
     vault = tmp_path / "vault"
     staged = store.sources_dir(vault) / "_covers" / "calibre" / "0.jpg"
     staged.parent.mkdir(parents=True)
     staged.write_bytes(b"\xff\xd8\xff\xe0IMG")
     row = store.BookRow(
-        book_id="The Deluge - Adam Tooze", title="The Deluge",
-        authors=["Adam Tooze"], format="ebook",
+        book_id="The Deluge - Adam Tooze",
+        title="The Deluge",
+        authors=["Adam Tooze"],
+        format="ebook",
         cover="Data/Sources/_covers/calibre/0.jpg",
     )
     R.render_note(vault, row, [])
     dest = vault / "Data" / "Covers" / "The Deluge - Adam Tooze.jpg"
     assert dest.is_file()
     assert dest.read_bytes() == b"\xff\xd8\xff\xe0IMG"
-    post = frontmatter.loads(dest.with_suffix(".md").name and
-                             (vault / "Books" / "The Deluge - Adam Tooze.md")
-                             .read_text(encoding="utf-8"))
+    post = frontmatter.loads(
+        dest.with_suffix(".md").name
+        and (vault / "Books" / "The Deluge - Adam Tooze.md").read_text(encoding="utf-8")
+    )
     assert "![[Data/Covers/The Deluge - Adam Tooze.jpg|150]]" in post.content
 ```
 
@@ -525,9 +530,14 @@ Change the two stats assertions to include the new `authors` count:
 ```
 
 ```python
-    # the empty-catalog test:
-    assert R.render(tmp_path / "vault") == {
-        "notes": 0, "highlights": 0, "reviews": 0, "failed": 0, "authors": 0}
+# the empty-catalog test:
+assert R.render(tmp_path / "vault") == {
+    "notes": 0,
+    "highlights": 0,
+    "reviews": 0,
+    "failed": 0,
+    "authors": 0,
+}
 ```
 
 Add:
@@ -535,10 +545,14 @@ Add:
 ```python
 def test_render_creates_author_stubs(tmp_path):
     from books.commands import render as R
+
     vault = tmp_path / "vault"
-    store.write_books_csv(vault, [
-        store.BookRow(book_id="X - A", title="X", authors=["Ada Lovelace"]),
-    ])
+    store.write_books_csv(
+        vault,
+        [
+            store.BookRow(book_id="X - A", title="X", authors=["Ada Lovelace"]),
+        ],
+    )
     R.render(vault)
     stub = vault / "Authors" / "Ada Lovelace.md"
     assert stub.is_file()
@@ -653,9 +667,17 @@ def _make_kobo_db(path: Path) -> None:
 
 def test_kobo_writes_highlights_to_store(tmp_path):
     vault = tmp_path / "vault"
-    store.write_books_csv(vault, [store.BookRow(
-        book_id="The Deluge - Adam Tooze", title="The Deluge",
-        authors=["Adam Tooze"], isbn="9780141032184")])
+    store.write_books_csv(
+        vault,
+        [
+            store.BookRow(
+                book_id="The Deluge - Adam Tooze",
+                title="The Deluge",
+                authors=["Adam Tooze"],
+                isbn="9780141032184",
+            )
+        ],
+    )
     db = tmp_path / "KoboReader.sqlite"
     _make_kobo_db(db)
 
@@ -680,9 +702,17 @@ def test_kobo_skips_unmatched_book(tmp_path):
 
 def test_kobo_rerun_replaces_own_rows(tmp_path):
     vault = tmp_path / "vault"
-    store.write_books_csv(vault, [store.BookRow(
-        book_id="The Deluge - Adam Tooze", title="The Deluge",
-        authors=["Adam Tooze"], isbn="9780141032184")])
+    store.write_books_csv(
+        vault,
+        [
+            store.BookRow(
+                book_id="The Deluge - Adam Tooze",
+                title="The Deluge",
+                authors=["Adam Tooze"],
+                isbn="9780141032184",
+            )
+        ],
+    )
     db = tmp_path / "KoboReader.sqlite"
     _make_kobo_db(db)
     kobo.export_obsidian(db, vault)
@@ -750,8 +780,7 @@ def export_obsidian(db_path: Path, vault: Path) -> dict:
             skipped += 1
             continue
         highlights = [row_to_highlight(r) for r in book_rows]
-        hl_rows = [store.highlight_to_row(h, "kobo", str(i))
-                   for i, h in enumerate(highlights)]
+        hl_rows = [store.highlight_to_row(h, "kobo", str(i)) for i, h in enumerate(highlights)]
         store.write_highlights(vault, book_id, "kobo", hl_rows)
         entries += len(hl_rows)
         written += 1
@@ -798,9 +827,17 @@ _HL_CSV = (
 
 
 def _seed(vault: Path) -> None:
-    store.write_books_csv(vault, [store.BookRow(
-        book_id="The Deluge - Adam Tooze", title="The Deluge",
-        authors=["Adam Tooze"], isbn="9780141032184")])
+    store.write_books_csv(
+        vault,
+        [
+            store.BookRow(
+                book_id="The Deluge - Adam Tooze",
+                title="The Deluge",
+                authors=["Adam Tooze"],
+                isbn="9780141032184",
+            )
+        ],
+    )
 
 
 def test_highlighted_writes_highlights_to_store(tmp_path):
@@ -860,20 +897,19 @@ def convert(csv_path: Path, output: Path) -> dict:
         isbn = (row.get("ISBN") or "").strip() or None
         author = (row.get("Author") or "").strip()
         key = isbn or title
-        group = groups.setdefault(
-            key, {"title": title, "author": author, "isbn": isbn, "rows": []})
+        group = groups.setdefault(key, {"title": title, "author": author, "isbn": isbn, "rows": []})
         group["rows"].append(row)
 
     for group in groups.values():
         authors = [group["author"]] if group["author"] else []
-        book_id = catalog.find(
-            BookRef(title=group["title"], authors=authors, isbn=group["isbn"]))
+        book_id = catalog.find(BookRef(title=group["title"], authors=authors, isbn=group["isbn"]))
         if book_id is None:
             stats["skipped"] += 1
             continue
         highlights = [row_to_highlight(r) for r in group["rows"]]
-        hl_rows = [store.highlight_to_row(h, "highlighted", str(i))
-                   for i, h in enumerate(highlights)]
+        hl_rows = [
+            store.highlight_to_row(h, "highlighted", str(i)) for i, h in enumerate(highlights)
+        ]
         store.write_highlights(output, book_id, "highlighted", hl_rows)
         stats["books"] += 1
         stats["entries"] += len(hl_rows)
@@ -884,28 +920,27 @@ def convert(csv_path: Path, output: Path) -> dict:
 Update the folder-mode CLI echo (`highlighted_to_obsidian`): it aggregates `totals["authors"]` — drop the authors references. Change the `totals` init and aggregation and final echo:
 
 ```python
-    totals = {"books": 0, "entries": 0, "skipped": 0}
-    skipped = 0
-    for path in csv_paths:
-        try:
-            stats = convert(path, output)
-        except Exception as exc:  # noqa: BLE001
-            skipped += 1
-            typer.echo(f"Skipped {path.name}: {exc}", err=True)
-            continue
-        totals["books"] += stats["books"]
-        totals["entries"] += stats["entries"]
-        totals["skipped"] += stats["skipped"]
+totals = {"books": 0, "entries": 0, "skipped": 0}
+skipped = 0
+for path in csv_paths:
+    try:
+        stats = convert(path, output)
+    except Exception as exc:  # noqa: BLE001
+        skipped += 1
+        typer.echo(f"Skipped {path.name}: {exc}", err=True)
+        continue
+    totals["books"] += stats["books"]
+    totals["entries"] += stats["entries"]
+    totals["skipped"] += stats["skipped"]
 
-    files = len(csv_paths)
-    files_word = "file" if files == 1 else "files"
-    skipped_note = f" ({skipped} skipped)" if skipped else ""
-    no_note = (f" ({totals['skipped']} skipped — no book)"
-               if totals["skipped"] else "")
-    typer.echo(
-        f"Done. {files} {files_word}{skipped_note}, {totals['books']} books{no_note}, "
-        f"{totals['entries']} highlights.\nOutput: {output}"
-    )
+files = len(csv_paths)
+files_word = "file" if files == 1 else "files"
+skipped_note = f" ({skipped} skipped)" if skipped else ""
+no_note = f" ({totals['skipped']} skipped — no book)" if totals["skipped"] else ""
+typer.echo(
+    f"Done. {files} {files_word}{skipped_note}, {totals['books']} books{no_note}, "
+    f"{totals['entries']} highlights.\nOutput: {output}"
+)
 ```
 
 - [ ] **Step 4: Run to verify it passes**
@@ -946,9 +981,17 @@ _RW_CSV = (
 
 
 def _seed(vault: Path) -> None:
-    store.write_books_csv(vault, [store.BookRow(
-        book_id="The Deluge - Adam Tooze", title="The Deluge",
-        authors=["Adam Tooze"], amazon="B00XYZ")])
+    store.write_books_csv(
+        vault,
+        [
+            store.BookRow(
+                book_id="The Deluge - Adam Tooze",
+                title="The Deluge",
+                authors=["Adam Tooze"],
+                amazon="B00XYZ",
+            )
+        ],
+    )
 
 
 def test_readwise_writes_highlights_to_store(tmp_path):
@@ -1008,20 +1051,21 @@ def convert(csv_path: Path, output: Path) -> dict:
         amazon = (row.get("Amazon Book ID") or "").strip() or None
         author = (row.get("Book Author") or "").strip()
         key = amazon or f"{title}\x00{author}"
-        group = groups.setdefault(key, {
-            "title": title, "author": author, "amazon": amazon, "rows": []})
+        group = groups.setdefault(
+            key, {"title": title, "author": author, "amazon": amazon, "rows": []}
+        )
         group["rows"].append(row)
 
     for group in groups.values():
         authors = [group["author"]] if group["author"] else []
         book_id = catalog.find(
-            BookRef(title=group["title"], authors=authors, amazon=group["amazon"]))
+            BookRef(title=group["title"], authors=authors, amazon=group["amazon"])
+        )
         if book_id is None:
             stats["skipped"] += 1
             continue
         highlights = [row_to_highlight(r) for r in group["rows"]]
-        hl_rows = [store.highlight_to_row(h, "readwise", str(i))
-                   for i, h in enumerate(highlights)]
+        hl_rows = [store.highlight_to_row(h, "readwise", str(i)) for i, h in enumerate(highlights)]
         store.write_highlights(output, book_id, "readwise", hl_rows)
         stats["books"] += 1
         stats["entries"] += len(hl_rows)
@@ -1032,14 +1076,12 @@ def convert(csv_path: Path, output: Path) -> dict:
 Update the CLI echo (`readwise_to_obsidian`) to drop authors:
 
 ```python
-    output.mkdir(parents=True, exist_ok=True)
-    stats = convert(csv, output)
-    no_note = (f" ({stats['skipped']} skipped — no book)"
-               if stats["skipped"] else "")
-    typer.echo(
-        f"Done. {stats['books']} books{no_note}, {stats['entries']} highlights.\n"
-        f"Output: {output}"
-    )
+output.mkdir(parents=True, exist_ok=True)
+stats = convert(csv, output)
+no_note = f" ({stats['skipped']} skipped — no book)" if stats["skipped"] else ""
+typer.echo(
+    f"Done. {stats['books']} books{no_note}, {stats['entries']} highlights.\nOutput: {output}"
+)
 ```
 
 Note: readwise no longer writes `series`/`amazon`/`shelves` metadata (it wrote frontmatter before). Metadata enrichment from readwise is out of scope this pass (highlight importers write highlights only); `series`/`series_index` are still parsed for grouping but not persisted.
@@ -1078,9 +1120,15 @@ from books.core import store
 
 def test_merge_command_builds_books_csv(tmp_path):
     vault = tmp_path / "vault"
-    store.write_layer(vault, "calibre", [store.BookRow(
-        title="The Deluge", authors=["Adam Tooze"], format="ebook",
-        isbn="9780141032184")])
+    store.write_layer(
+        vault,
+        "calibre",
+        [
+            store.BookRow(
+                title="The Deluge", authors=["Adam Tooze"], format="ebook", isbn="9780141032184"
+            )
+        ],
+    )
 
     result = CliRunner().invoke(app, ["merge", "--output", str(vault)])
     assert result.exit_code == 0, result.output
@@ -1123,16 +1171,17 @@ from books.core import config, store
 
 def merge_command(
     output: Path | None = typer.Option(
-        None, "--output", "-o",
+        None,
+        "--output",
+        "-o",
         help="Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the "
-             "current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the "
+        "current directory.",
     ),
 ) -> None:
     """Merge the source layers into Data/books.csv."""
     vault = config.resolve_vault(output)
-    if not store.sources_dir(vault).is_dir() or not any(
-            store.sources_dir(vault).glob("*.csv")):
+    if not store.sources_dir(vault).is_dir() or not any(store.sources_dir(vault).glob("*.csv")):
         raise typer.BadParameter(
             f"no source layers under {store.sources_dir(vault)} — run the "
             f"metadata importers (calibre/goodreads) first",
@@ -1225,11 +1274,19 @@ def test_run_sync_two_phase_end_to_end(tmp_path, monkeypatch):
 
     # calibre detected + writes a layer
     monkeypatch.setattr(sync, "_detect_calibre", lambda v: "fake-lib")
+
     def fake_calibre(v):
-        store.write_layer(v, "calibre", [store.BookRow(
-            title="The Deluge", authors=["Adam Tooze"], format="ebook",
-            isbn="9780141032184")])
+        store.write_layer(
+            v,
+            "calibre",
+            [
+                store.BookRow(
+                    title="The Deluge", authors=["Adam Tooze"], format="ebook", isbn="9780141032184"
+                )
+            ],
+        )
         return {"books": 1, "covers": 0, "skipped": 0, "authors": {"Adam Tooze"}}
+
     monkeypatch.setattr(sync, "_run_calibre", fake_calibre)
 
     # goodreads absent
@@ -1237,15 +1294,29 @@ def test_run_sync_two_phase_end_to_end(tmp_path, monkeypatch):
 
     # kobo detected + writes highlights (after merge, so Catalog can match)
     monkeypatch.setattr(sync, "_detect_kobo", lambda v: "fake-db")
+
     def fake_kobo(v):
         cat = store.Catalog(v)
-        bid = cat.find(store.BookRef(title="The Deluge", authors=["Adam Tooze"],
-                                     isbn="9780141032184"))
+        bid = cat.find(
+            store.BookRef(title="The Deluge", authors=["Adam Tooze"], isbn="9780141032184")
+        )
         assert bid is not None  # merge produced books.csv before this step
-        store.write_highlights(v, bid, "kobo", [store.HighlightRow(
-            source="kobo", annotation_id="0", text="hi",
-            location="42", location_kind="percent")])
+        store.write_highlights(
+            v,
+            bid,
+            "kobo",
+            [
+                store.HighlightRow(
+                    source="kobo",
+                    annotation_id="0",
+                    text="hi",
+                    location="42",
+                    location_kind="percent",
+                )
+            ],
+        )
         return {"books": 1, "entries": 1, "skipped": 0}
+
     monkeypatch.setattr(sync, "_run_kobo", fake_kobo)
 
     monkeypatch.setattr(sync, "_detect_highlighted", lambda v: None)
@@ -1321,21 +1392,26 @@ def _summ_merge(s: dict) -> str:
 
 
 def _summ_render(s: dict) -> str:
-    return (f"{s.get('notes', 0)} notes, {s.get('highlights', 0)} highlights, "
-            f"{s.get('reviews', 0)} reviews")
+    return (
+        f"{s.get('notes', 0)} notes, {s.get('highlights', 0)} highlights, "
+        f"{s.get('reviews', 0)} reviews"
+    )
 ```
 
 Update `_summ_goodreads` and `_summ_calibre` to the new stat keys:
 
 ```python
 def _summ_calibre(s: dict) -> str:
-    return (f"{s.get('books', 0)} books, {s.get('covers', 0)} covers, "
-            f"{len(s.get('authors', ()))} authors, {s.get('skipped', 0)} skipped")
+    return (
+        f"{s.get('books', 0)} books, {s.get('covers', 0)} covers, "
+        f"{len(s.get('authors', ()))} authors, {s.get('skipped', 0)} skipped"
+    )
 
 
 def _summ_goodreads(s: dict) -> str:
-    return (f"{s.get('books', 0)} books, {s.get('reviews', 0)} reviews, "
-            f"{s.get('skipped', 0)} skipped")
+    return (
+        f"{s.get('books', 0)} books, {s.get('reviews', 0)} reviews, {s.get('skipped', 0)} skipped"
+    )
 ```
 
 Update `_run_goodreads` (unchanged call, still `goodreads.convert(csv, vault)`), `_run_highlighted` (drop the `authors` aggregation — it no longer returns authors):
@@ -1370,14 +1446,16 @@ def _steps() -> list[Step]:
 Also, in `run_sync`, the skip message uses `_imports_label(step.name)` which assumes an imports folder — `merge`/`render` have none. Guard it so those two report a sensible reason:
 
 ```python
-        source = step.detect(vault)
-        if source is None:
-            reason = (f"no source in {_imports_label(step.name)}"
-                      if step.name not in ("merge", "render")
-                      else "nothing to do")
-            _skip(step.name, reason)
-            results.append(StepResult(step.name, "skipped", reason))
-            continue
+source = step.detect(vault)
+if source is None:
+    reason = (
+        f"no source in {_imports_label(step.name)}"
+        if step.name not in ("merge", "render")
+        else "nothing to do"
+    )
+    _skip(step.name, reason)
+    results.append(StepResult(step.name, "skipped", reason))
+    continue
 ```
 
 Update the `sync` command docstring to describe the two-phase pipeline (calibre → goodreads → merge → kobo/highlighted/readwise → render).
@@ -1419,6 +1497,7 @@ real files to `tmp_path` and read back the rendered vault.
 
 ```python
 """End-to-end: synthetic sources -> full pipeline -> rendered Obsidian vault."""
+
 import sqlite3
 from pathlib import Path
 

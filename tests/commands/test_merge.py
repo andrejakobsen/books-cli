@@ -6,9 +6,15 @@ from books.core import store
 
 def test_merge_command_builds_books_csv(tmp_path):
     vault = tmp_path / "vault"
-    store.write_layer(vault, "calibre", [store.BookRow(
-        title="The Deluge", authors=["Adam Tooze"], format="ebook",
-        isbn="9780141032184")])
+    store.write_layer(
+        vault,
+        "calibre",
+        [
+            store.BookRow(
+                title="The Deluge", authors=["Adam Tooze"], format="ebook", isbn="9780141032184"
+            )
+        ],
+    )
 
     result = CliRunner().invoke(app, ["merge", "--output", str(vault)])
     assert result.exit_code == 0, result.output

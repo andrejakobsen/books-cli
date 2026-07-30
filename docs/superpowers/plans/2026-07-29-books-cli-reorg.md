@@ -324,15 +324,45 @@ from books.renderers.obsidian.vault_index import (
 )
 
 __all__ = [
-    "AUTHORS_DIRNAME", "BOOKS_DIRNAME", "BOOK_FLAG_DEFAULTS", "BOOK_PROPERTY_ORDER",
-    "BookNote", "BookRef", "COVERS_DIRNAME", "COVER_WIDTH", "NOTES_DIRNAME",
-    "OVERWRITE_KEYS", "TOPICS_DIRNAME", "VaultIndex", "author_key", "build_index",
-    "cover_path", "cover_refs", "ensure_section", "ensure_top_embed",
-    "extract_wikilinks", "fold", "format_rating", "frontmatter_values",
-    "html_to_markdown", "link_list", "next_free_stem", "norm_amazon", "norm_isbn",
-    "norm_title", "plain_list", "render_marked_section", "safe_filename",
-    "sanitize_folder_name", "strip_subtitle", "unquote", "update_frontmatter",
-    "wikilink", "write_if_absent", "write_stub", "yaml_quote",
+    "AUTHORS_DIRNAME",
+    "BOOKS_DIRNAME",
+    "BOOK_FLAG_DEFAULTS",
+    "BOOK_PROPERTY_ORDER",
+    "BookNote",
+    "BookRef",
+    "COVERS_DIRNAME",
+    "COVER_WIDTH",
+    "NOTES_DIRNAME",
+    "OVERWRITE_KEYS",
+    "TOPICS_DIRNAME",
+    "VaultIndex",
+    "author_key",
+    "build_index",
+    "cover_path",
+    "cover_refs",
+    "ensure_section",
+    "ensure_top_embed",
+    "extract_wikilinks",
+    "fold",
+    "format_rating",
+    "frontmatter_values",
+    "html_to_markdown",
+    "link_list",
+    "next_free_stem",
+    "norm_amazon",
+    "norm_isbn",
+    "norm_title",
+    "plain_list",
+    "render_marked_section",
+    "safe_filename",
+    "sanitize_folder_name",
+    "strip_subtitle",
+    "unquote",
+    "update_frontmatter",
+    "wikilink",
+    "write_if_absent",
+    "write_stub",
+    "yaml_quote",
 ]
 ```
 
@@ -570,6 +600,7 @@ from books.commands import (
     readwise,
     render,
 )
+
 # still-old imports until Tasks 7-9:
 from books import audible_obsidian, covers, sync
 ```

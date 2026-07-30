@@ -109,8 +109,11 @@ Add to `tests/test_highlights.py`:
 
 ```python
 def test_render_tags_inside_quote_callout_above_anchor():
-    hs = [hl.Highlight(text="A line", chapter_index=2, block="17", segment="5",
-                       tags=["Stalin", "USSR"])]
+    hs = [
+        hl.Highlight(
+            text="A line", chapter_index=2, block="17", segment="5", tags=["Stalin", "USSR"]
+        )
+    ]
     out = hl.render_highlights(hs)
     # tag line lives inside the callout (prefixed with "> ")
     assert "> #Stalin #USSR" in out
@@ -126,11 +129,19 @@ def test_render_no_tags_callout_unchanged():
 
 
 def test_render_tags_and_note_both_present():
-    hs = [hl.Highlight(text="A line", note="my thought", chapter_index=2,
-                       block="1", segment="0", tags=["Stalin"])]
+    hs = [
+        hl.Highlight(
+            text="A line",
+            note="my thought",
+            chapter_index=2,
+            block="1",
+            segment="0",
+            tags=["Stalin"],
+        )
+    ]
     out = hl.render_highlights(hs)
-    assert "> #Stalin" in out          # tag inside quote callout
-    assert "> [!note]-" in out         # note callout still rendered
+    assert "> #Stalin" in out  # tag inside quote callout
+    assert "> [!note]-" in out  # note callout still rendered
     assert out.index("> #Stalin") < out.index("> [!note]-")
 ```
 
@@ -194,22 +205,32 @@ import pytest
 
 class _R(dict):
     """Row stub matching kobo_export's row access (missing keys -> None)."""
+
     def __getitem__(self, k):
         return dict.get(self, k)
 
 
 def _hl(note):
-    row = _R(chapter_index=1, chapter="Ch", chapter_progress=0.1,
-             container_path=r"span#kobo\.1\.0", highlight="Hi", note=note,
-             date_created="2026-07-01")
+    row = _R(
+        chapter_index=1,
+        chapter="Ch",
+        chapter_progress=0.1,
+        container_path=r"span#kobo\.1\.0",
+        highlight="Hi",
+        note=note,
+        date_created="2026-07-01",
+    )
     return ke.row_to_highlight(row)
 
 
-@pytest.mark.parametrize("note", [
-    "Note. #tag1 #tag2",
-    "Note.#tag1 #tag2",
-    "Note. #tag1#tag2",
-])
+@pytest.mark.parametrize(
+    "note",
+    [
+        "Note. #tag1 #tag2",
+        "Note.#tag1 #tag2",
+        "Note. #tag1#tag2",
+    ],
+)
 def test_kobo_extracts_tags_and_strips_note(note):
     h = _hl(note)
     assert h.note == "Note."

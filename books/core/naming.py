@@ -39,6 +39,7 @@ def next_free_stem(title: str, author: str, used_lower: set[str]) -> str:
     filesystems). The chosen stem is NOT added to used_lower -- the caller does
     that so it can also map the stem to a path/id.
     """
+
     def stem_for(t: str) -> str:
         return safe_filename(f"{t} - {author}" if author else t)
 

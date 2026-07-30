@@ -89,8 +89,7 @@ def test_resolve_vault_uses_config_when_output_none(tmp_path, monkeypatch):
 
 def test_load_config_reads_imports_key(tmp_path):
     cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text(
-        'obsidian_path = "~/Obs"\nvault = "History"\nimports = "Sources"\n')
+    cfg_file.write_text('obsidian_path = "~/Obs"\nvault = "History"\nimports = "Sources"\n')
     cfg = config.load_config(cfg_file)
     assert cfg.imports == "Sources"
 
@@ -117,11 +116,9 @@ def test_default_file_includes_imports(tmp_path):
 
 def test_resolve_imports_joins_onto_vault(tmp_path, monkeypatch):
     cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text(
-        'obsidian_path = "/data/Obs"\nvault = "History"\nimports = ".imports"\n')
+    cfg_file.write_text('obsidian_path = "/data/Obs"\nvault = "History"\nimports = ".imports"\n')
     monkeypatch.setattr(config, "config_path", lambda: cfg_file)
-    assert config.resolve_imports("goodreads", None) == Path(
-        "/data/Obs/History/.imports/goodreads")
+    assert config.resolve_imports("goodreads", None) == Path("/data/Obs/History/.imports/goodreads")
 
 
 def test_resolve_imports_respects_output_override(tmp_path, monkeypatch):
@@ -129,14 +126,12 @@ def test_resolve_imports_respects_output_override(tmp_path, monkeypatch):
     cfg_file.write_text('imports = ".imports"\n')
     monkeypatch.setattr(config, "config_path", lambda: cfg_file)
     monkeypatch.setattr(Path, "cwd", classmethod(lambda cls: Path("/work")))
-    assert config.resolve_imports("kobo", Path("MyVault")) == Path(
-        "/work/MyVault/.imports/kobo")
+    assert config.resolve_imports("kobo", Path("MyVault")) == Path("/work/MyVault/.imports/kobo")
 
 
 def test_resolve_imports_honors_absolute_imports(tmp_path, monkeypatch):
     cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text(
-        'obsidian_path = "/data/Obs"\nvault = "History"\nimports = "/srv/raw"\n')
+    cfg_file.write_text('obsidian_path = "/data/Obs"\nvault = "History"\nimports = "/srv/raw"\n')
     monkeypatch.setattr(config, "config_path", lambda: cfg_file)
     assert config.resolve_imports("calibre", None) == Path("/srv/raw/calibre")
 
@@ -147,6 +142,7 @@ def test_newest_csv_picks_most_recent(tmp_path):
     old.write_text("a")
     new.write_text("b")
     import os
+
     os.utime(old, (1000, 1000))
     os.utime(new, (2000, 2000))
     assert config.newest_csv(tmp_path) == new
@@ -160,20 +156,21 @@ def test_newest_csv_single_file(tmp_path):
 
 def test_newest_csv_empty_folder_raises(tmp_path):
     import pytest
+
     with pytest.raises(FileNotFoundError):
         config.newest_csv(tmp_path)
 
 
 def test_newest_csv_missing_folder_raises(tmp_path):
     import pytest
+
     with pytest.raises(FileNotFoundError):
         config.newest_csv(tmp_path / "nope")
 
 
 def test_resolve_csv_arg_none_uses_imports_newest(tmp_path, monkeypatch):
     cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text('obsidian_path = "%s"\nvault = "V"\nimports = ".imports"\n'
-                        % tmp_path)
+    cfg_file.write_text(f'obsidian_path = "{tmp_path}"\nvault = "V"\nimports = ".imports"\n')
     monkeypatch.setattr(config, "config_path", lambda: cfg_file)
     folder = tmp_path / "V" / ".imports" / "readwise"
     folder.mkdir(parents=True)
@@ -190,6 +187,7 @@ def test_resolve_csv_arg_file_returned_resolved(tmp_path, monkeypatch):
 
 def test_resolve_csv_arg_folder_picks_newest(tmp_path, monkeypatch):
     import os
+
     folder = tmp_path / "exports"
     folder.mkdir()
     (folder / "old.csv").write_text("a")
@@ -201,9 +199,9 @@ def test_resolve_csv_arg_folder_picks_newest(tmp_path, monkeypatch):
 
 def test_resolve_csv_arg_missing_raises(tmp_path, monkeypatch):
     import pytest
+
     cfg_file = tmp_path / "config.toml"
-    cfg_file.write_text('obsidian_path = "%s"\nvault = "V"\nimports = ".imports"\n'
-                        % tmp_path)
+    cfg_file.write_text(f'obsidian_path = "{tmp_path}"\nvault = "V"\nimports = ".imports"\n')
     monkeypatch.setattr(config, "config_path", lambda: cfg_file)
     with pytest.raises(FileNotFoundError):
         config.resolve_csv_arg(None, "readwise", None)
@@ -228,8 +226,9 @@ def test_importer_writes_to_configured_vault_without_output(monkeypatch, tmp_pat
         "Highlight,Book Title,Book Author,Amazon Book ID,Note,Color,Tags,"
         "Location Type,Location,Highlighted at,Document tags\n"
         '"A passage.","Stalin: Volume I (Stalin #1)",Stephen Kotkin,B00INIXPYE,'
-        ',,,page,3,2026-07-17 14:00:25+00:00,\n',
-        encoding="utf-8")
+        ",,,page,3,2026-07-17 14:00:25+00:00,\n",
+        encoding="utf-8",
+    )
 
     # The highlight importer only enriches, so pre-create the note (as
     # calibre/goodreads would) inside the configured vault.
@@ -238,7 +237,8 @@ def test_importer_writes_to_configured_vault_without_output(monkeypatch, tmp_pat
     (books / "Stalin - Stephen Kotkin.md").write_text(
         '---\ntype: book\ntitle: "Stalin"\n'
         'authors: ["[[Stephen Kotkin]]"]\namazon: "B00INIXPYE"\n---\n\n',
-        encoding="utf-8")
+        encoding="utf-8",
+    )
 
     app = typer.Typer()
     rw.register(app)

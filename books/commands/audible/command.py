@@ -31,7 +31,7 @@ from pathlib import Path
 
 import typer
 
-from books.commands.audible.models import Annotation, Chapter, LibraryBook
+from books.commands.audible.models import Annotation, Chapter
 from books.core import config, store
 from books.core.highlights import Highlight, parse_markers
 from books.core.matching import BookRef
@@ -58,8 +58,7 @@ def chapter_for(start_ms: int, chapters: list[Chapter]) -> Chapter | None:
     return None
 
 
-def annotation_to_record(ann: Annotation, text: str,
-                         chapters: list[Chapter]) -> dict:
+def annotation_to_record(ann: Annotation, text: str, chapters: list[Chapter]) -> dict:
     """Build the cache record for a transcribed annotation."""
     ch = chapter_for(ann.start_ms, chapters)
     return {
@@ -86,8 +85,7 @@ def _merge_markers(*parts: str | None) -> tuple[str | None, list[str], list[str]
     links: list[str] = []
     tags: list[str] = []
     for part in parts:
-        clean, part_links, part_tags = parse_markers(
-            (part or "").strip() or None)
+        clean, part_links, part_tags = parse_markers((part or "").strip() or None)
         if clean:
             texts.append(clean)
         for link in part_links:
@@ -142,8 +140,7 @@ def load_cache(path: Path) -> dict:
 def save_cache(path: Path, data: dict) -> None:
     """Write the transcription cache as pretty JSON (parents created)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False),
-                    encoding="utf-8")
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def uncached(annotations: list[Annotation], clips: dict) -> list[Annotation]:
@@ -191,9 +188,20 @@ def _clip_seconds(anns, clip_window: int) -> float:
 COST_PER_SECOND = 0.00028
 
 
-def run(vault, *, client, downloader, cutter, transcriber, cache_path,
-        clip_window, limit=None, asin=None, dry_run=False,
-        echo=lambda *_: None) -> dict:
+def run(
+    vault,
+    *,
+    client,
+    downloader,
+    cutter,
+    transcriber,
+    cache_path,
+    clip_window,
+    limit=None,
+    asin=None,
+    dry_run=False,
+    echo=lambda *_: None,
+) -> dict:
     """Import Audible clips into the CSV store. All heavy I/O is injected.
 
     Resolves each library book to a book_id via the merged catalog
@@ -205,9 +213,15 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
     vault.mkdir(parents=True, exist_ok=True)
     catalog = store.Catalog(vault)
     cache = load_cache(cache_path)
-    stats = {"books": 0, "entries": 0, "skipped": 0,
-             "downloaded": 0, "transcribed": 0, "failed": 0,
-             "est_seconds": 0.0}
+    stats = {
+        "books": 0,
+        "entries": 0,
+        "skipped": 0,
+        "downloaded": 0,
+        "transcribed": 0,
+        "failed": 0,
+        "est_seconds": 0.0,
+    }
 
     # Preserve other audiobooks' layer rows across partial (--asin/--limit) runs.
     layer = {r.amazon: r for r in store.read_layer(vault, "audible") if r.amazon}
@@ -222,8 +236,7 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
         # title, a license/voucher error, a network hiccup, a bad transcribe)
         # is counted and skipped so it never aborts the whole run.
         try:
-            ref = BookRef(title=book.title, authors=book.authors,
-                          amazon=book.asin)
+            ref = BookRef(title=book.title, authors=book.authors, amazon=book.asin)
             book_id = catalog.find(ref)
             if book_id is None:
                 stats["skipped"] += 1
@@ -232,9 +245,11 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
                     anns = client.annotations(book.asin)
                     secs = _clip_seconds(anns, clip_window)
                     stats["est_seconds"] += secs
-                    echo(f"[dry-run] SKIP (no book): {book.title} — {authors} "
-                         f"[asin {book.asin}] — {len(anns)} clip(s), "
-                         f"~{secs/60:.1f} min, ~${secs * COST_PER_SECOND:.2f}")
+                    echo(
+                        f"[dry-run] SKIP (no book): {book.title} — {authors} "
+                        f"[asin {book.asin}] — {len(anns)} clip(s), "
+                        f"~{secs / 60:.1f} min, ~${secs * COST_PER_SECOND:.2f}"
+                    )
                 continue
             if limit is not None and matched >= limit:
                 break
@@ -244,17 +259,18 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
             if not annotations:
                 continue
 
-            book_cache = cache.setdefault(book.asin,
-                                          {"title": book.title, "clips": {}})
+            book_cache = cache.setdefault(book.asin, {"title": book.title, "clips": {}})
             clips = book_cache.setdefault("clips", {})
             new = uncached(annotations, clips)
 
             if dry_run:
                 secs = _clip_seconds(new, clip_window)
                 stats["est_seconds"] += secs
-                echo(f"[dry-run] {book.title}: {len(annotations)} annotations, "
-                     f"{len(new)} new to transcribe — ~{secs/60:.1f} min, "
-                     f"~${secs * COST_PER_SECOND:.2f}")
+                echo(
+                    f"[dry-run] {book.title}: {len(annotations)} annotations, "
+                    f"{len(new)} new to transcribe — ~{secs / 60:.1f} min, "
+                    f"~${secs * COST_PER_SECOND:.2f}"
+                )
                 continue
 
             if new:
@@ -265,11 +281,9 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
                     stats["downloaded"] += 1
                     for ann in new:
                         start, end = _clip_bounds(ann, clip_window)
-                        clip_path = cutter.cut(audio, start, end,
-                                               tmp / f"{ann.id}.wav")
+                        clip_path = cutter.cut(audio, start, end, tmp / f"{ann.id}.wav")
                         text = transcriber(clip_path)
-                        clips[ann.id] = annotation_to_record(
-                            ann, text, chapters)
+                        clips[ann.id] = annotation_to_record(ann, text, chapters)
                         stats["transcribed"] += 1
                 save_cache(cache_path, cache)
 
@@ -278,8 +292,8 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
                 continue
             store.write_highlights(vault, book_id, "audible", rows)
             layer[book.asin] = store.BookRow(
-                title=book.title, authors=list(book.authors),
-                amazon=book.asin, format="audiobook")
+                title=book.title, authors=list(book.authors), amazon=book.asin, format="audiobook"
+            )
             stats["books"] += 1
             stats["entries"] += len(rows)
         except Exception as exc:  # noqa: BLE001 — continue-on-error per book
@@ -295,11 +309,13 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
 def _build_client(quality: str = "normal"):
     """Construct the live Audible client (auto-login on first run)."""
     from books.commands.audible.client import AudibleClient, default_auth_path
+
     return AudibleClient.load_or_login(default_auth_path(), quality=quality)
 
 
 def _build_transcriber(kind: str, model: str):
     from books.commands.audible.transcribe import make_transcriber
+
     return make_transcriber(kind, model)
 
 
@@ -324,34 +340,48 @@ def _build_downloader(client):
 
 def audible_command(
     transcriber: str = typer.Option(
-        "local", "--transcriber", "-t",
+        "local",
+        "--transcriber",
+        "-t",
         help="Speech-to-text backend: 'local' (faster-whisper, no key, offline), "
-             "'openai' (needs OPENAI_API_KEY), or 'google' (free, lower quality)."),
+        "'openai' (needs OPENAI_API_KEY), or 'google' (free, lower quality).",
+    ),
     model: str = typer.Option(
-        "small", "--model",
-        help="Whisper model size for the local/openai backends."),
+        "small", "--model", help="Whisper model size for the local/openai backends."
+    ),
     clip_window: int = typer.Option(
-        30, "--clip-window",
+        30,
+        "--clip-window",
         help="Seconds of audio to transcribe for a point bookmark that has no end "
-             "position (the window ends at the mark). Clips use their own length."),
+        "position (the window ends at the mark). Clips use their own length.",
+    ),
     quality: str = typer.Option(
-        "normal", "--quality",
+        "normal",
+        "--quality",
         help="Audiobook download quality: 'normal' (smallest/fastest, ample for "
-             "transcription), 'high', or 'best'. Only affects download size — clips "
-             "are transcribed to text either way."),
+        "transcription), 'high', or 'best'. Only affects download size — clips "
+        "are transcribed to text either way.",
+    ),
     limit: int | None = typer.Option(
-        None, "--limit", help="Process at most this many matched books."),
+        None, "--limit", help="Process at most this many matched books."
+    ),
     asin: str | None = typer.Option(
-        None, "--asin", help="Only process the book with this Audible ASIN."),
+        None, "--asin", help="Only process the book with this Audible ASIN."
+    ),
     output: Path | None = typer.Option(
-        None, "--output", "-o",
+        None,
+        "--output",
+        "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml)."),
+        "(~/.config/books/config.toml).",
+    ),
     dry_run: bool = typer.Option(
-        False, "--dry-run",
+        False,
+        "--dry-run",
         help="Show which books match and how many clips would be transcribed "
-             "(still logs in to read your library), without downloading audio, "
-             "transcribing, or writing."),
+        "(still logs in to read your library), without downloading audio, "
+        "transcribing, or writing.",
+    ),
 ) -> None:
     """Import Audible bookmarks & clips into the CSV store.
 
@@ -366,9 +396,11 @@ def audible_command(
     download books with new clips.
     """
     from books.commands.audible.client import AudibleClient
+
     if quality not in AudibleClient.QUALITY_CHOICES:
         raise typer.BadParameter(
-            f"--quality must be one of {', '.join(AudibleClient.QUALITY_CHOICES)}")
+            f"--quality must be one of {', '.join(AudibleClient.QUALITY_CHOICES)}"
+        )
 
     vault = config.resolve_vault(output)
     cache_path = config.resolve_imports("audible", output) / "cache.json"
@@ -382,9 +414,16 @@ def audible_command(
         downloader = _build_downloader(client)
 
     stats = run(
-        vault, client=client, downloader=downloader, cutter=cutter,
-        transcriber=transcribe_fn, cache_path=cache_path,
-        clip_window=clip_window, limit=limit, asin=asin, dry_run=dry_run,
+        vault,
+        client=client,
+        downloader=downloader,
+        cutter=cutter,
+        transcriber=transcribe_fn,
+        cache_path=cache_path,
+        clip_window=clip_window,
+        limit=limit,
+        asin=asin,
+        dry_run=dry_run,
         echo=typer.echo,
     )
 
@@ -392,19 +431,20 @@ def audible_command(
         secs = stats["est_seconds"]
         typer.echo(
             f"Dry run: {stats['skipped']} book(s) skipped — no book match. "
-            f"Estimated transcription: ~{secs/60:.1f} min "
+            f"Estimated transcription: ~{secs / 60:.1f} min "
             f"(~${secs * COST_PER_SECOND:.2f} @ ${COST_PER_SECOND:.5f}/sec) "
-            f"across all listed clips.")
+            f"across all listed clips."
+        )
         return
     books_word = "book" if stats["books"] == 1 else "books"
-    skip = (f" ({stats['skipped']} skipped — no book match)"
-            if stats["skipped"] else "")
+    skip = f" ({stats['skipped']} skipped — no book match)" if stats["skipped"] else ""
     fail = f", {stats['failed']} failed" if stats.get("failed") else ""
     typer.echo(
         f"Done. {stats['books']} {books_word}{skip}, {stats['entries']} clips, "
         f"{stats['downloaded']} downloaded, {stats['transcribed']} transcribed"
         f"{fail}.\n"
-        f"Output: {vault}")
+        f"Output: {vault}"
+    )
 
 
 def register(app: typer.Typer) -> None:

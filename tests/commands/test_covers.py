@@ -12,13 +12,18 @@ def _seed_catalog(vault, rows):
 
 
 def test_books_missing_cover_selects_blank_and_no_disk_file(tmp_path):
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"],
-                      isbn="111", amazon="B001", cover=""),          # blank -> included
-        store.BookRow(book_id="B - Bee", title="B", authors=["Bee"],
-                      cover="Data/Sources/_covers/x.jpg"),            # has cover -> excluded
-        store.BookRow(book_id="C - Cee", title="C", authors=["Cee"]),# blank -> included
-    ])
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(
+                book_id="A - Ann", title="A", authors=["Ann"], isbn="111", amazon="B001", cover=""
+            ),  # blank -> included
+            store.BookRow(
+                book_id="B - Bee", title="B", authors=["Bee"], cover="Data/Sources/_covers/x.jpg"
+            ),  # has cover -> excluded
+            store.BookRow(book_id="C - Cee", title="C", authors=["Cee"]),  # blank -> included
+        ],
+    )
     # C already has a materialized on-disk cover -> excluded despite blank field
     disk = tmp_path / "Data" / "Covers"
     disk.mkdir(parents=True)
@@ -49,8 +54,10 @@ def test_dataclasses_exist():
     assert mb.authors == ["An Author"]
 
     c = covers.Candidate(
-        source="google", label="A Title — An Author",
-        image_url="https://x/y.jpg", fmt=None,
+        source="google",
+        label="A Title — An Author",
+        image_url="https://x/y.jpg",
+        fmt=None,
     )
     assert c.source == "google"
     assert c.fmt is None
@@ -104,34 +111,42 @@ ITUNES_RESULTS_NO_ISBN = {
 
 
 def test_itunes_artwork_upgrades_size_token():
-    art = ("https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
-           "abc/9780241006115.jpg/100x100bb.jpg")
+    art = (
+        "https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
+        "abc/9780241006115.jpg/100x100bb.jpg"
+    )
     big = covers._itunes_artwork(art)
     assert big.endswith("/9780241006115.jpg/1400x1400bb.jpg")
     assert "100x100bb" not in big
 
 
 def test_itunes_isbn_reads_second_to_last_segment():
-    art = ("https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
-           "abc/9780241006115.jpg/100x100bb.jpg")
+    art = (
+        "https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
+        "abc/9780241006115.jpg/100x100bb.jpg"
+    )
     assert covers._itunes_isbn(art) == "9780241006115"
 
 
 def test_itunes_isbn_none_for_opaque_stem():
-    art = ("https://is1-ssl.mzstatic.com/image/thumb/Publication/52/22/e8/"
-           "mzi.mwffatop.jpg/100x100bb.jpg")
+    art = (
+        "https://is1-ssl.mzstatic.com/image/thumb/Publication/52/22/e8/"
+        "mzi.mwffatop.jpg/100x100bb.jpg"
+    )
     assert covers._itunes_isbn(art) is None
 
 
 def test_itunes_isbn_reads_isbn10_with_x_check_digit():
-    art = ("https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
-           "abc/184737453X.jpg/100x100bb.jpg")
+    art = (
+        "https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/abc/184737453X.jpg/100x100bb.jpg"
+    )
     assert covers._itunes_isbn(art) == "184737453X"
 
 
 def test_itunes_isbn_reads_isbn10_all_digits():
-    art = ("https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
-           "abc/0241006112.jpg/100x100bb.jpg")
+    art = (
+        "https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/abc/0241006112.jpg/100x100bb.jpg"
+    )
     assert covers._itunes_isbn(art) == "0241006112"
 
 
@@ -158,8 +173,12 @@ def test_normalize_author_leaves_simple_names():
 
 def test_google_query_uses_normalized_author():
     book = covers.MissingBook(
-        book_id="x", title="The  Republic", authors=["Plato and Benjamin Jowett"],
-        isbn=None, amazon=None)
+        book_id="x",
+        title="The  Republic",
+        authors=["Plato and Benjamin Jowett"],
+        isbn=None,
+        amazon=None,
+    )
     captured = {}
 
     def fake_fetch(url):
@@ -175,7 +194,8 @@ def test_google_query_uses_normalized_author():
 
 def test_openlibrary_query_uses_normalized_author():
     book = covers.MissingBook(
-        book_id="x", title="X", authors=["James   Barr"], isbn=None, amazon=None)
+        book_id="x", title="X", authors=["James   Barr"], isbn=None, amazon=None
+    )
     captured = {}
 
     def fake_fetch(url):
@@ -190,8 +210,8 @@ def test_openlibrary_query_uses_normalized_author():
 
 def test_google_books_prefers_largest_and_upgrades_url():
     book = covers.MissingBook(
-        book_id="x", title="The Deluge", authors=["Adam Tooze"],
-        isbn=None, amazon=None)
+        book_id="x", title="The Deluge", authors=["Adam Tooze"], isbn=None, amazon=None
+    )
     captured = {}
 
     def fake_fetch(url):
@@ -204,7 +224,7 @@ def test_google_books_prefers_largest_and_upgrades_url():
     assert c.source == "google"
     assert c.fmt is None
     # 'large' beats the thumbnails
-    assert c.image_url.startswith("https://")   # http -> https
+    assert c.image_url.startswith("https://")  # http -> https
     assert "zoom=3" in c.image_url
     # title/author query when no ISBN
     assert "intitle" in captured["url"]
@@ -212,24 +232,30 @@ def test_google_books_prefers_largest_and_upgrades_url():
 
 
 def test_google_books_captures_isbn13_from_identifiers():
-    data = {"items": [{"volumeInfo": {
-        "title": "The Deluge", "authors": ["Adam Tooze"],
-        "industryIdentifiers": [
-            {"type": "ISBN_10", "identifier": "0141032189"},
-            {"type": "ISBN_13", "identifier": "9780141032184"},
-        ],
-        "imageLinks": {"thumbnail": "http://x/y?zoom=1"},
-    }}]}
+    data = {
+        "items": [
+            {
+                "volumeInfo": {
+                    "title": "The Deluge",
+                    "authors": ["Adam Tooze"],
+                    "industryIdentifiers": [
+                        {"type": "ISBN_10", "identifier": "0141032189"},
+                        {"type": "ISBN_13", "identifier": "9780141032184"},
+                    ],
+                    "imageLinks": {"thumbnail": "http://x/y?zoom=1"},
+                }
+            }
+        ]
+    }
     book = covers.MissingBook(
-        book_id="x", title="The Deluge", authors=["Adam Tooze"],
-        isbn=None, amazon=None)
+        book_id="x", title="The Deluge", authors=["Adam Tooze"], isbn=None, amazon=None
+    )
     cands = covers.google_books_candidates(book, lambda url: data)
-    assert cands[0].isbn == "9780141032184"   # ISBN_13 preferred over ISBN_10
+    assert cands[0].isbn == "9780141032184"  # ISBN_13 preferred over ISBN_10
 
 
 def test_google_books_uses_isbn_query_when_present():
-    book = covers.MissingBook(
-        book_id="x", title="X", authors=[], isbn="9780141032016", amazon=None)
+    book = covers.MissingBook(book_id="x", title="X", authors=[], isbn="9780141032016", amazon=None)
     captured = {}
 
     def fake_fetch(url):
@@ -241,20 +267,27 @@ def test_google_books_uses_isbn_query_when_present():
 
 
 def test_google_books_strips_edge_curl_when_only_thumbnail():
-    book = covers.MissingBook(
-        book_id="x", title="X", authors=[], isbn=None, amazon=None)
-    data = {"items": [{"volumeInfo": {"title": "X", "imageLinks": {
-        "thumbnail": "http://books.google.com/x?zoom=1&edge=curl"}}}]}
+    book = covers.MissingBook(book_id="x", title="X", authors=[], isbn=None, amazon=None)
+    data = {
+        "items": [
+            {
+                "volumeInfo": {
+                    "title": "X",
+                    "imageLinks": {"thumbnail": "http://books.google.com/x?zoom=1&edge=curl"},
+                }
+            }
+        ]
+    }
     cands = covers.google_books_candidates(book, lambda url: data)
     assert cands and "edge=curl" not in cands[0].image_url
     assert cands[0].image_url.startswith("https://")
 
 
 def test_google_books_no_images_returns_empty():
-    book = covers.MissingBook(
-        book_id="x", title="X", authors=[], isbn=None, amazon=None)
+    book = covers.MissingBook(book_id="x", title="X", authors=[], isbn=None, amazon=None)
     cands = covers.google_books_candidates(
-        book, lambda url: {"items": [{"volumeInfo": {"title": "X"}}]})
+        book, lambda url: {"items": [{"volumeInfo": {"title": "X"}}]}
+    )
     assert cands == []
 
 
@@ -272,8 +305,8 @@ OL_EDITIONS = {
 
 def test_openlibrary_title_author_paperback_first():
     book = covers.MissingBook(
-        book_id="x", title="Napoleon", authors=["Andrew Roberts"],
-        isbn=None, amazon=None)
+        book_id="x", title="Napoleon", authors=["Andrew Roberts"], isbn=None, amazon=None
+    )
     captured = {}
 
     def fake_fetch(url):
@@ -300,8 +333,8 @@ def test_openlibrary_title_author_paperback_first():
 
 def test_openlibrary_falls_back_to_search_cover_when_no_editions():
     book = covers.MissingBook(
-        book_id="x", title="Napoleon", authors=["Andrew Roberts"],
-        isbn=None, amazon=None)
+        book_id="x", title="Napoleon", authors=["Andrew Roberts"], isbn=None, amazon=None
+    )
 
     def fake_fetch(url):
         if "editions.json" in url:
@@ -315,8 +348,7 @@ def test_openlibrary_falls_back_to_search_cover_when_no_editions():
 
 
 def test_openlibrary_isbn_path_builds_isbn_cover_url():
-    book = covers.MissingBook(
-        book_id="x", title="X", authors=[], isbn="9780141032016", amazon=None)
+    book = covers.MissingBook(book_id="x", title="X", authors=[], isbn="9780141032016", amazon=None)
     captured = {}
 
     def fake_fetch(url):
@@ -330,15 +362,13 @@ def test_openlibrary_isbn_path_builds_isbn_cover_url():
 
 
 def test_openlibrary_no_cover_returns_empty():
-    book = covers.MissingBook(
-        book_id="x", title="X", authors=[], isbn=None, amazon=None)
+    book = covers.MissingBook(book_id="x", title="X", authors=[], isbn=None, amazon=None)
     cands = covers.openlibrary_candidates(book, lambda url: {"docs": []})
     assert cands == []
 
 
 def test_amazon_candidate_from_asin():
-    book = covers.MissingBook(
-        book_id="x", title="X", authors=["Y"], isbn=None, amazon="B00ABCDEFG")
+    book = covers.MissingBook(book_id="x", title="X", authors=["Y"], isbn=None, amazon="B00ABCDEFG")
     cands = covers.amazon_candidates(book)
     assert len(cands) == 1
     assert cands[0].source == "amazon"
@@ -346,13 +376,13 @@ def test_amazon_candidate_from_asin():
 
 
 def test_amazon_no_asin_returns_empty():
-    book = covers.MissingBook(
-        book_id="x", title="X", authors=[], isbn=None, amazon=None)
+    book = covers.MissingBook(book_id="x", title="X", authors=[], isbn=None, amazon=None)
     assert covers.amazon_candidates(book) == []
 
 
 def _http_error(code):
     from urllib.error import HTTPError
+
     return HTTPError("http://x", code, "err", {}, None)
 
 
@@ -369,7 +399,7 @@ def test_fetch_with_retry_retries_on_429_then_succeeds():
     out = covers.fetch_with_retry(do, retries=3, backoff=0.1, sleep=slept.append)
     assert out == {"ok": True}
     assert calls["n"] == 3
-    assert len(slept) == 2   # two backoff sleeps before the successful third call
+    assert len(slept) == 2  # two backoff sleeps before the successful third call
 
 
 def test_fetch_with_retry_retries_on_403_itunes_throttle():
@@ -399,17 +429,20 @@ def test_fetch_with_retry_gives_up_after_time_budget():
         return now["t"]
 
     def sleep(seconds):
-        now["t"] += seconds   # simulate wall-clock passing during backoff
+        now["t"] += seconds  # simulate wall-clock passing during backoff
 
     def do():
         calls["n"] += 1
         raise _http_error(429)
 
+    from urllib.error import HTTPError
+
     import pytest
-    with pytest.raises(Exception):
+
+    with pytest.raises(HTTPError):
         covers.fetch_with_retry(
-            do, retries=100, backoff=1.0, max_seconds=60,
-            sleep=sleep, clock=clock)
+            do, retries=100, backoff=1.0, max_seconds=60, sleep=sleep, clock=clock
+        )
 
     # Backoffs 1,2,4,8,16,32 accumulate to 31s of sleeps over 6 attempts; the next
     # (32s) delay would reach 63s >= 60, so it stops at 6 attempts.
@@ -424,14 +457,18 @@ def test_fetch_with_retry_does_not_retry_on_404():
         calls["n"] += 1
         raise _http_error(404)
 
+    from urllib.error import HTTPError
+
     import pytest
-    with pytest.raises(Exception):
+
+    with pytest.raises(HTTPError):
         covers.fetch_with_retry(do, retries=3, backoff=0.1, sleep=lambda s: None)
-    assert calls["n"] == 1   # 404 is not retryable
+    assert calls["n"] == 1  # 404 is not retryable
 
 
 def test_fetch_with_retry_exhausts_and_raises():
     from urllib.error import HTTPError
+
     calls = {"n": 0}
 
     def do():
@@ -439,19 +476,19 @@ def test_fetch_with_retry_exhausts_and_raises():
         raise _http_error(503)
 
     import pytest
+
     with pytest.raises(HTTPError):
         covers.fetch_with_retry(do, retries=2, backoff=0.1, sleep=lambda s: None)
-    assert calls["n"] == 2   # tried exactly `retries` times
+    assert calls["n"] == 2  # tried exactly `retries` times
 
 
 def test_gather_with_errors_reports_failing_source():
-    book = covers.MissingBook(
-        book_id="x", title="X", authors=["Y"], isbn=None, amazon="B00ABCDEFG")
+    book = covers.MissingBook(book_id="x", title="X", authors=["Y"], isbn=None, amazon="B00ABCDEFG")
 
     def fetch_json(url):
         if "googleapis" in url:
-            raise _http_error(429)      # google source fails entirely
-        return {"docs": []}             # openlibrary finds nothing (not an error)
+            raise _http_error(429)  # google source fails entirely
+        return {"docs": []}  # openlibrary finds nothing (not an error)
 
     cands, errored = covers.gather_with_errors(book, fetch_json)
     assert "google" in errored
@@ -462,8 +499,8 @@ def test_gather_with_errors_reports_failing_source():
 
 def test_gather_candidates_source_order():
     book = covers.MissingBook(
-        book_id="x", title="Napoleon", authors=["Andrew Roberts"],
-        isbn=None, amazon="B00ABCDEFG")
+        book_id="x", title="Napoleon", authors=["Andrew Roberts"], isbn=None, amazon="B00ABCDEFG"
+    )
 
     def fake_fetch(url):
         if "googleapis" in url:
@@ -483,10 +520,14 @@ def test_gather_candidates_source_order():
 
 def _png(width: int, height: int) -> bytes:
     """A byte string with a valid PNG signature + IHDR width/height."""
-    return (b"\x89PNG\r\n\x1a\n"
-            + b"\x00\x00\x00\rIHDR"
-            + width.to_bytes(4, "big") + height.to_bytes(4, "big")
-            + b"\x08\x06\x00\x00\x00" + b"x" * 2000)
+    return (
+        b"\x89PNG\r\n\x1a\n"
+        + b"\x00\x00\x00\rIHDR"
+        + width.to_bytes(4, "big")
+        + height.to_bytes(4, "big")
+        + b"\x08\x06\x00\x00\x00"
+        + b"x" * 2000
+    )
 
 
 def _gif(width: int, height: int) -> bytes:
@@ -496,14 +537,14 @@ def _gif(width: int, height: int) -> bytes:
 def test_image_dimensions_png_gif_and_unknown():
     assert covers.image_dimensions(_png(200, 300)) == (200, 300)
     assert covers.image_dimensions(_gif(120, 160)) == (120, 160)
-    assert covers.image_dimensions(b"x" * 5000) is None   # not a recognizable image
+    assert covers.image_dimensions(b"x" * 5000) is None  # not a recognizable image
 
 
 def test_is_valid_image():
     assert covers.is_valid_image(b"x" * 5000, "image/jpeg") is True
-    assert covers.is_valid_image(b"x" * 5000, "text/html") is False   # wrong type
-    assert covers.is_valid_image(b"x" * 10, "image/gif") is False      # too small
-    assert covers.is_valid_image(b"x" * 5000, None) is False           # unknown type
+    assert covers.is_valid_image(b"x" * 5000, "text/html") is False  # wrong type
+    assert covers.is_valid_image(b"x" * 10, "image/gif") is False  # too small
+    assert covers.is_valid_image(b"x" * 5000, None) is False  # unknown type
 
 
 def test_is_valid_image_rejects_tiny_dimensions():
@@ -525,8 +566,8 @@ def test_pick_cover_auto_first_valid():
 
     def fetch_bytes(url):
         if url.endswith("google"):
-            return (b"x" * 5, "image/jpeg")       # too small -> invalid
-        return (b"x" * 5000, "image/jpeg")        # valid
+            return (b"x" * 5, "image/jpeg")  # too small -> invalid
+        return (b"x" * 5000, "image/jpeg")  # valid
 
     picked = covers.pick_cover(cands, fetch_bytes, interactive=False, prompt=None)
     assert picked is not None
@@ -538,7 +579,8 @@ def test_pick_cover_auto_first_valid():
 def test_pick_cover_auto_none_when_all_invalid():
     cands = [_cand("google")]
     picked = covers.pick_cover(
-        cands, lambda url: (b"", "text/html"), interactive=False, prompt=None)
+        cands, lambda url: (b"", "text/html"), interactive=False, prompt=None
+    )
     assert picked is None
 
 
@@ -549,18 +591,21 @@ def test_pick_cover_interactive_next_then_accept():
     def fetch_bytes(url):
         return (b"x" * 5000, "image/jpeg")
 
-    picked = covers.pick_cover(
-        cands, fetch_bytes, interactive=True, prompt=lambda c: next(answers))
+    picked = covers.pick_cover(cands, fetch_bytes, interactive=True, prompt=lambda c: next(answers))
     assert picked[0].source == "openlibrary"
 
 
 def test_pick_cover_interactive_quit_raises():
     cands = [_cand("google")]
     import pytest
+
     with pytest.raises(covers.QuitRequested):
         covers.pick_cover(
-            cands, lambda url: (b"x" * 5000, "image/jpeg"),
-            interactive=True, prompt=lambda c: "quit")
+            cands,
+            lambda url: (b"x" * 5000, "image/jpeg"),
+            interactive=True,
+            prompt=lambda c: "quit",
+        )
 
 
 def test_terminal_prompt_maps_keys(monkeypatch):
@@ -576,24 +621,40 @@ def test_terminal_prompt_maps_keys(monkeypatch):
 
 
 def _google_volume_with_isbn(isbn):
-    return {"items": [{"volumeInfo": {
-        "title": "T", "authors": ["Ann"],
-        "industryIdentifiers": [{"type": "ISBN_13", "identifier": isbn}],
-        "imageLinks": {"thumbnail": "http://x/y?zoom=1"}}}]}
+    return {
+        "items": [
+            {
+                "volumeInfo": {
+                    "title": "T",
+                    "authors": ["Ann"],
+                    "industryIdentifiers": [{"type": "ISBN_13", "identifier": isbn}],
+                    "imageLinks": {"thumbnail": "http://x/y?zoom=1"},
+                }
+            }
+        ]
+    }
 
 
 def test_run_stages_image_and_writes_covers_layer(tmp_path):
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
-    ])
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
+        ],
+    )
 
     def fetch_json(url):
         return GOOGLE_VOLUME if "googleapis" in url else {"docs": []}
 
     stats = covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=None,
         fetch_json=fetch_json,
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None,
+    )
 
     assert stats["missing"] == 1 and stats["fetched"] == 1
     assert stats["by_source"]["google"] == 1
@@ -606,14 +667,22 @@ def test_run_stages_image_and_writes_covers_layer(tmp_path):
 
 
 def test_run_records_learned_isbn_in_layer(tmp_path):
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"], isbn=""),
-    ])
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(book_id="A - Ann", title="A", authors=["Ann"], isbn=""),
+        ],
+    )
     volume = _google_volume_with_isbn("9780141032184")
     covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=None,
         fetch_json=lambda url: volume if "googleapis" in url else {"docs": []},
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None,
+    )
     rows = store.read_layer(tmp_path, "covers")
     assert rows[0].isbn == "9780141032184"
 
@@ -621,38 +690,60 @@ def test_run_records_learned_isbn_in_layer(tmp_path):
 def test_run_dry_run_writes_nothing(tmp_path):
     _seed_catalog(tmp_path, [store.BookRow(book_id="A - Ann", title="A", authors=["Ann"])])
     stats = covers.run(
-        tmp_path, interactive=False, dry_run=True, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=True,
+        limit=None,
         fetch_json=lambda url: GOOGLE_VOLUME,
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
-    assert stats["fetched"] == 1                       # would-fetch still counted
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None,
+    )
+    assert stats["fetched"] == 1  # would-fetch still counted
     assert not (tmp_path / "Data" / "Sources" / "_covers").exists()
     assert store.read_layer(tmp_path, "covers") == []
 
 
 def test_run_limit_preserves_existing_layer_rows(tmp_path):
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
-        store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
-    ])
-    store.write_layer(tmp_path, "covers", [
-        store.BookRow(title="Z", authors=["Zed"],
-                      cover="Data/Sources/_covers/covers/Z - Zed.jpg")])
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
+            store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
+        ],
+    )
+    store.write_layer(
+        tmp_path,
+        "covers",
+        [
+            store.BookRow(
+                title="Z", authors=["Zed"], cover="Data/Sources/_covers/covers/Z - Zed.jpg"
+            )
+        ],
+    )
 
     covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=1,
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=1,
         fetch_json=lambda url: GOOGLE_VOLUME if "googleapis" in url else {"docs": []},
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None,
+    )
 
     stems = sorted(Path(r.cover).stem for r in store.read_layer(tmp_path, "covers"))
-    assert "Z - Zed" in stems           # prior row preserved
-    assert "A - Ann" in stems           # newly staged
-    assert len(stems) == 2              # limit=1 processed one new book
+    assert "Z - Zed" in stems  # prior row preserved
+    assert "A - Ann" in stems  # newly staged
+    assert len(stems) == 2  # limit=1 processed one new book
 
 
 def test_run_counts_errored_sources(tmp_path):
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="X - Y", title="X", authors=["Y"], amazon="B00ABCDEFG"),
-    ])
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(book_id="X - Y", title="X", authors=["Y"], amazon="B00ABCDEFG"),
+        ],
+    )
 
     def fetch_json(url):
         if "googleapis" in url:
@@ -660,35 +751,50 @@ def test_run_counts_errored_sources(tmp_path):
         return {"docs": []}
 
     stats = covers.run(
-        tmp_path, interactive=False, dry_run=True, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=True,
+        limit=None,
         fetch_json=fetch_json,
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None,
+    )
     assert stats["errored"]["google"] == 1
-    assert stats["fetched"] == 1        # amazon still succeeded
+    assert stats["fetched"] == 1  # amazon still succeeded
 
 
 def test_run_single_book_only_processes_that_book(tmp_path):
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
-        store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
-    ])
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
+            store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
+        ],
+    )
     covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=None,
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=None,
         fetch_json=lambda url: GOOGLE_VOLUME if "googleapis" in url else {"docs": []},
         fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
-        prompt=None, book_id="A - Ann")
+        prompt=None,
+        book_id="A - Ann",
+    )
     stems = [Path(r.cover).stem for r in store.read_layer(tmp_path, "covers")]
     assert stems == ["A - Ann"]
 
 
 def test_cli_covers_dry_run(tmp_path, monkeypatch):
     from typer.testing import CliRunner
+
     from books.cli import app
 
     _seed_catalog(tmp_path, [store.BookRow(book_id="A - Ann", title="A", authors=["Ann"])])
     monkeypatch.setattr(covers.command, "default_fetch_json", lambda url: GOOGLE_VOLUME)
     monkeypatch.setattr(
-        covers.command, "default_fetch_bytes", lambda url: (_png(200, 300), "image/jpeg"))
+        covers.command, "default_fetch_bytes", lambda url: (_png(200, 300), "image/jpeg")
+    )
 
     result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path), "--dry-run"])
     assert result.exit_code == 0, result.output
@@ -698,7 +804,9 @@ def test_cli_covers_dry_run(tmp_path, monkeypatch):
 
 def test_cli_covers_errors_without_catalog(tmp_path):
     from typer.testing import CliRunner
+
     from books.cli import app
+
     result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path)])
     assert result.exit_code != 0
     assert "books.csv" in result.output.lower()
@@ -706,16 +814,24 @@ def test_cli_covers_errors_without_catalog(tmp_path):
 
 def test_cli_covers_single_book_by_id(tmp_path, monkeypatch):
     from typer.testing import CliRunner
+
     from books.cli import app
 
-    _seed_catalog(tmp_path, [
-        store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
-        store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
-    ])
-    monkeypatch.setattr(covers.command, "default_fetch_json",
-                        lambda url: GOOGLE_VOLUME if "googleapis" in url else {"docs": []})
+    _seed_catalog(
+        tmp_path,
+        [
+            store.BookRow(book_id="A - Ann", title="A", authors=["Ann"]),
+            store.BookRow(book_id="B - Bee", title="B", authors=["Bee"]),
+        ],
+    )
     monkeypatch.setattr(
-        covers.command, "default_fetch_bytes", lambda url: (_png(200, 300), "image/jpeg"))
+        covers.command,
+        "default_fetch_json",
+        lambda url: GOOGLE_VOLUME if "googleapis" in url else {"docs": []},
+    )
+    monkeypatch.setattr(
+        covers.command, "default_fetch_bytes", lambda url: (_png(200, 300), "image/jpeg")
+    )
     monkeypatch.setattr(covers.command, "_terminal_prompt", lambda c: "accept")
 
     result = CliRunner().invoke(app, ["covers", "-o", str(tmp_path), "-b", "A - Ann"])
@@ -726,14 +842,15 @@ def test_cli_covers_single_book_by_id(tmp_path, monkeypatch):
 
 def test_cli_covers_registered():
     from books.cli import app
+
     names = {c.name for c in app.registered_commands}
     assert "covers" in names
 
 
 def test_apple_books_query_uses_title_and_author_not_isbn():
     book = covers.MissingBook(
-        book_id="x", title="The  Deluge", authors=["Adam Tooze"],
-        isbn="9781847374530", amazon=None)
+        book_id="x", title="The  Deluge", authors=["Adam Tooze"], isbn="9781847374530", amazon=None
+    )
     captured = {}
 
     def fake_fetch(url):
@@ -743,7 +860,7 @@ def test_apple_books_query_uses_title_and_author_not_isbn():
     covers.apple_books_candidates(book, fake_fetch)
     url = captured["url"]
     assert "Deluge" in url and "Adam" in url and "Tooze" in url
-    assert "The%20%20Deluge" not in url   # collapsed, not doubled
+    assert "The%20%20Deluge" not in url  # collapsed, not doubled
     assert "isbn" not in url.lower()
     assert "9781847374530" not in url
     assert "entity=ebook" in url
@@ -752,8 +869,8 @@ def test_apple_books_query_uses_title_and_author_not_isbn():
 
 def test_apple_books_builds_candidate_with_hires_url_and_isbn():
     book = covers.MissingBook(
-        book_id="x", title="The Deluge", authors=["Adam Tooze"],
-        isbn=None, amazon=None)
+        book_id="x", title="The Deluge", authors=["Adam Tooze"], isbn=None, amazon=None
+    )
     cands = covers.apple_books_candidates(book, lambda url: ITUNES_RESULTS)
     assert len(cands) == 1
     c = cands[0]
@@ -766,8 +883,12 @@ def test_apple_books_builds_candidate_with_hires_url_and_isbn():
 
 def test_apple_books_uses_collection_name_and_no_isbn_for_opaque_art():
     book = covers.MissingBook(
-        book_id="x", title="The Anatomy of Fascism",
-        authors=["Robert O. Paxton"], isbn=None, amazon=None)
+        book_id="x",
+        title="The Anatomy of Fascism",
+        authors=["Robert O. Paxton"],
+        isbn=None,
+        amazon=None,
+    )
     cands = covers.apple_books_candidates(book, lambda url: ITUNES_RESULTS_NO_ISBN)
     assert len(cands) == 1
     assert cands[0].label == "The Anatomy of Fascism — Robert O. Paxton"
@@ -777,8 +898,12 @@ def test_apple_books_uses_collection_name_and_no_isbn_for_opaque_art():
 
 def test_apple_books_normalizes_author():
     book = covers.MissingBook(
-        book_id="x", title="The Republic",
-        authors=["Plato and Benjamin Jowett"], isbn=None, amazon=None)
+        book_id="x",
+        title="The Republic",
+        authors=["Plato and Benjamin Jowett"],
+        isbn=None,
+        amazon=None,
+    )
     captured = {}
 
     def fake_fetch(url):
@@ -791,22 +916,20 @@ def test_apple_books_normalizes_author():
 
 
 def test_apple_books_no_results_returns_empty():
-    book = covers.MissingBook(
-        book_id="x", title="X", authors=[], isbn=None, amazon=None)
+    book = covers.MissingBook(book_id="x", title="X", authors=[], isbn=None, amazon=None)
     assert covers.apple_books_candidates(book, lambda url: {"results": []}) == []
 
 
 def test_apple_books_skips_results_without_artwork():
-    book = covers.MissingBook(
-        book_id="x", title="X", authors=["Y"], isbn=None, amazon=None)
+    book = covers.MissingBook(book_id="x", title="X", authors=["Y"], isbn=None, amazon=None)
     data = {"results": [{"trackName": "X", "artistName": "Y"}]}
     assert covers.apple_books_candidates(book, lambda url: data) == []
 
 
 def test_gather_candidates_apple_first():
     book = covers.MissingBook(
-        book_id="x", title="The Deluge", authors=["Adam Tooze"],
-        isbn=None, amazon="B00ABCDEFG")
+        book_id="x", title="The Deluge", authors=["Adam Tooze"], isbn=None, amazon="B00ABCDEFG"
+    )
 
     def fake_fetch(url):
         if "itunes.apple.com" in url:
@@ -821,31 +944,41 @@ def test_gather_candidates_apple_first():
     sources = [c.source for c in cands]
     assert sources[0] == "apple"
     assert sources[-1] == "amazon"
-    assert (sources.index("apple") < sources.index("google")
-            < sources.index("openlibrary") < sources.index("amazon"))
+    assert (
+        sources.index("apple")
+        < sources.index("google")
+        < sources.index("openlibrary")
+        < sources.index("amazon")
+    )
 
 
 def test_covers_merge_render_materializes_cover(tmp_path):
     from books.commands import render
+
     # a goodreads-style source layer with one cover-less book
-    store.write_layer(tmp_path, "goodreads", [
-        store.BookRow(title="A", authors=["Ann"], isbn="")])
-    store.merge(tmp_path)                       # -> books.csv with a book_id
+    store.write_layer(tmp_path, "goodreads", [store.BookRow(title="A", authors=["Ann"], isbn="")])
+    store.merge(tmp_path)  # -> books.csv with a book_id
 
     covers.run(
-        tmp_path, interactive=False, dry_run=False, limit=None,
-        fetch_json=lambda url: _google_volume_with_isbn("9780141032184")
-        if "googleapis" in url else {"docs": []},
-        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"), prompt=None)
+        tmp_path,
+        interactive=False,
+        dry_run=False,
+        limit=None,
+        fetch_json=lambda url: (
+            _google_volume_with_isbn("9780141032184") if "googleapis" in url else {"docs": []}
+        ),
+        fetch_bytes=lambda url: (_png(200, 300), "image/jpeg"),
+        prompt=None,
+    )
 
-    store.merge(tmp_path)                       # fold covers layer into books.csv
+    store.merge(tmp_path)  # fold covers layer into books.csv
     row = next(r for r in store.read_books_csv(tmp_path) if r.title == "A")
-    assert row.isbn == "9780141032184"          # learned isbn folded in
-    assert row.cover.endswith(".jpg")           # staged path folded in
+    assert row.isbn == "9780141032184"  # learned isbn folded in
+    assert row.cover.endswith(".jpg")  # staged path folded in
 
     render.render(tmp_path)
     cover_file = tmp_path / "Data" / "Covers" / f"{row.book_id}.jpg"
-    assert cover_file.is_file()                  # materialized
+    assert cover_file.is_file()  # materialized
     note = (tmp_path / "Books" / f"{row.book_id}.md").read_text()
     assert f"![[Data/Covers/{row.book_id}.jpg|150]]" in note
 

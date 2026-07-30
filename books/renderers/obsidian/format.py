@@ -43,6 +43,7 @@ def plain_list(values: list[str]) -> str:
 
 # --- HTML -> Markdown -------------------------------------------------------
 
+
 class _HTMLToMarkdown(HTMLParser):
     """Minimal HTML->Markdown for book descriptions and reviews.
 

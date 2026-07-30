@@ -40,12 +40,27 @@ IGNORED_NAMES = {
     "metadata_db_prefs_backup.json",
 }
 IGNORED_EBOOK_SUFFIXES = {
-    ".epub", ".mobi", ".azw", ".azw3", ".azw4", ".kfx", ".pdf",
-    ".fb2", ".djvu", ".lit", ".pdb", ".rtf", ".txt", ".docx", ".cbz", ".cbr",
+    ".epub",
+    ".mobi",
+    ".azw",
+    ".azw3",
+    ".azw4",
+    ".kfx",
+    ".pdf",
+    ".fb2",
+    ".djvu",
+    ".lit",
+    ".pdb",
+    ".rtf",
+    ".txt",
+    ".docx",
+    ".cbz",
+    ".cbr",
 }
 
 
 # --- Metadata extraction ---------------------------------------------------
+
 
 class BookMetadata:
     def __init__(self) -> None:
@@ -157,6 +172,7 @@ def parse_opf(opf_path: Path) -> BookMetadata:
 
 # --- BookMetadata -> store.BookRow mapping ---------------------------------
 
+
 def _rating_str(rating: float | None) -> str:
     """Numeric rating as a compact string ('4', '3.5'), '' when absent."""
     if rating is None:
@@ -191,6 +207,7 @@ def _to_row(meta: BookMetadata, cover_rel: str) -> store.BookRow:
 
 
 # --- Main conversion -------------------------------------------------------
+
 
 def convert(library: Path, output: Path) -> dict:
     """Parse a Calibre library into the ``calibre`` metadata layer CSV.
@@ -242,15 +259,17 @@ def convert(library: Path, output: Path) -> dict:
 def calibre_to_obsidian(
     library: Path | None = typer.Option(
         None,
-        "--library", "-l",
+        "--library",
+        "-l",
         help="Path to the Calibre library. Defaults to ~/Calibre Library. "
-             "Relative paths resolve against your home directory.",
+        "Relative paths resolve against your home directory.",
     ),
     output: Path | None = typer.Option(
         None,
-        "--output", "-o",
+        "--output",
+        "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
 ) -> None:
     """Parse a Calibre library into the CSV-store ``calibre`` metadata layer.

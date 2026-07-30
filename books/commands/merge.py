@@ -18,16 +18,17 @@ from books.core import config, store
 
 def merge_command(
     output: Path | None = typer.Option(
-        None, "--output", "-o",
+        None,
+        "--output",
+        "-o",
         help="Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the "
-             "current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the "
+        "current directory.",
     ),
 ) -> None:
     """Merge the source layers into Data/books.csv."""
     vault = config.resolve_vault(output)
-    if not store.sources_dir(vault).is_dir() or not any(
-            store.sources_dir(vault).glob("*.csv")):
+    if not store.sources_dir(vault).is_dir() or not any(store.sources_dir(vault).glob("*.csv")):
         raise typer.BadParameter(
             f"no source layers under {store.sources_dir(vault)} — run the "
             f"metadata importers (calibre/goodreads) first",

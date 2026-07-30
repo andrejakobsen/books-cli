@@ -167,6 +167,7 @@ Add to `tests/test_highlights.py`:
 ```python
 def test_empty_location_label_renders_bare_timestamp():
     from books.highlights import Highlight, render_highlights
+
     h = Highlight(text="A passage.", page="3:24:15", location_label="")
     out = render_highlights([h])
     assert "> [!quote]+ 3:24:15" in out
@@ -175,6 +176,7 @@ def test_empty_location_label_renders_bare_timestamp():
 
 def test_none_location_label_still_defaults_to_p():
     from books.highlights import Highlight, render_highlights
+
     h = Highlight(text="A passage.", page="42")
     out = render_highlights([h])
     assert "> [!quote]+ p. 42" in out
@@ -195,7 +197,7 @@ def _label(h: Highlight, chapter_prefix: str = "ch.") -> str:
     if h.chapter_index is not None:
         parts.append(f"{chapter_prefix} {h.chapter_index}")
     if h.page:
-        label = h.page.replace('-', '–')
+        label = h.page.replace("-", "–")
         # location_label is "p." by default; an explicit "" suppresses the prefix
         # (used for audio timestamps like "3:24:15" that carry no unit).
         prefix = h.location_label if h.location_label is not None else "p."
@@ -237,7 +239,7 @@ def test_format_timestamp_always_has_hours():
     assert ao.format_timestamp(754_000) == "0:12:34"
     assert ao.format_timestamp(3_600_000) == "1:00:00"
     assert ao.format_timestamp(12_305_000) == "3:25:05"
-    assert ao.format_timestamp(-5) == "0:00:00"   # clamps negatives
+    assert ao.format_timestamp(-5) == "0:00:00"  # clamps negatives
 
 
 def test_chapter_for_finds_containing_chapter():
@@ -268,6 +270,7 @@ from dataclasses import dataclass, field
 @dataclass
 class LibraryBook:
     """A book in the Audible library."""
+
     asin: str
     title: str
     authors: list[str] = field(default_factory=list)
@@ -281,6 +284,7 @@ class Annotation:
     duration); a clip carries both start and end. `note` is the user's typed text
     (may be None).
     """
+
     id: str
     start_ms: int
     end_ms: int | None = None
@@ -291,6 +295,7 @@ class Annotation:
 @dataclass
 class Chapter:
     """A chapter with its position range (end exclusive), in reading order."""
+
     index: int
     title: str
     start_ms: int
@@ -304,6 +309,7 @@ class DownloadedAudio:
     `key`/`iv` are None for a non-DRM source; when set, ffmpeg decrypts on the fly
     via -audible_key/-audible_iv while cutting each clip.
     """
+
     path: "Path"
     key: str | None = None
     iv: str | None = None
@@ -366,8 +372,9 @@ def _chapters():
 
 
 def test_annotation_to_record_maps_clip_with_chapter():
-    ann = ao.Annotation(id="a1", start_ms=120_000, end_ms=150_000,
-                        note="Key idea #power @stalin", date="2026-07-01")
+    ann = ao.Annotation(
+        id="a1", start_ms=120_000, end_ms=150_000, note="Key idea #power @stalin", date="2026-07-01"
+    )
     rec = ao.annotation_to_record(ann, "This is the clip text.", _chapters())
     assert rec["text"] == "This is the clip text."
     assert rec["start_ms"] == 120_000
@@ -378,28 +385,40 @@ def test_annotation_to_record_maps_clip_with_chapter():
 
 
 def test_record_to_highlight_renders_bare_timestamp_and_markers():
-    rec = {"text": "This is the clip text.", "start_ms": 120_000,
-           "end_ms": 150_000, "note": "Key idea #power @stalin",
-           "date": "2026-07-01", "chapter": "The Rise", "chapter_index": 2}
+    rec = {
+        "text": "This is the clip text.",
+        "start_ms": 120_000,
+        "end_ms": 150_000,
+        "note": "Key idea #power @stalin",
+        "date": "2026-07-01",
+        "chapter": "The Rise",
+        "chapter_index": 2,
+    }
     h = ao.record_to_highlight(rec)
     assert h.text == "This is the clip text."
-    assert h.note == "Key idea"           # markers stripped from note
+    assert h.note == "Key idea"  # markers stripped from note
     assert h.tags == ["power"]
     assert h.links == ["Stalin"]
     assert h.chapter_index == 2
     assert h.chapter_title == "The Rise"
-    assert h.page == "2:00:00"            # 120_000 ms
-    assert h.location_label == ""         # bare timestamp
-    assert h.block == "000000120000"      # zero-padded ms for exact ordering
+    assert h.page == "2:00:00"  # 120_000 ms
+    assert h.location_label == ""  # bare timestamp
+    assert h.block == "000000120000"  # zero-padded ms for exact ordering
 
 
 def test_record_to_highlight_falls_back_to_note_when_no_text():
-    rec = {"text": "", "start_ms": 0, "end_ms": None,
-           "note": "Just my note", "date": None,
-           "chapter": None, "chapter_index": None}
+    rec = {
+        "text": "",
+        "start_ms": 0,
+        "end_ms": None,
+        "note": "Just my note",
+        "date": None,
+        "chapter": None,
+        "chapter_index": None,
+    }
     h = ao.record_to_highlight(rec)
-    assert h.text == "Just my note"       # note used as body
-    assert h.note is None                 # not duplicated
+    assert h.text == "Just my note"  # note used as body
+    assert h.note is None  # not duplicated
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -415,8 +434,7 @@ Add to `books/audible_obsidian.py` (add `from books.highlights import Highlight,
 from books.highlights import Highlight, parse_markers, render_highlights
 
 
-def annotation_to_record(ann: Annotation, text: str,
-                         chapters: list[Chapter]) -> dict:
+def annotation_to_record(ann: Annotation, text: str, chapters: list[Chapter]) -> dict:
     """Build the cache record for a transcribed annotation."""
     ch = chapter_for(ann.start_ms, chapters)
     return {
@@ -490,7 +508,7 @@ Add to `tests/test_audible_obsidian.py`:
 ```python
 def test_cache_roundtrip_and_missing(tmp_path):
     path = tmp_path / "sub" / "cache.json"
-    assert ao.load_cache(path) == {}          # missing file -> {}
+    assert ao.load_cache(path) == {}  # missing file -> {}
     data = {"B01": {"title": "Stalin", "clips": {"a1": {"text": "hi"}}}}
     ao.save_cache(path, data)
     assert ao.load_cache(path) == data
@@ -503,8 +521,7 @@ def test_load_cache_tolerates_corrupt_file(tmp_path):
 
 
 def test_uncached_returns_only_new_annotations():
-    anns = [ao.Annotation(id="a1", start_ms=0),
-            ao.Annotation(id="a2", start_ms=10)]
+    anns = [ao.Annotation(id="a1", start_ms=0), ao.Annotation(id="a2", start_ms=10)]
     clips = {"a1": {"text": "already"}}
     new = ao.uncached(anns, clips)
     assert [a.id for a in new] == ["a2"]
@@ -534,8 +551,7 @@ def load_cache(path: Path) -> dict:
 def save_cache(path: Path, data: dict) -> None:
     """Write the transcription cache as pretty JSON (parents created)."""
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(data, indent=2, ensure_ascii=False),
-                    encoding="utf-8")
+    path.write_text(json.dumps(data, indent=2, ensure_ascii=False), encoding="utf-8")
 
 
 def uncached(annotations: list[Annotation], clips: dict) -> list[Annotation]:
@@ -581,38 +597,53 @@ def _seed_note(out, stem, frontmatter):
 def test_render_note_writes_frontmatter_and_marked_section(tmp_path):
     out = tmp_path / "V"
     note = _seed_note(
-        out, "Stalin - Stephen Kotkin",
+        out,
+        "Stalin - Stephen Kotkin",
         '---\ntype: book\ntitle: "Stalin"\n'
         'authors: ["[[Stephen Kotkin]]"]\namazon: ""\nsource: ""\n'
-        'highlighted: false\ncover: ""\n---\n\nMy body.\n')
-    book = ao.LibraryBook(asin="B0ASIN", title="Stalin",
-                          authors=["Stephen Kotkin"])
+        'highlighted: false\ncover: ""\n---\n\nMy body.\n',
+    )
+    book = ao.LibraryBook(asin="B0ASIN", title="Stalin", authors=["Stephen Kotkin"])
     clips = {
-        "a1": {"text": "First clip.", "start_ms": 120_000, "end_ms": 150_000,
-               "note": None, "date": None, "chapter": "The Rise",
-               "chapter_index": 2},
+        "a1": {
+            "text": "First clip.",
+            "start_ms": 120_000,
+            "end_ms": 150_000,
+            "note": None,
+            "date": None,
+            "chapter": "The Rise",
+            "chapter_index": 2,
+        },
     }
     n = ao.render_note(note, book, clips)
     assert n == 1
     text = note.read_text(encoding="utf-8")
-    assert "My body." in text                       # body preserved
-    assert "amazon: B0ASIN" in text                 # ASIN backfilled
+    assert "My body." in text  # body preserved
+    assert "amazon: B0ASIN" in text  # ASIN backfilled
     assert "source: audible" in text
     assert "highlighted: true" in text
     assert "## Highlights" in text
     assert "%% books:highlights:start %%" in text
-    assert "### The Rise" in text                   # chapter grouping header
-    assert "Audible ch. 2 · 0:02:00" in text        # chapter_label + bare timestamp (120_000 ms)
+    assert "### The Rise" in text  # chapter grouping header
+    assert "Audible ch. 2 · 0:02:00" in text  # chapter_label + bare timestamp (120_000 ms)
     assert "First clip." in text
 
 
 def test_render_note_skips_empty_text_highlights(tmp_path):
     out = tmp_path / "V"
-    note = _seed_note(out, "Stalin - Stephen Kotkin",
-                      '---\ntype: book\ntitle: "Stalin"\n---\n')
+    note = _seed_note(out, "Stalin - Stephen Kotkin", '---\ntype: book\ntitle: "Stalin"\n---\n')
     book = ao.LibraryBook(asin="B0ASIN", title="Stalin")
-    clips = {"a1": {"text": "", "start_ms": 0, "end_ms": None, "note": None,
-                    "date": None, "chapter": None, "chapter_index": None}}
+    clips = {
+        "a1": {
+            "text": "",
+            "start_ms": 0,
+            "end_ms": None,
+            "note": None,
+            "date": None,
+            "chapter": None,
+            "chapter_index": None,
+        }
+    }
     assert ao.render_note(note, book, clips) == 0
 ```
 
@@ -661,8 +692,8 @@ def render_note(note_path: Path, book: LibraryBook, clips: dict) -> int:
 
     text = note_path.read_text(encoding="utf-8")
     text = render_marked_section(
-        text, "Highlights", "highlights",
-        render_highlights(highlights, chapter_label="Audible ch."))
+        text, "Highlights", "highlights", render_highlights(highlights, chapter_label="Audible ch.")
+    )
     note_path.write_text(text, encoding="utf-8")
     return len(highlights)
 ```
@@ -699,8 +730,8 @@ Add to `tests/test_audible_obsidian.py` (fakes + tests):
 class FakeClient:
     def __init__(self, library, annotations, chapters=None):
         self._library = library
-        self._annotations = annotations          # {asin: [Annotation]}
-        self._chapters = chapters or {}          # {asin: [Chapter]}
+        self._annotations = annotations  # {asin: [Annotation]}
+        self._chapters = chapters or {}  # {asin: [Chapter]}
         self.annotation_calls = []
 
     def library(self):
@@ -741,13 +772,13 @@ def _fake_transcriber(path):
 
 def _library_and_notes(tmp_path):
     out = tmp_path / "V"
-    _seed_note(out, "Stalin - Stephen Kotkin",
-               '---\ntype: book\ntitle: "Stalin"\n'
-               'authors: ["[[Stephen Kotkin]]"]\namazon: ""\n---\n')
-    book = ao.LibraryBook(asin="B0STALIN", title="Stalin",
-                          authors=["Stephen Kotkin"])
-    anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=120_000,
-                                       end_ms=150_000, note="Nice")]}
+    _seed_note(
+        out,
+        "Stalin - Stephen Kotkin",
+        '---\ntype: book\ntitle: "Stalin"\nauthors: ["[[Stephen Kotkin]]"]\namazon: ""\n---\n',
+    )
+    book = ao.LibraryBook(asin="B0STALIN", title="Stalin", authors=["Stephen Kotkin"])
+    anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=120_000, end_ms=150_000, note="Nice")]}
     return out, book, anns
 
 
@@ -756,9 +787,15 @@ def test_run_enriches_matched_and_writes_cache(tmp_path):
     client = FakeClient([book], anns)
     cache_path = out / ".imports" / "audible" / "cache.json"
     down, cut = FakeDownloader(), FakeCutter()
-    stats = ao.run(out, client=client, downloader=down, cutter=cut,
-                   transcriber=_fake_transcriber, cache_path=cache_path,
-                   clip_window=30)
+    stats = ao.run(
+        out,
+        client=client,
+        downloader=down,
+        cutter=cut,
+        transcriber=_fake_transcriber,
+        cache_path=cache_path,
+        clip_window=30,
+    )
     assert stats["books"] == 1 and stats["entries"] == 1
     assert stats["downloaded"] == 1 and stats["transcribed"] == 1
     note = out / "Books" / "Stalin - Stephen Kotkin.md"
@@ -769,47 +806,71 @@ def test_run_enriches_matched_and_writes_cache(tmp_path):
 
 def test_run_skips_unmatched_without_download(tmp_path):
     out = tmp_path / "V"
-    (out / "Books").mkdir(parents=True)            # no matching note
+    (out / "Books").mkdir(parents=True)  # no matching note
     book = ao.LibraryBook(asin="B0X", title="Unknown", authors=["Nobody"])
-    client = FakeClient([book], {"B0X": [ao.Annotation(id="a1", start_ms=0,
-                                                       end_ms=10)]})
+    client = FakeClient([book], {"B0X": [ao.Annotation(id="a1", start_ms=0, end_ms=10)]})
     down = FakeDownloader()
-    stats = ao.run(out, client=client, downloader=down, cutter=FakeCutter(),
-                   transcriber=_fake_transcriber,
-                   cache_path=out / "c.json", clip_window=30)
+    stats = ao.run(
+        out,
+        client=client,
+        downloader=down,
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=out / "c.json",
+        clip_window=30,
+    )
     assert stats["skipped"] == 1 and stats["books"] == 0
-    assert down.calls == []                          # never downloaded
+    assert down.calls == []  # never downloaded
 
 
 def test_run_idempotent_uses_cache_no_redownload(tmp_path):
     out, book, anns = _library_and_notes(tmp_path)
     cache_path = out / ".imports" / "audible" / "cache.json"
     down1 = FakeDownloader()
-    ao.run(out, client=FakeClient([book], anns), downloader=down1,
-           cutter=FakeCutter(), transcriber=_fake_transcriber,
-           cache_path=cache_path, clip_window=30)
+    ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=down1,
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=cache_path,
+        clip_window=30,
+    )
     before = (out / "Books" / "Stalin - Stephen Kotkin.md").read_text()
     down2 = FakeDownloader()
-    ao.run(out, client=FakeClient([book], anns), downloader=down2,
-           cutter=FakeCutter(), transcriber=_fake_transcriber,
-           cache_path=cache_path, clip_window=30)
+    ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=down2,
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=cache_path,
+        clip_window=30,
+    )
     after = (out / "Books" / "Stalin - Stephen Kotkin.md").read_text()
-    assert down2.calls == []                          # no new clips -> no download
-    assert before == after                            # note unchanged
+    assert down2.calls == []  # no new clips -> no download
+    assert before == after  # note unchanged
 
 
 def test_run_point_bookmark_uses_window_before_mark(tmp_path):
     out = tmp_path / "V"
-    _seed_note(out, "Stalin - Stephen Kotkin",
-               '---\ntype: book\ntitle: "Stalin"\n'
-               'authors: ["[[Stephen Kotkin]]"]\n---\n')
-    book = ao.LibraryBook(asin="B0STALIN", title="Stalin",
-                          authors=["Stephen Kotkin"])
+    _seed_note(
+        out,
+        "Stalin - Stephen Kotkin",
+        '---\ntype: book\ntitle: "Stalin"\nauthors: ["[[Stephen Kotkin]]"]\n---\n',
+    )
+    book = ao.LibraryBook(asin="B0STALIN", title="Stalin", authors=["Stephen Kotkin"])
     anns = {"B0STALIN": [ao.Annotation(id="a1", start_ms=90_000, end_ms=None)]}
     cut = FakeCutter()
-    ao.run(out, client=FakeClient([book], anns), downloader=FakeDownloader(),
-           cutter=cut, transcriber=_fake_transcriber,
-           cache_path=out / "c.json", clip_window=30)
+    ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=FakeDownloader(),
+        cutter=cut,
+        transcriber=_fake_transcriber,
+        cache_path=out / "c.json",
+        clip_window=30,
+    )
     # point bookmark: window ends at the mark, starts clip_window seconds earlier
     assert cut.calls == [("B0STALIN.aaxc", 60_000, 90_000)]
 
@@ -819,9 +880,16 @@ def test_run_dry_run_writes_nothing(tmp_path):
     note = out / "Books" / "Stalin - Stephen Kotkin.md"
     before = note.read_text()
     down = FakeDownloader()
-    stats = ao.run(out, client=FakeClient([book], anns), downloader=down,
-                   cutter=FakeCutter(), transcriber=_fake_transcriber,
-                   cache_path=out / "c.json", clip_window=30, dry_run=True)
+    stats = ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=down,
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=out / "c.json",
+        clip_window=30,
+        dry_run=True,
+    )
     assert down.calls == []
     assert note.read_text() == before
     assert not (out / "c.json").exists()
@@ -853,9 +921,20 @@ def _clip_bounds(ann: Annotation, clip_window: int) -> tuple[int, int]:
     return max(0, end - clip_window * 1000), end
 
 
-def run(vault, *, client, downloader, cutter, transcriber, cache_path,
-        clip_window, limit=None, asin=None, dry_run=False,
-        echo=lambda *_: None) -> dict:
+def run(
+    vault,
+    *,
+    client,
+    downloader,
+    cutter,
+    transcriber,
+    cache_path,
+    clip_window,
+    limit=None,
+    asin=None,
+    dry_run=False,
+    echo=lambda *_: None,
+) -> dict:
     """Import Audible clips into matching notes. All heavy I/O is injected.
 
     Returns a stats dict: books/entries/skipped/downloaded/transcribed. In
@@ -866,8 +945,7 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
     index = VaultIndex(vault)
     authors_dir = vault / AUTHORS_DIRNAME
     cache = load_cache(cache_path)
-    stats = {"books": 0, "entries": 0, "skipped": 0,
-             "downloaded": 0, "transcribed": 0}
+    stats = {"books": 0, "entries": 0, "skipped": 0, "downloaded": 0, "transcribed": 0}
 
     library = client.library()
     if asin:
@@ -888,14 +966,15 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
         if not annotations:
             continue
 
-        book_cache = cache.setdefault(book.asin,
-                                      {"title": book.title, "clips": {}})
+        book_cache = cache.setdefault(book.asin, {"title": book.title, "clips": {}})
         clips = book_cache.setdefault("clips", {})
         new = uncached(annotations, clips)
 
         if dry_run:
-            echo(f"[dry-run] {book.title}: {len(annotations)} annotations, "
-                 f"{len(new)} new to transcribe")
+            echo(
+                f"[dry-run] {book.title}: {len(annotations)} annotations, "
+                f"{len(new)} new to transcribe"
+            )
             continue
 
         if new:
@@ -906,8 +985,7 @@ def run(vault, *, client, downloader, cutter, transcriber, cache_path,
                 stats["downloaded"] += 1
                 for ann in new:
                     start, end = _clip_bounds(ann, clip_window)
-                    clip_path = cutter.cut(audio, start, end,
-                                           tmp / f"{ann.id}.wav")
+                    clip_path = cutter.cut(audio, start, end, tmp / f"{ann.id}.wav")
                     text = transcriber(clip_path)
                     clips[ann.id] = annotation_to_record(ann, text, chapters)
                     stats["transcribed"] += 1
@@ -967,7 +1045,7 @@ def test_check_ffmpeg_raises_when_missing(monkeypatch):
 
 def test_check_ffmpeg_ok_when_present(monkeypatch):
     monkeypatch.setattr(at.shutil, "which", lambda name: "/usr/bin/ffmpeg")
-    at.check_ffmpeg()   # no raise
+    at.check_ffmpeg()  # no raise
 
 
 def test_cut_clip_builds_plain_ffmpeg_command(monkeypatch, tmp_path):
@@ -985,14 +1063,13 @@ def test_cut_clip_builds_plain_ffmpeg_command(monkeypatch, tmp_path):
     assert cmd[0] == "ffmpeg"
     assert "-ss" in cmd and "60.000" in cmd
     assert "-to" in cmd and "90.000" in cmd
-    assert "-audible_key" not in cmd            # no DRM key -> no decrypt flags
+    assert "-audible_key" not in cmd  # no DRM key -> no decrypt flags
     assert str(dest) in cmd
 
 
 def test_cut_clip_passes_audible_key_iv_when_present(monkeypatch, tmp_path):
     calls = {}
-    monkeypatch.setattr(at.subprocess, "run",
-                        lambda cmd, **k: calls.setdefault("cmd", cmd))
+    monkeypatch.setattr(at.subprocess, "run", lambda cmd, **k: calls.setdefault("cmd", cmd))
     audio = ao.DownloadedAudio(path=tmp_path / "b.aaxc", key="KEY", iv="IV")
     at.cut_clip(audio, 0, 5_000, tmp_path / "c.wav")
     cmd = calls["cmd"]
@@ -1054,11 +1131,11 @@ def check_ffmpeg() -> None:
     if shutil.which("ffmpeg") is None:
         raise RuntimeError(
             "ffmpeg not found on PATH — install it (e.g. `brew install ffmpeg`) "
-            "to cut and decrypt Audible clips.")
+            "to cut and decrypt Audible clips."
+        )
 
 
-def cut_clip(audio: DownloadedAudio, start_ms: int, end_ms: int,
-             dest: Path) -> Path:
+def cut_clip(audio: DownloadedAudio, start_ms: int, end_ms: int, dest: Path) -> Path:
     """Cut [start_ms, end_ms) of *audio* into a 16 kHz mono WAV at *dest*.
 
     When the source is DRM-protected AAXC, the voucher key/iv are passed as input
@@ -1068,10 +1145,16 @@ def cut_clip(audio: DownloadedAudio, start_ms: int, end_ms: int,
     if audio.key and audio.iv:
         cmd += ["-audible_key", audio.key, "-audible_iv", audio.iv]
     cmd += [
-        "-i", str(audio.path),
-        "-ss", f"{start_ms / 1000:.3f}",
-        "-to", f"{end_ms / 1000:.3f}",
-        "-ac", "1", "-ar", "16000",
+        "-i",
+        str(audio.path),
+        "-ss",
+        f"{start_ms / 1000:.3f}",
+        "-to",
+        f"{end_ms / 1000:.3f}",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
         str(dest),
     ]
     subprocess.run(cmd, check=True, capture_output=True)
@@ -1086,8 +1169,7 @@ def make_transcriber(kind: str, model: str = "small"):
         return _openai_transcriber(model)
     if kind == "google":
         return _google_transcriber()
-    raise ValueError(f"unknown transcriber: {kind!r} "
-                     "(expected 'local', 'openai', or 'google')")
+    raise ValueError(f"unknown transcriber: {kind!r} (expected 'local', 'openai', or 'google')")
 
 
 def _local_transcriber(model: str):
@@ -1113,8 +1195,7 @@ def _openai_transcriber(model: str):
 
     def transcribe(path: Path) -> str:
         with open(path, "rb") as fh:
-            result = client.audio.transcriptions.create(
-                model="whisper-1", file=fh)
+            result = client.audio.transcriptions.create(model="whisper-1", file=fh)
         return (result.text or "").strip()
 
     return transcribe
@@ -1177,16 +1258,22 @@ from books import audible_client as ac
 
 def test_default_auth_path_is_in_config_dir(monkeypatch, tmp_path):
     from books import config
-    monkeypatch.setattr(config, "config_path",
-                        lambda: tmp_path / "books" / "config.toml")
+
+    monkeypatch.setattr(config, "config_path", lambda: tmp_path / "books" / "config.toml")
     assert ac.default_auth_path() == tmp_path / "books" / "audible-auth.json"
 
 
 def test_chapters_from_metadata_parses_ranges():
-    meta = {"content_metadata": {"chapter_info": {"chapters": [
-        {"title": "Intro", "start_offset_ms": 0, "length_ms": 60_000},
-        {"title": "Rise", "start_offset_ms": 60_000, "length_ms": 90_000},
-    ]}}}
+    meta = {
+        "content_metadata": {
+            "chapter_info": {
+                "chapters": [
+                    {"title": "Intro", "start_offset_ms": 0, "length_ms": 60_000},
+                    {"title": "Rise", "start_offset_ms": 60_000, "length_ms": 90_000},
+                ]
+            }
+        }
+    }
     chapters = ac.chapters_from_metadata(meta)
     assert [c.index for c in chapters] == [1, 2]
     assert chapters[0].title == "Intro"
@@ -1195,18 +1282,31 @@ def test_chapters_from_metadata_parses_ranges():
 
 
 def test_annotations_from_sidecar_maps_clips_and_bookmarks():
-    payload = {"payload": {"records": [
-        {"annotationId": "c1", "type": "audible.Clip",
-         "startPosition": "10000", "endPosition": "20000",
-         "creationTime": "2026-07-01", "text": "my note"},
-        {"annotationId": "b1", "type": "audible.Bookmark",
-         "startPosition": "30000", "creationTime": "2026-07-02"},
-    ]}}
+    payload = {
+        "payload": {
+            "records": [
+                {
+                    "annotationId": "c1",
+                    "type": "audible.Clip",
+                    "startPosition": "10000",
+                    "endPosition": "20000",
+                    "creationTime": "2026-07-01",
+                    "text": "my note",
+                },
+                {
+                    "annotationId": "b1",
+                    "type": "audible.Bookmark",
+                    "startPosition": "30000",
+                    "creationTime": "2026-07-02",
+                },
+            ]
+        }
+    }
     anns = ac.annotations_from_sidecar(payload)
     assert anns[0].id == "c1" and anns[0].start_ms == 10000
     assert anns[0].end_ms == 20000 and anns[0].note == "my note"
     assert anns[1].id == "b1" and anns[1].start_ms == 30000
-    assert anns[1].end_ms is None            # bookmark has no duration
+    assert anns[1].end_ms is None  # bookmark has no duration
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -1252,8 +1352,7 @@ _MISSING = (
     "  uv tool install '.[audible]'    (or: pip install 'books[audible]')"
 )
 
-SIDECAR_URL = ("https://cde-ta-g7g.amazon.com/FionaCDEServiceEngine/"
-               "sidecar?type=AUDI&key={asin}")
+SIDECAR_URL = "https://cde-ta-g7g.amazon.com/FionaCDEServiceEngine/sidecar?type=AUDI&key={asin}"
 
 
 def default_auth_path() -> Path:
@@ -1271,18 +1370,21 @@ def _to_ms(value) -> int:
 
 def chapters_from_metadata(meta: dict) -> list[Chapter]:
     """Parse content-metadata JSON into ordered Chapters (end = start + length)."""
-    raw = (((meta or {}).get("content_metadata") or {})
-           .get("chapter_info") or {}).get("chapters") or []
+    raw = (((meta or {}).get("content_metadata") or {}).get("chapter_info") or {}).get(
+        "chapters"
+    ) or []
     chapters: list[Chapter] = []
     for i, ch in enumerate(raw, start=1):
         start = _to_ms(ch.get("start_offset_ms"))
         length = _to_ms(ch.get("length_ms"))
-        chapters.append(Chapter(
-            index=i,
-            title=(ch.get("title") or f"Chapter {i}").strip(),
-            start_ms=start,
-            end_ms=start + length,
-        ))
+        chapters.append(
+            Chapter(
+                index=i,
+                title=(ch.get("title") or f"Chapter {i}").strip(),
+                start_ms=start,
+                end_ms=start + length,
+            )
+        )
     return chapters
 
 
@@ -1299,13 +1401,15 @@ def annotations_from_sidecar(payload: dict) -> list[Annotation]:
         if not ann_id or rec.get("startPosition") is None:
             continue
         end = rec.get("endPosition")
-        out.append(Annotation(
-            id=str(ann_id),
-            start_ms=_to_ms(rec.get("startPosition")),
-            end_ms=None if end is None else _to_ms(end),
-            note=(rec.get("text") or "").strip() or None,
-            date=(rec.get("creationTime") or "").strip() or None,
-        ))
+        out.append(
+            Annotation(
+                id=str(ann_id),
+                start_ms=_to_ms(rec.get("startPosition")),
+                end_ms=None if end is None else _to_ms(end),
+                note=(rec.get("text") or "").strip() or None,
+                date=(rec.get("creationTime") or "").strip() or None,
+            )
+        )
     return out
 
 
@@ -1332,10 +1436,11 @@ class AudibleClient:
             username = typer_prompt.prompt("Audible email")
             password = typer_prompt.prompt("Audible password", hide_input=True)
             country = typer_prompt.prompt(
-                "Audible marketplace (us, uk, de, ...)", default=marketplace)
+                "Audible marketplace (us, uk, de, ...)", default=marketplace
+            )
             auth = audible.Authenticator.from_login(
-                username, password, locale=country,
-                with_username=False)
+                username, password, locale=country, with_username=False
+            )
             auth_path.parent.mkdir(parents=True, exist_ok=True)
             auth.to_file(str(auth_path))
             auth_path.chmod(0o600)
@@ -1346,22 +1451,27 @@ class AudibleClient:
     def _library_items(self):
         """Fetch the library as audible-cli LibraryItem models (keyed by asin)."""
         from audible_cli.models import Library
+
         library = Library.from_api(
-            self._client,
-            response_groups="product_desc,contributors,relationships")
+            self._client, response_groups="product_desc,contributors,relationships"
+        )
         return {item.asin: item for item in library}
 
     def library(self) -> list[LibraryBook]:
         out: list[LibraryBook] = []
         for asin, item in self._library_items().items():
-            authors = [a.get("name", "").strip()
-                       for a in (getattr(item, "authors", None) or [])
-                       if a.get("name")]
-            out.append(LibraryBook(
-                asin=asin,
-                title=(getattr(item, "title", "") or "").strip(),
-                authors=authors,
-            ))
+            authors = [
+                a.get("name", "").strip()
+                for a in (getattr(item, "authors", None) or [])
+                if a.get("name")
+            ]
+            out.append(
+                LibraryBook(
+                    asin=asin,
+                    title=(getattr(item, "title", "") or "").strip(),
+                    authors=authors,
+                )
+            )
         return out
 
     def chapters(self, asin: str) -> list[Chapter]:
@@ -1378,6 +1488,7 @@ class AudibleClient:
     def _signed(self, url: str):
         """Build a urllib Request signed with the Audible auth."""
         from urllib.request import Request
+
         req = Request(url)
         # The Authenticator produces the Authorization headers for a bare GET.
         headers = self._auth.sign_request(method="GET", path=url, body=b"")
@@ -1430,14 +1541,14 @@ Add to `tests/test_audible_obsidian.py`:
 ```python
 def test_cli_enriches_note_end_to_end(monkeypatch, tmp_path):
     from books import config
+
     out, book, anns = _library_and_notes(tmp_path)
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: out)
     monkeypatch.setattr(
-        config, "resolve_imports",
-        lambda name, output=None: out / ".imports" / name)
+        config, "resolve_imports", lambda name, output=None: out / ".imports" / name
+    )
     monkeypatch.setattr(ao, "_build_client", lambda: FakeClient([book], anns))
-    monkeypatch.setattr(ao, "_build_transcriber",
-                        lambda kind, model: _fake_transcriber)
+    monkeypatch.setattr(ao, "_build_transcriber", lambda kind, model: _fake_transcriber)
     monkeypatch.setattr(ao, "_build_cutter", lambda: FakeCutter())
     monkeypatch.setattr(ao, "_build_downloader", lambda client: FakeDownloader())
 
@@ -1450,11 +1561,12 @@ def test_cli_enriches_note_end_to_end(monkeypatch, tmp_path):
 
 def test_cli_dry_run_builds_no_heavy_adapters(monkeypatch, tmp_path):
     from books import config
+
     out, book, anns = _library_and_notes(tmp_path)
     monkeypatch.setattr(config, "resolve_vault", lambda output=None: out)
     monkeypatch.setattr(
-        config, "resolve_imports",
-        lambda name, output=None: out / ".imports" / name)
+        config, "resolve_imports", lambda name, output=None: out / ".imports" / name
+    )
     monkeypatch.setattr(ao, "_build_client", lambda: FakeClient([book], anns))
 
     def _boom(*a, **k):
@@ -1482,11 +1594,13 @@ In `books/audible_obsidian.py`, add `from books import config` to imports, then 
 def _build_client():
     """Construct the live Audible client (auto-login on first run)."""
     from books.audible_client import AudibleClient, default_auth_path
+
     return AudibleClient.load_or_login(default_auth_path())
 
 
 def _build_transcriber(kind: str, model: str):
     from books.audible_transcribe import make_transcriber
+
     return make_transcriber(kind, model)
 
 
@@ -1511,28 +1625,40 @@ def _build_downloader(client):
 
 def audible_command(
     transcriber: str = typer.Option(
-        "local", "--transcriber", "-t",
+        "local",
+        "--transcriber",
+        "-t",
         help="Speech-to-text backend: 'local' (faster-whisper, no key, offline), "
-             "'openai' (needs OPENAI_API_KEY), or 'google' (free, lower quality)."),
+        "'openai' (needs OPENAI_API_KEY), or 'google' (free, lower quality).",
+    ),
     model: str = typer.Option(
-        "small", "--model",
-        help="Whisper model size for the local/openai backends."),
+        "small", "--model", help="Whisper model size for the local/openai backends."
+    ),
     clip_window: int = typer.Option(
-        30, "--clip-window",
+        30,
+        "--clip-window",
         help="Seconds of audio to transcribe for a point bookmark that has no end "
-             "position (the window ends at the mark). Clips use their own length."),
+        "position (the window ends at the mark). Clips use their own length.",
+    ),
     limit: int | None = typer.Option(
-        None, "--limit", help="Process at most this many matched books."),
+        None, "--limit", help="Process at most this many matched books."
+    ),
     asin: str | None = typer.Option(
-        None, "--asin", help="Only process the book with this Audible ASIN."),
+        None, "--asin", help="Only process the book with this Audible ASIN."
+    ),
     output: Path | None = typer.Option(
-        None, "--output", "-o",
+        None,
+        "--output",
+        "-o",
         help="Output Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml)."),
+        "(~/.config/books/config.toml).",
+    ),
     dry_run: bool = typer.Option(
-        False, "--dry-run",
+        False,
+        "--dry-run",
         help="Show which books match and how many clips would be transcribed, "
-             "without logging in for audio, downloading, or writing."),
+        "without logging in for audio, downloading, or writing.",
+    ),
 ) -> None:
     """Import Audible bookmarks & clips into existing Obsidian book notes.
 
@@ -1555,9 +1681,16 @@ def audible_command(
         downloader = _build_downloader(client)
 
     stats = run(
-        vault, client=client, downloader=downloader, cutter=cutter,
-        transcriber=transcribe_fn, cache_path=cache_path,
-        clip_window=clip_window, limit=limit, asin=asin, dry_run=dry_run,
+        vault,
+        client=client,
+        downloader=downloader,
+        cutter=cutter,
+        transcriber=transcribe_fn,
+        cache_path=cache_path,
+        clip_window=clip_window,
+        limit=limit,
+        asin=asin,
+        dry_run=dry_run,
         echo=typer.echo,
     )
 
@@ -1565,12 +1698,12 @@ def audible_command(
         typer.echo(f"Dry run: {stats['skipped']} book(s) skipped — no note.")
         return
     books_word = "book" if stats["books"] == 1 else "books"
-    skip = (f" ({stats['skipped']} skipped — no note)"
-            if stats["skipped"] else "")
+    skip = f" ({stats['skipped']} skipped — no note)" if stats["skipped"] else ""
     typer.echo(
         f"Done. {stats['books']} {books_word}{skip}, {stats['entries']} clips, "
         f"{stats['downloaded']} downloaded, {stats['transcribed']} transcribed.\n"
-        f"Output: {vault}")
+        f"Output: {vault}"
+    )
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**

@@ -33,17 +33,46 @@ LIST_SEP = ";"
 
 # Shared metadata columns (layers + books.csv). ``book_id`` is catalog-only.
 METADATA_COLUMNS = (
-    "title", "authors", "series", "series_index", "publisher", "published",
-    "language", "format", "pages", "status", "shelves", "rating", "isbn",
-    "amazon", "google", "goodreads", "uuid", "calibre_id", "date_added",
-    "date_read", "review", "cover",
+    "title",
+    "authors",
+    "series",
+    "series_index",
+    "publisher",
+    "published",
+    "language",
+    "format",
+    "pages",
+    "status",
+    "shelves",
+    "rating",
+    "isbn",
+    "amazon",
+    "google",
+    "goodreads",
+    "uuid",
+    "calibre_id",
+    "date_added",
+    "date_read",
+    "review",
+    "cover",
 )
 CATALOG_COLUMNS = ("book_id", *METADATA_COLUMNS)
 LIST_FIELDS = ("authors", "shelves")
 
 HIGHLIGHT_COLUMNS = (
-    "source", "annotation_id", "chapter_index", "chapter_title", "location",
-    "location_kind", "block", "segment", "date", "text", "note", "tags", "links",
+    "source",
+    "annotation_id",
+    "chapter_index",
+    "chapter_title",
+    "location",
+    "location_kind",
+    "block",
+    "segment",
+    "date",
+    "text",
+    "note",
+    "tags",
+    "links",
 )
 HL_LIST_FIELDS = ("tags", "links")
 
@@ -178,8 +207,7 @@ def _read_csv(path: Path) -> list[dict]:
 
 
 def write_layer(vault: Path, source: str, rows: list[BookRow]) -> None:
-    _write_csv(layer_path(vault, source), METADATA_COLUMNS,
-               (r.to_csv_dict() for r in rows))
+    _write_csv(layer_path(vault, source), METADATA_COLUMNS, (r.to_csv_dict() for r in rows))
 
 
 def read_layer(vault: Path, source: str) -> list[BookRow]:
@@ -466,14 +494,13 @@ def row_to_highlight(row: HighlightRow) -> Highlight:
 
 
 def read_highlights(vault: Path, book_id: str) -> list[HighlightRow]:
-    return [HighlightRow.from_csv_dict(r)
-            for r in _read_csv(highlight_path(vault, book_id))]
+    return [HighlightRow.from_csv_dict(r) for r in _read_csv(highlight_path(vault, book_id))]
 
 
-def write_highlights(vault: Path, book_id: str, source: str,
-                     rows: list[HighlightRow]) -> None:
+def write_highlights(vault: Path, book_id: str, source: str, rows: list[HighlightRow]) -> None:
     """Replace this source's rows in the per-book file, preserving other sources."""
     existing = [r for r in read_highlights(vault, book_id) if r.source != source]
     combined = existing + list(rows)
-    _write_csv(highlight_path(vault, book_id), HIGHLIGHT_COLUMNS,
-               (r.to_csv_dict() for r in combined))
+    _write_csv(
+        highlight_path(vault, book_id), HIGHLIGHT_COLUMNS, (r.to_csv_dict() for r in combined)
+    )

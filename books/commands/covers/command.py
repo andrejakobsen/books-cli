@@ -36,13 +36,15 @@ def books_missing_cover(vault: Path) -> list[MissingBook]:
             continue
         if (covers_dir / f"{row.book_id}.jpg").is_file():
             continue
-        out.append(MissingBook(
-            book_id=row.book_id,
-            title=row.title,
-            authors=list(row.authors),
-            isbn=(row.isbn or "").strip() or None,
-            amazon=(row.amazon or "").strip() or None,
-        ))
+        out.append(
+            MissingBook(
+                book_id=row.book_id,
+                title=row.title,
+                authors=list(row.authors),
+                isbn=(row.isbn or "").strip() or None,
+                amazon=(row.amazon or "").strip() or None,
+            )
+        )
     return out
 
 
@@ -114,8 +116,7 @@ def _existing_covers_layer(vault: Path) -> dict[str, store.BookRow]:
     return out
 
 
-def run(vault, *, interactive, dry_run, limit,
-        fetch_json, fetch_bytes, prompt, book_id=None):
+def run(vault, *, interactive, dry_run, limit, fetch_json, fetch_bytes, prompt, book_id=None):
     """Fetch covers for catalog books missing one, into the ``covers`` layer.
 
     Reads books.csv for cover-less books (:func:`books_missing_cover`), fetches an
@@ -130,8 +131,10 @@ def run(vault, *, interactive, dry_run, limit,
         missing = [m for m in all_missing if m.book_id == book_id]
         scanned = 1
         if not missing:
-            print(f"no cover-less book with book_id {book_id!r} "
-                  "(unknown id, or it already has a cover)")
+            print(
+                f"no cover-less book with book_id {book_id!r} "
+                "(unknown id, or it already has a cover)"
+            )
     else:
         missing = all_missing
         scanned = len(store.read_books_csv(vault))
@@ -155,8 +158,7 @@ def run(vault, *, interactive, dry_run, limit,
         errored: list[str] = []
         candidates = iter_candidates(book, fetch_json, errored)
         try:
-            picked = pick_cover(
-                candidates, fetch_bytes, interactive=interactive, prompt=prompt)
+            picked = pick_cover(candidates, fetch_bytes, interactive=interactive, prompt=prompt)
         except QuitRequested:
             print("Quit.")
             break
@@ -190,25 +192,33 @@ def run(vault, *, interactive, dry_run, limit,
 
 def covers_command(
     output: Path | None = typer.Option(
-        None, "--output", "-o",
+        None,
+        "--output",
+        "-o",
         help="Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the current directory.",
     ),
     book: str | None = typer.Option(
-        None, "--book", "-b",
+        None,
+        "--book",
+        "-b",
         help="Fetch a cover for a single catalog book by its book_id (the "
-             "'<Title> - <Author>' stem in Data/books.csv). Interactive by default."),
+        "'<Title> - <Author>' stem in Data/books.csv). Interactive by default.",
+    ),
     interactive: bool | None = typer.Option(
-        None, "--interactive/--no-interactive",
+        None,
+        "--interactive/--no-interactive",
         help="Confirm each candidate: accept / next / skip book / quit. "
-             "Defaults on for a single --book, off for a full scan.",
+        "Defaults on for a single --book, off for a full scan.",
     ),
     dry_run: bool = typer.Option(
-        False, "--dry-run",
+        False,
+        "--dry-run",
         help="Report the chosen cover per book without writing anything.",
     ),
     limit: int | None = typer.Option(
-        None, "--limit",
+        None,
+        "--limit",
         help="Process at most this many books missing a cover (ignored with --book).",
     ),
 ) -> None:
@@ -234,9 +244,14 @@ def covers_command(
         interactive = book is not None
 
     stats = run(
-        vault, interactive=interactive, dry_run=dry_run, limit=limit,
-        fetch_json=default_fetch_json, fetch_bytes=default_fetch_bytes,
-        prompt=_terminal_prompt, book_id=book,
+        vault,
+        interactive=interactive,
+        dry_run=dry_run,
+        limit=limit,
+        fetch_json=default_fetch_json,
+        fetch_bytes=default_fetch_bytes,
+        prompt=_terminal_prompt,
+        book_id=book,
     )
     bs = stats["by_source"]
     typer.echo(

@@ -5,16 +5,22 @@ from books.commands.audible import client as ac
 
 def test_default_auth_path_is_in_config_dir(monkeypatch, tmp_path):
     from books.core import config
-    monkeypatch.setattr(config, "config_path",
-                        lambda: tmp_path / "books" / "config.toml")
+
+    monkeypatch.setattr(config, "config_path", lambda: tmp_path / "books" / "config.toml")
     assert ac.default_auth_path() == tmp_path / "books" / "audible-auth.json"
 
 
 def test_chapters_from_metadata_parses_ranges():
-    meta = {"content_metadata": {"chapter_info": {"chapters": [
-        {"title": "Intro", "start_offset_ms": 0, "length_ms": 60_000},
-        {"title": "Rise", "start_offset_ms": 60_000, "length_ms": 90_000},
-    ]}}}
+    meta = {
+        "content_metadata": {
+            "chapter_info": {
+                "chapters": [
+                    {"title": "Intro", "start_offset_ms": 0, "length_ms": 60_000},
+                    {"title": "Rise", "start_offset_ms": 60_000, "length_ms": 90_000},
+                ]
+            }
+        }
+    }
     chapters = ac.chapters_from_metadata(meta)
     assert [c.index for c in chapters] == [1, 2]
     assert chapters[0].title == "Intro"
@@ -31,6 +37,7 @@ def test_voucher_key_iv_reads_decrypted_voucher():
 
 def test_voucher_key_iv_raises_when_not_decrypted():
     import pytest
+
     # Upstream decryption failed: still the raw encrypted string.
     with pytest.raises(RuntimeError):
         ac.voucher_key_iv({"content_license": {"license_response": "ENCSTR"}})
@@ -42,6 +49,7 @@ def test_annotations_returns_empty_on_404(monkeypatch):
     # A book with no bookmarks/clips returns 404 from the sidecar endpoint;
     # that must be treated as "no annotations", not a fatal error.
     import pytest
+
     httpx = pytest.importorskip("httpx")  # optional [audible] dependency
 
     class FakeResp:
@@ -75,24 +83,41 @@ def test_annotations_from_sidecar_maps_clips_and_bookmarks():
     # A real clip carries its title and note under a nested `metadata` object
     # (confirmed against Libation's AudibleApi); a standalone note uses a
     # top-level `text` field; a bookmark carries neither.
-    payload = {"payload": {"records": [
-        {"annotationId": "c1", "type": "audible.clip",
-         "startPosition": "10000", "endPosition": "20000",
-         "creationTime": "2026-07-01",
-         "metadata": {"title": "My clip", "note": "my note"}},
-        {"annotationId": "n1", "type": "audible.note",
-         "startPosition": "25000", "endPosition": "25000",
-         "creationTime": "2026-07-03", "text": "standalone note"},
-        {"annotationId": "b1", "type": "audible.bookmark",
-         "startPosition": "30000", "creationTime": "2026-07-02"},
-    ]}}
+    payload = {
+        "payload": {
+            "records": [
+                {
+                    "annotationId": "c1",
+                    "type": "audible.clip",
+                    "startPosition": "10000",
+                    "endPosition": "20000",
+                    "creationTime": "2026-07-01",
+                    "metadata": {"title": "My clip", "note": "my note"},
+                },
+                {
+                    "annotationId": "n1",
+                    "type": "audible.note",
+                    "startPosition": "25000",
+                    "endPosition": "25000",
+                    "creationTime": "2026-07-03",
+                    "text": "standalone note",
+                },
+                {
+                    "annotationId": "b1",
+                    "type": "audible.bookmark",
+                    "startPosition": "30000",
+                    "creationTime": "2026-07-02",
+                },
+            ]
+        }
+    }
     anns = ac.annotations_from_sidecar(payload)
     assert anns[0].id == "c1" and anns[0].start_ms == 10000
-    assert anns[0].end_ms == 20000                       # clip has duration
-    assert anns[0].title == "My clip"                    # metadata.title
-    assert anns[0].note == "my note"                     # metadata.note
+    assert anns[0].end_ms == 20000  # clip has duration
+    assert anns[0].title == "My clip"  # metadata.title
+    assert anns[0].note == "my note"  # metadata.note
     assert anns[1].id == "n1" and anns[1].note == "standalone note"  # top-level text
-    assert anns[1].title is None                         # note has no title
+    assert anns[1].title is None  # note has no title
     assert anns[2].id == "b1" and anns[2].start_ms == 30000
-    assert anns[2].end_ms is None                        # bookmark has no duration
+    assert anns[2].end_ms is None  # bookmark has no duration
     assert anns[2].title is None and anns[2].note is None

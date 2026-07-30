@@ -70,8 +70,8 @@ _RENDER_KEY_ORDER = _insert_after(NOTE_PROPERTY_ORDER, "topics", PRESERVED_EXTRA
 def _yaml() -> YAML:
     y = YAML()
     y.default_flow_style = False
-    y.allow_unicode = True       # keep ⭐ and accented names literal, not \uXXXX
-    y.width = 4096               # never line-wrap long titles / values
+    y.allow_unicode = True  # keep ⭐ and accented names literal, not \uXXXX
+    y.width = 4096  # never line-wrap long titles / values
     return y
 
 
@@ -128,8 +128,7 @@ def _cover_value(row: BookRow, note_path: Path):
     return None
 
 
-def book_frontmatter(row: BookRow, note_path: Path, existing: dict,
-                     has_highlights: bool) -> dict:
+def book_frontmatter(row: BookRow, note_path: Path, existing: dict, has_highlights: bool) -> dict:
     """Build the authoritative, canonically-ordered frontmatter dict for a book.
 
     Every key comes from *row* except: ``type`` (always ``book``), ``topics``
@@ -169,8 +168,7 @@ def book_frontmatter(row: BookRow, note_path: Path, existing: dict,
     return {k: meta[k] for k in _RENDER_KEY_ORDER if k in meta}
 
 
-def render_body(existing_body: str, row: BookRow, note_path: Path,
-                highlights: list) -> str:
+def render_body(existing_body: str, row: BookRow, note_path: Path, highlights: list) -> str:
     """Return the note body: cover embed, write-once ``## Review``, ``## Highlights``.
 
     Operates on the body only (no frontmatter). Idempotent: the cover embed is
@@ -268,16 +266,19 @@ def render(vault: Path) -> dict:
 
 def render_command(
     output: Path | None = typer.Option(
-        None, "--output", "-o",
+        None,
+        "--output",
+        "-o",
         help="Obsidian vault. Defaults to the vault from your config file "
-             "(~/.config/books/config.toml). Relative paths resolve against the "
-             "current directory.",
+        "(~/.config/books/config.toml). Relative paths resolve against the "
+        "current directory.",
     ),
     obsidian: bool = typer.Option(
-        True, "--obsidian/--no-obsidian",
+        True,
+        "--obsidian/--no-obsidian",
         help="Render the CSV store as Obsidian book notes. This is the only "
-             "output format today; the flag exists so future formats can slot in "
-             "beside it.",
+        "output format today; the flag exists so future formats can slot in "
+        "beside it.",
     ),
 ) -> None:
     """Render the CSV store into book notes.

@@ -24,16 +24,40 @@ def _make_db(path: Path) -> None:
         """
     )
     # One book, one chapter (ContentType 899), two highlights (one annotated).
-    conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
-                 ("book1", 6, "The Great Gatsby", None, "F. Scott Fitzgerald", None, "9780743273565"))
-    conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
-                 ("book1-ch2", 899, "The Valley of Ashes", None, None, 2, None))
-    conn.execute("INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
-                 ("book1", "book1-ch2", 0.42, "First highlight", "my note",
-                  "2026-07-01", r"span#kobo\.17\.5", "false"))
-    conn.execute("INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
-                 ("book1", "book1-ch2", 0.55, "Second highlight", None,
-                  "2026-07-02", r"span#kobo\.20\.1", "false"))
+    conn.execute(
+        "INSERT INTO content VALUES (?,?,?,?,?,?,?)",
+        ("book1", 6, "The Great Gatsby", None, "F. Scott Fitzgerald", None, "9780743273565"),
+    )
+    conn.execute(
+        "INSERT INTO content VALUES (?,?,?,?,?,?,?)",
+        ("book1-ch2", 899, "The Valley of Ashes", None, None, 2, None),
+    )
+    conn.execute(
+        "INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "book1",
+            "book1-ch2",
+            0.42,
+            "First highlight",
+            "my note",
+            "2026-07-01",
+            r"span#kobo\.17\.5",
+            "false",
+        ),
+    )
+    conn.execute(
+        "INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "book1",
+            "book1-ch2",
+            0.55,
+            "Second highlight",
+            None,
+            "2026-07-02",
+            r"span#kobo\.20\.1",
+            "false",
+        ),
+    )
     conn.commit()
     conn.close()
 
@@ -42,9 +66,16 @@ def test_row_to_highlight_maps_fields():
     class R(dict):
         def __getitem__(self, k):
             return dict.get(self, k)
-    row = R(chapter_index=2, chapter="Chapter 2", chapter_progress=0.42,
-            container_path=r"span#kobo\.17\.5", highlight="Hi", note="note",
-            date_created="2026-07-01")
+
+    row = R(
+        chapter_index=2,
+        chapter="Chapter 2",
+        chapter_progress=0.42,
+        container_path=r"span#kobo\.17\.5",
+        highlight="Hi",
+        note="note",
+        date_created="2026-07-01",
+    )
     h = ke.row_to_highlight(row)
     assert h.text == "Hi" and h.note == "note"
     assert h.chapter_index == 2 and h.block == "17" and h.segment == "5"
@@ -56,9 +87,17 @@ _GATSBY_ID = "The Great Gatsby - F. Scott Fitzgerald"
 
 def _seed_gatsby_catalog(vault: Path) -> None:
     """Seed books.csv with the Gatsby book (as calibre/goodreads + merge would)."""
-    store.write_books_csv(vault, [store.BookRow(
-        book_id=_GATSBY_ID, title="The Great Gatsby",
-        authors=["F. Scott Fitzgerald"], isbn="9780743273565")])
+    store.write_books_csv(
+        vault,
+        [
+            store.BookRow(
+                book_id=_GATSBY_ID,
+                title="The Great Gatsby",
+                authors=["F. Scott Fitzgerald"],
+                isbn="9780743273565",
+            )
+        ],
+    )
 
 
 def test_kobo_writes_highlights_to_store(tmp_path):
@@ -110,16 +149,22 @@ def test_kobo_two_titles_same_book_id_keeps_all(tmp_path):
     )
     # Two device "books" with title variants that both fuzzy-match the catalog
     # entry (subtitle-stripped): a bare title and a subtitled one, same author.
-    conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
-                 ("bookA", 6, "The Great Gatsby", None, "F. Scott Fitzgerald", None, None))
-    conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
-                 ("bookB", 6, "The Great Gatsby: A Novel", None, "F. Scott Fitzgerald", None, None))
-    conn.execute("INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
-                 ("bookA", "bookA", 0.10, "from A", None, "2026-07-01",
-                  r"span#kobo\.1\.0", "false"))
-    conn.execute("INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
-                 ("bookB", "bookB", 0.20, "from B", None, "2026-07-02",
-                  r"span#kobo\.2\.0", "false"))
+    conn.execute(
+        "INSERT INTO content VALUES (?,?,?,?,?,?,?)",
+        ("bookA", 6, "The Great Gatsby", None, "F. Scott Fitzgerald", None, None),
+    )
+    conn.execute(
+        "INSERT INTO content VALUES (?,?,?,?,?,?,?)",
+        ("bookB", 6, "The Great Gatsby: A Novel", None, "F. Scott Fitzgerald", None, None),
+    )
+    conn.execute(
+        "INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
+        ("bookA", "bookA", 0.10, "from A", None, "2026-07-01", r"span#kobo\.1\.0", "false"),
+    )
+    conn.execute(
+        "INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
+        ("bookB", "bookB", 0.20, "from B", None, "2026-07-02", r"span#kobo\.2\.0", "false"),
+    )
     conn.commit()
     conn.close()
 
@@ -142,22 +187,32 @@ def test_kobo_rerun_replaces_own_rows(tmp_path):
 
 class _R(dict):
     """Row stub matching the kobo module's row access (missing keys -> None)."""
+
     def __getitem__(self, k):
         return dict.get(self, k)
 
 
 def _hl(note):
-    row = _R(chapter_index=1, chapter="Ch", chapter_progress=0.1,
-             container_path=r"span#kobo\.1\.0", highlight="Hi", note=note,
-             date_created="2026-07-01")
+    row = _R(
+        chapter_index=1,
+        chapter="Ch",
+        chapter_progress=0.1,
+        container_path=r"span#kobo\.1\.0",
+        highlight="Hi",
+        note=note,
+        date_created="2026-07-01",
+    )
     return ke.row_to_highlight(row)
 
 
-@pytest.mark.parametrize("note", [
-    "Note. #tag1 #tag2",
-    "Note.#tag1 #tag2",
-    "Note. #tag1#tag2",
-])
+@pytest.mark.parametrize(
+    "note",
+    [
+        "Note. #tag1 #tag2",
+        "Note.#tag1 #tag2",
+        "Note. #tag1#tag2",
+    ],
+)
 def test_kobo_extracts_tags_and_strips_note(note):
     h = _hl(note)
     assert h.note == "Note."
@@ -204,6 +259,7 @@ def test_kobo_note_only_markers_becomes_none():
 def test_kobo_copies_from_mounted_device(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
+
     from books.commands import kobo as ke
     from books.core import config
 
@@ -212,8 +268,9 @@ def test_kobo_copies_from_mounted_device(monkeypatch, tmp_path):
     device.parent.mkdir(parents=True)
     _make_db(device)
     monkeypatch.setattr(ke, "KOBO_DEVICE_DB", device)
-    monkeypatch.setattr(config, "resolve_imports",
-                        lambda name, output=None: vault / ".imports" / name)
+    monkeypatch.setattr(
+        config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
+    )
 
     out_zip = tmp_path / "out.zip"
     app = typer.Typer()
@@ -245,6 +302,7 @@ def test_safe_copy_db_removes_partial_snapshot_on_failure(tmp_path):
         return orig_connect(target, *a, **k)
 
     import unittest.mock as mock
+
     with mock.patch.object(sqlite3, "connect", fake_connect):
         with pytest.raises(sqlite3.OperationalError):
             ke._safe_copy_db(src, dest)
@@ -255,6 +313,7 @@ def test_safe_copy_db_removes_partial_snapshot_on_failure(tmp_path):
 def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
+
     from books.commands import kobo as ke
     from books.core import config
 
@@ -263,8 +322,9 @@ def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
     folder.mkdir(parents=True)
     _make_db(folder / "KoboReader.sqlite")
     monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
-    monkeypatch.setattr(config, "resolve_imports",
-                        lambda name, output=None: vault / ".imports" / name)
+    monkeypatch.setattr(
+        config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
+    )
 
     out_zip = tmp_path / "out.zip"
     app = typer.Typer()
@@ -278,6 +338,7 @@ def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
 def test_kobo_csv_mode_default_ignores_zip_output_for_imports(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
+
     from books.commands import kobo as ke
     from books.core import config
 
@@ -307,6 +368,7 @@ def test_kobo_csv_mode_default_ignores_zip_output_for_imports(monkeypatch, tmp_p
 def test_kobo_obsidian_mode_default_forwards_output_for_imports(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
+
     from books.commands import kobo as ke
     from books.core import config
 
@@ -335,13 +397,15 @@ def test_kobo_obsidian_mode_default_forwards_output_for_imports(monkeypatch, tmp
 def test_kobo_default_missing_everything_errors(monkeypatch, tmp_path):
     import typer
     from typer.testing import CliRunner
+
     from books.commands import kobo as ke
     from books.core import config
 
     vault = tmp_path / "Vault"
     monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
-    monkeypatch.setattr(config, "resolve_imports",
-                        lambda name, output=None: vault / ".imports" / name)
+    monkeypatch.setattr(
+        config, "resolve_imports", lambda name, output=None: vault / ".imports" / name
+    )
 
     app = typer.Typer()
     ke.register(app)

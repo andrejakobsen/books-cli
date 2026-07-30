@@ -12,8 +12,7 @@ def _marker_pair(marker: str) -> tuple[str, str]:
     return f"%% books:{marker}:start %%", f"%% books:{marker}:end %%"
 
 
-def render_marked_section(
-    note_text: str, heading: str, marker: str, content: str) -> str:
+def render_marked_section(note_text: str, heading: str, marker: str, content: str) -> str:
     """Insert-or-replace a '## <heading>' section whose body is marker-delimited.
 
     The generated body lives between ``%% books:<marker>:start %%`` and

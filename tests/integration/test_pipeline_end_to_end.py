@@ -28,22 +28,23 @@ BOOK_ID = "The Deluge - Adam Tooze"
 ISBN = "9780141032184"
 
 # A minimal 1x1 JPEG (valid header) so the cover is a real image file.
-_JPEG = bytes.fromhex(
-    "ffd8ffe000104a46494600010100000100010000ffdb004300080606070605080707"
-    "07090908"
-) + b"\x00" * 16 + b"\xff\xd9"
+_JPEG = (
+    bytes.fromhex("ffd8ffe000104a46494600010100000100010000ffdb00430008060607060508070707090908")
+    + b"\x00" * 16
+    + b"\xff\xd9"
+)
 
-OPF = """<?xml version='1.0' encoding='utf-8'?>
+OPF = f"""<?xml version='1.0' encoding='utf-8'?>
 <package xmlns="http://www.idpf.org/2007/opf" version="2.0">
     <metadata xmlns:dc="http://purl.org/dc/elements/1.1/"
               xmlns:opf="http://www.idpf.org/2007/opf">
         <dc:title>The Deluge: The Great War and the Remaking of Global Order</dc:title>
         <dc:creator opf:role="aut">Adam Tooze</dc:creator>
-        <dc:identifier opf:scheme="ISBN">{isbn}</dc:identifier>
+        <dc:identifier opf:scheme="ISBN">{ISBN}</dc:identifier>
         <dc:language>eng</dc:language>
     </metadata>
 </package>
-""".format(isbn=ISBN)
+"""
 
 GOODREADS_HEADER = (
     "Book Id,Title,Author,Author l-f,Additional Authors,ISBN,ISBN13,My Rating,"
@@ -53,10 +54,10 @@ GOODREADS_HEADER = (
 )
 GOODREADS_ROW = (
     '42,"The Deluge",Adam Tooze,"Tooze, Adam",,'
-    '"=""""","=""{isbn}""",5.0,Penguin,Paperback,672,2014,2014,'
+    f'"=""""","=""{ISBN}""",5.0,Penguin,Paperback,672,2014,2014,'
     "2026/07/17,2026/05/04,history,history (#1),read,"
     '"A magisterial account of the postwar order.",,,1,0\n'
-).format(isbn=ISBN)
+)
 
 
 def _calibre_library(root: Path) -> Path:
@@ -85,15 +86,29 @@ def _kobo_db(root: Path) -> Path:
         CREATE TABLE Bookmark (
             VolumeID TEXT, ContentID TEXT, ChapterProgress REAL, Text TEXT,
             Annotation TEXT, DateCreated TEXT, StartContainerPath TEXT, Hidden TEXT);
-        """)
-    conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
-                 ("b1", 6, "The Deluge", None, "Adam Tooze", None, ISBN))
-    conn.execute("INSERT INTO content VALUES (?,?,?,?,?,?,?)",
-                 ("b1-c1", 899, "July 1914", None, None, 1, None))
-    conn.execute("INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
-                 ("b1", "b1-c1", 0.12, "The war made the United States the arbiter.",
-                  "pivotal @Woodrow Wilson #geopolitics", "2026-07-01",
-                  r"span#kobo\.3\.0", "false"))
+        """
+    )
+    conn.execute(
+        "INSERT INTO content VALUES (?,?,?,?,?,?,?)",
+        ("b1", 6, "The Deluge", None, "Adam Tooze", None, ISBN),
+    )
+    conn.execute(
+        "INSERT INTO content VALUES (?,?,?,?,?,?,?)",
+        ("b1-c1", 899, "July 1914", None, None, 1, None),
+    )
+    conn.execute(
+        "INSERT INTO Bookmark VALUES (?,?,?,?,?,?,?,?)",
+        (
+            "b1",
+            "b1-c1",
+            0.12,
+            "The war made the United States the arbiter.",
+            "pivotal @Woodrow Wilson #geopolitics",
+            "2026-07-01",
+            r"span#kobo\.3\.0",
+            "false",
+        ),
+    )
     conn.commit()
     conn.close()
     return db
@@ -130,9 +145,9 @@ def test_full_pipeline_end_to_end(tmp_path):
     # Frontmatter merged from calibre (isbn/language) + goodreads (format/rating).
     assert "title: The Deluge" in text
     assert f"isbn: '{ISBN}'" in text
-    assert "format: physical" in text            # goodreads Paperback wins
-    assert "highlighted: true" in text           # kobo highlight flipped it
-    assert "reviewed: true" in text              # goodreads review flipped it
+    assert "format: physical" in text  # goodreads Paperback wins
+    assert "highlighted: true" in text  # kobo highlight flipped it
+    assert "reviewed: true" in text  # goodreads review flipped it
 
     # Cover: staged by calibre, materialized by render, embedded in the body.
     cover = vault / "Data" / "Covers" / f"{BOOK_ID}.jpg"

@@ -161,7 +161,7 @@ def readwise_to_obsidian(
     try:
         csv = config.resolve_csv_arg(csv, "readwise", output)
     except FileNotFoundError as exc:
-        raise typer.BadParameter(str(exc), param_hint="--csv")
+        raise typer.BadParameter(str(exc), param_hint="--csv") from exc
     output = config.resolve_vault(output)
 
     if not csv.is_file():

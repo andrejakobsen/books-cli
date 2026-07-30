@@ -26,11 +26,11 @@ def check_ffmpeg() -> None:
     if shutil.which("ffmpeg") is None:
         raise RuntimeError(
             "ffmpeg not found on PATH — install it (e.g. `brew install ffmpeg`) "
-            "to cut and decrypt Audible clips.")
+            "to cut and decrypt Audible clips."
+        )
 
 
-def cut_clip(audio: DownloadedAudio, start_ms: int, end_ms: int,
-             dest: Path) -> Path:
+def cut_clip(audio: DownloadedAudio, start_ms: int, end_ms: int, dest: Path) -> Path:
     """Cut [start_ms, end_ms) of *audio* into a 16 kHz mono WAV at *dest*.
 
     When the source is DRM-protected AAXC, the voucher key/iv are passed as input
@@ -44,10 +44,16 @@ def cut_clip(audio: DownloadedAudio, start_ms: int, end_ms: int,
     # from the file start for each clip, so cuts deep into a long audiobook are
     # slower than input-side seeking would be. Accuracy is preferred here.
     cmd += [
-        "-i", str(audio.path),
-        "-ss", f"{start_ms / 1000:.3f}",
-        "-to", f"{end_ms / 1000:.3f}",
-        "-ac", "1", "-ar", "16000",
+        "-i",
+        str(audio.path),
+        "-ss",
+        f"{start_ms / 1000:.3f}",
+        "-to",
+        f"{end_ms / 1000:.3f}",
+        "-ac",
+        "1",
+        "-ar",
+        "16000",
         str(dest),
     ]
     subprocess.run(cmd, check=True, capture_output=True)
@@ -62,8 +68,7 @@ def make_transcriber(kind: str, model: str = "small"):
         return _openai_transcriber(model)
     if kind == "google":
         return _google_transcriber()
-    raise ValueError(f"unknown transcriber: {kind!r} "
-                     "(expected 'local', 'openai', or 'google')")
+    raise ValueError(f"unknown transcriber: {kind!r} (expected 'local', 'openai', or 'google')")
 
 
 def _local_transcriber(model: str):
@@ -89,8 +94,7 @@ def _openai_transcriber(model: str):
 
     def transcribe(path: Path) -> str:
         with open(path, "rb") as fh:
-            result = client.audio.transcriptions.create(
-                model="whisper-1", file=fh)
+            result = client.audio.transcriptions.create(model="whisper-1", file=fh)
         return (result.text or "").strip()
 
     return transcribe

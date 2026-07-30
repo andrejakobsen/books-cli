@@ -44,7 +44,7 @@ def _label(h: Highlight, chapter_prefix: str = "ch.") -> str:
     if h.chapter_index is not None:
         parts.append(f"{chapter_prefix} {h.chapter_index}")
     if h.page:
-        label = h.page.replace('-', '–')
+        label = h.page.replace("-", "–")
         # location_label is "p." by default; an explicit "" suppresses the prefix
         # (used for audio timestamps like "3:24:15" that carry no unit).
         prefix = h.location_label if h.location_label is not None else "p."
@@ -79,8 +79,7 @@ def _chapter_header(h: Highlight) -> str | None:
 
 def _quote_lines(text: str, prefix: str) -> list[str]:
     """Prefix each line of *text* for a callout body; blank lines keep the bare marker."""
-    return [f"{prefix} {ln}" if ln.strip() else prefix.rstrip()
-            for ln in text.split("\n")]
+    return [f"{prefix} {ln}" if ln.strip() else prefix.rstrip() for ln in text.split("\n")]
 
 
 def _callout(h: Highlight, anchor: str, chapter_prefix: str) -> str:
@@ -101,8 +100,7 @@ def _callout(h: Highlight, anchor: str, chapter_prefix: str) -> str:
     return "\n".join(lines)
 
 
-def render_highlights(highlights: list[Highlight],
-                      chapter_label: str | None = None) -> str:
+def render_highlights(highlights: list[Highlight], chapter_label: str | None = None) -> str:
     """Render a list of highlights as an Obsidian ``## Highlights`` body.
 
     Highlights are sorted into reading order (see :func:`sort_key`) before

@@ -35,8 +35,7 @@ _MISSING = (
     "  uv tool install '.[audible]'    (or: pip install 'books[audible]')"
 )
 
-SIDECAR_URL = ("https://cde-ta-g7g.amazon.com/FionaCDEServiceEngine/"
-               "sidecar?type=AUDI&key={asin}")
+SIDECAR_URL = "https://cde-ta-g7g.amazon.com/FionaCDEServiceEngine/sidecar?type=AUDI&key={asin}"
 
 # Response groups requested when fetching the library. This mirrors the set
 # audible-cli's own `library` command asks for, and it must stay broad because
@@ -74,18 +73,21 @@ def _to_ms(value) -> int:
 
 def chapters_from_metadata(meta: dict) -> list[Chapter]:
     """Parse content-metadata JSON into ordered Chapters (end = start + length)."""
-    raw = (((meta or {}).get("content_metadata") or {})
-           .get("chapter_info") or {}).get("chapters") or []
+    raw = (((meta or {}).get("content_metadata") or {}).get("chapter_info") or {}).get(
+        "chapters"
+    ) or []
     chapters: list[Chapter] = []
     for i, ch in enumerate(raw, start=1):
         start = _to_ms(ch.get("start_offset_ms"))
         length = _to_ms(ch.get("length_ms"))
-        chapters.append(Chapter(
-            index=i,
-            title=(ch.get("title") or f"Chapter {i}").strip(),
-            start_ms=start,
-            end_ms=start + length,
-        ))
+        chapters.append(
+            Chapter(
+                index=i,
+                title=(ch.get("title") or f"Chapter {i}").strip(),
+                start_ms=start,
+                end_ms=start + length,
+            )
+        )
     return chapters
 
 
@@ -108,14 +110,16 @@ def annotations_from_sidecar(payload: dict) -> list[Annotation]:
         meta = meta if isinstance(meta, dict) else {}
         title = (meta.get("title") or "").strip() or None
         note = (meta.get("note") or rec.get("text") or "").strip() or None
-        out.append(Annotation(
-            id=str(ann_id),
-            start_ms=_to_ms(rec.get("startPosition")),
-            end_ms=None if end is None else _to_ms(end),
-            title=title,
-            note=note,
-            date=(rec.get("creationTime") or "").strip() or None,
-        ))
+        out.append(
+            Annotation(
+                id=str(ann_id),
+                start_ms=_to_ms(rec.get("startPosition")),
+                end_ms=None if end is None else _to_ms(end),
+                title=title,
+                note=note,
+                date=(rec.get("creationTime") or "").strip() or None,
+            )
+        )
     return out
 
 
@@ -130,14 +134,14 @@ def voucher_key_iv(license_response: dict) -> tuple[str, str]:
     when the voucher (or its key/iv) is absent -- e.g. upstream decryption
     failed and left the encrypted string in place.
     """
-    voucher = (((license_response or {}).get("content_license") or {})
-               .get("license_response"))
+    voucher = ((license_response or {}).get("content_license") or {}).get("license_response")
     key = voucher.get("key") if isinstance(voucher, dict) else None
     iv = voucher.get("iv") if isinstance(voucher, dict) else None
     if not key or not iv:
         raise RuntimeError(
             "Could not recover the AAXC key/iv from the license response "
-            "(voucher missing or not decrypted).")
+            "(voucher missing or not decrypted)."
+        )
     return key, iv
 
 
@@ -162,8 +166,7 @@ class AudibleClient:
     # ---- construction -----------------------------------------------------
 
     @classmethod
-    def load_or_login(cls, auth_path: Path, marketplace: str = "us",
-                      quality: str = "normal"):
+    def load_or_login(cls, auth_path: Path, marketplace: str = "us", quality: str = "normal"):
         """Load a cached auth file, or run the interactive login and cache it."""
         try:
             import audible
@@ -182,7 +185,8 @@ class AudibleClient:
                 pass
             typer_prompt = __import__("typer")
             country = typer_prompt.prompt(
-                "Audible marketplace (us, uk, de, ...)", default=marketplace)
+                "Audible marketplace (us, uk, de, ...)", default=marketplace
+            )
             typer_prompt.secho(
                 "\nOpen the URL below in your browser and sign in to Amazon "
                 "(this is where any email/SMS verification 'CVF' code and "
@@ -192,8 +196,7 @@ class AudibleClient:
                 "from the address bar and paste it back here.\n",
                 fg="yellow",
             )
-            auth = audible.Authenticator.from_login_external(
-                locale=country)
+            auth = audible.Authenticator.from_login_external(locale=country)
             auth_path.parent.mkdir(parents=True, exist_ok=True)
             auth.to_file(str(auth_path))
             auth_path.chmod(0o600)
@@ -228,13 +231,16 @@ class AudibleClient:
         refetch per book for `chapters()`/`download()`.
         """
         from audible_cli.models import Library
+
         if self._catalog is None:
             from audible.client import convert_response_content
             from audible_cli.utils import full_response_callback
+
             resp = await client.get(
                 "library",
                 response_callback=full_response_callback,
-                response_groups=LIBRARY_RESPONSE_GROUPS)
+                response_groups=LIBRARY_RESPONSE_GROUPS,
+            )
             self._catalog = convert_response_content(resp)
         library = Library(self._catalog, api_client=client)
         return {item.asin: item for item in library}
@@ -246,14 +252,18 @@ class AudibleClient:
             out: list[LibraryBook] = []
             items = await self._fetch_items(client)
             for asin, item in items.items():
-                authors = [a.get("name", "").strip()
-                           for a in (getattr(item, "authors", None) or [])
-                           if a.get("name")]
-                out.append(LibraryBook(
-                    asin=asin,
-                    title=(getattr(item, "title", "") or "").strip(),
-                    authors=authors,
-                ))
+                authors = [
+                    a.get("name", "").strip()
+                    for a in (getattr(item, "authors", None) or [])
+                    if a.get("name")
+                ]
+                out.append(
+                    LibraryBook(
+                        asin=asin,
+                        title=(getattr(item, "title", "") or "").strip(),
+                        authors=authors,
+                    )
+                )
             return out
 
         return self._run(op)
@@ -275,6 +285,7 @@ class AudibleClient:
         treated as "no annotations" rather than a fatal error.
         """
         import httpx
+
         url = SIDECAR_URL.format(asin=asin)
         with httpx.Client(timeout=30) as hx:
             resp = hx.get(url, auth=self._auth)
@@ -294,6 +305,7 @@ class AudibleClient:
         fail. `url` is an `httpx.URL`, stringified for `urlopen` (the offline
         URL is presigned — no auth).
         """
+
         async def op(client):
             item = (await self._fetch_items(client))[asin]
             url, codec, license_response = await item.get_aaxc_url(self.quality)

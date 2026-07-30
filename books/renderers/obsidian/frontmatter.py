@@ -50,6 +50,7 @@ BOOK_FLAG_DEFAULTS = {"highlighted": "false", "reviewed": "false"}
 
 # --- Frontmatter reading ----------------------------------------------------
 
+
 def _split_frontmatter(text: str) -> tuple[list[str], str]:
     """Return (frontmatter_lines, body); lines exclude the '---' fences.
 
@@ -60,7 +61,7 @@ def _split_frontmatter(text: str) -> tuple[list[str], str]:
     lines = text.split("\n")
     for i in range(1, len(lines)):
         if lines[i].strip() == "---":
-            return lines[1:i], "\n".join(lines[i + 1:])
+            return lines[1:i], "\n".join(lines[i + 1 :])
     return [], text
 
 
@@ -102,6 +103,7 @@ def extract_wikilinks(value: str) -> list[str]:
 
 
 # --- Frontmatter merge ("never overwrite") ---------------------------------
+
 
 def update_frontmatter(note_text: str, updates: dict[str, str]) -> str:
     """Return *note_text* with *updates* applied, filling only empty/absent keys.

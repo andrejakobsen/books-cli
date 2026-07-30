@@ -11,15 +11,18 @@ uv run pytest -q                     # run the full test suite
 uv run pytest tests/renderers/obsidian/test_obsidian.py # run one test file
 uv run pytest -k "author_key"        # run tests matching an expression
 uv tool install . --reinstall        # rebuild & reinstall the global `books` command
+uv run ruff check --fix              # lint & auto-fix
+uv run ruff format                   # format
 ```
 
-There is no separate lint/format step configured.
+Linting/formatting is done with **ruff** (config in `pyproject.toml`).
 
 ## Git workflow
 
 Commit work directly to `main` in this repo — do **not** create feature branches or
 open PRs for changes. This overrides the default "branch first when on the default
-branch" behavior. Run `uv run pytest -q` before committing.
+branch" behavior. Before committing, always run **both** `uv run ruff check --fix`
++ `uv run ruff format` (fix any remaining lint errors) and `uv run pytest -q`.
 
 ## Architecture
 

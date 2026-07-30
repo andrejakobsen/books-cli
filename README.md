@@ -47,6 +47,7 @@ uv tool install .            # global install
 uv tool install . --reinstall --editable   # editable: picks up local edits
 uv run books --help          # or just run it via uv without installing
 ```
+
 </details>
 
 ## Quickstart
@@ -101,6 +102,7 @@ The importers are **CSV writers**: none of them touch your notes. `calibre` and
 importers (`kobo`, `highlighted`, `readwise`) write into the per-book highlights
 store under `Data/Highlights/` (resolving each book against the merged catalog).
 `merge` clusters the layers into `Data/books.csv`, and `render` turns the catalog
+
 + highlights into the actual Markdown notes.
 
 | Command | What it does |
@@ -152,20 +154,20 @@ On first run you're prompted for your Audible email, password, and marketplace
 (`us`, `uk`, `de`, …); the auth is cached at `~/.config/books/audible-auth.json`
 (mode `600`) so later runs are non-interactive.
 
-- **Matching** — a library book matches a note by ASIN (the `amazon`
++ **Matching** — a library book matches a note by ASIN (the `amazon`
   frontmatter id), then by standardized title/author.
-- **Point bookmarks** — a plain bookmark has no end position, so a window of
++ **Point bookmarks** — a plain bookmark has no end position, so a window of
   audio *ending* at the mark is transcribed. Tune it with `--clip-window`
   (default `30` seconds); clips use their own recorded length.
-- **Transcriber** — `--transcriber local` (default; `faster-whisper`, offline,
++ **Transcriber** — `--transcriber local` (default; `faster-whisper`, offline,
   no key), `openai` (needs `OPENAI_API_KEY`), or `google` (free, lower quality).
   `--model` picks the Whisper model size (default `small`) for the local/openai
   backends.
-- **Caching** — transcriptions are cached in `<vault>/Data/Imports/audible/cache.json`
++ **Caching** — transcriptions are cached in `<vault>/Data/Imports/audible/cache.json`
   (keyed by ASIN + annotation id). Re-runs re-render for free and only download
   books that have new clips; the downloaded audio goes to a temp dir and is
   deleted after cutting.
-- **Notes** — any typed note on a clip renders as a nested blockquote, and its
++ **Notes** — any typed note on a clip renders as a nested blockquote, and its
   `#tag` / `@link` markers follow the same convention as the other importers.
 
 ## Rendering the CSV store
@@ -197,11 +199,11 @@ exists yet.
 Your notes live in flat, top-level folders; everything the tooling manages
 lives under `Data/`:
 
-- **`Books/`** — one note per book (`<Title> - <Author>.md`): frontmatter, a
++ **`Books/`** — one note per book (`<Title> - <Author>.md`): frontmatter, a
   cover embed, an optional `## Review`, and a `## Highlights` section.
-- **`Notes/`** — your own free-form notes; never touched by importers.
-- **`Authors/`** and **`Topics/`** — stub notes for the graph.
-- **`Data/`** — tool-managed data: `Data/Imports/` (raw export files you drop
++ **`Notes/`** — your own free-form notes; never touched by importers.
++ **`Authors/`** and **`Topics/`** — stub notes for the graph.
++ **`Data/`** — tool-managed data: `Data/Imports/` (raw export files you drop
   in), `Data/Covers/` (cover images named to match their note), and the CSV
   store (`Data/Sources/`, `Data/Highlights/`, `Data/books.csv`).
 

@@ -9,6 +9,7 @@ from pathlib import Path
 @dataclass
 class LibraryBook:
     """A book in the Audible library."""
+
     asin: str
     title: str
     authors: list[str] = field(default_factory=list)
@@ -22,6 +23,7 @@ class Annotation:
     duration); a clip carries both start and end. `title` is the clip's title and
     `note` is its note body -- both user-typed (either may be None).
     """
+
     id: str
     start_ms: int
     end_ms: int | None = None
@@ -33,6 +35,7 @@ class Annotation:
 @dataclass
 class Chapter:
     """A chapter with its position range (end exclusive), in reading order."""
+
     index: int
     title: str
     start_ms: int
@@ -46,6 +49,7 @@ class DownloadedAudio:
     `key`/`iv` are None for a non-DRM source; when set, ffmpeg decrypts on the fly
     via -audible_key/-audible_iv while cutting each clip.
     """
-    path: "Path"
+
+    path: Path
     key: str | None = None
     iv: str | None = None

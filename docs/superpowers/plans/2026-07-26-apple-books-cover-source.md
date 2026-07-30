@@ -63,22 +63,28 @@ ITUNES_RESULTS_NO_ISBN = {
 
 
 def test_itunes_artwork_upgrades_size_token():
-    art = ("https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
-           "abc/9780241006115.jpg/100x100bb.jpg")
+    art = (
+        "https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
+        "abc/9780241006115.jpg/100x100bb.jpg"
+    )
     big = covers._itunes_artwork(art)
     assert big.endswith("/9780241006115.jpg/1400x1400bb.jpg")
     assert "100x100bb" not in big
 
 
 def test_itunes_isbn_reads_second_to_last_segment():
-    art = ("https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
-           "abc/9780241006115.jpg/100x100bb.jpg")
+    art = (
+        "https://is1-ssl.mzstatic.com/image/thumb/Pub3/v4/57/c1/ac/"
+        "abc/9780241006115.jpg/100x100bb.jpg"
+    )
     assert covers._itunes_isbn(art) == "9780241006115"
 
 
 def test_itunes_isbn_none_for_opaque_stem():
-    art = ("https://is1-ssl.mzstatic.com/image/thumb/Publication/52/22/e8/"
-           "mzi.mwffatop.jpg/100x100bb.jpg")
+    art = (
+        "https://is1-ssl.mzstatic.com/image/thumb/Publication/52/22/e8/"
+        "mzi.mwffatop.jpg/100x100bb.jpg"
+    )
     assert covers._itunes_isbn(art) is None
 ```
 
@@ -95,7 +101,7 @@ In `books/covers.py`, immediately after `amazon_candidates` (ends ~line 281) and
 ITUNES_API = "https://itunes.apple.com/search"
 ITUNES_COUNTRY = "gb"
 ITUNES_ENTITY = "ebook"
-ITUNES_ART_SIZE = "1400x1400bb"   # iTunes artwork is resizable via this token
+ITUNES_ART_SIZE = "1400x1400bb"  # iTunes artwork is resizable via this token
 
 
 def _itunes_artwork(artwork_url: str) -> str:
@@ -115,7 +121,7 @@ def _itunes_isbn(artwork_url: str) -> str | None:
     is the segment *before* the size token. Returns it only when that stem is a
     10- or 13-digit number; opaque stems (e.g. ``mzi.mwffatop``) yield ``None``.
     """
-    parts = artwork_url.rsplit("/", 2)   # [prefix, "<isbn>.jpg", "100x100bb.jpg"]
+    parts = artwork_url.rsplit("/", 2)  # [prefix, "<isbn>.jpg", "100x100bb.jpg"]
     if len(parts) < 3:
         return None
     stem = parts[1].rsplit(".", 1)[0]
@@ -136,8 +142,12 @@ Append to `tests/test_covers.py`:
 ```python
 def test_apple_books_query_uses_title_and_author_not_isbn():
     book = covers.MissingBook(
-        note_path=None, title="The  Deluge", authors=["Adam Tooze"],
-        isbn="9781847374530", amazon=None)
+        note_path=None,
+        title="The  Deluge",
+        authors=["Adam Tooze"],
+        isbn="9781847374530",
+        amazon=None,
+    )
     captured = {}
 
     def fake_fetch(url):
@@ -148,7 +158,7 @@ def test_apple_books_query_uses_title_and_author_not_isbn():
     url = captured["url"]
     # title + author in the term, whitespace collapsed
     assert "Deluge" in url and "Adam" in url and "Tooze" in url
-    assert "The%20%20Deluge" not in url   # collapsed, not doubled
+    assert "The%20%20Deluge" not in url  # collapsed, not doubled
     # never queries by ISBN (iTunes ISBN-term search is unreliable)
     assert "isbn" not in url.lower()
     assert "9781847374530" not in url
@@ -159,8 +169,8 @@ def test_apple_books_query_uses_title_and_author_not_isbn():
 
 def test_apple_books_builds_candidate_with_hires_url_and_isbn():
     book = covers.MissingBook(
-        note_path=None, title="The Deluge", authors=["Adam Tooze"],
-        isbn=None, amazon=None)
+        note_path=None, title="The Deluge", authors=["Adam Tooze"], isbn=None, amazon=None
+    )
     cands = covers.apple_books_candidates(book, lambda url: ITUNES_RESULTS)
     assert len(cands) == 1
     c = cands[0]
@@ -173,8 +183,12 @@ def test_apple_books_builds_candidate_with_hires_url_and_isbn():
 
 def test_apple_books_uses_collection_name_and_no_isbn_for_opaque_art():
     book = covers.MissingBook(
-        note_path=None, title="The Anatomy of Fascism",
-        authors=["Robert O. Paxton"], isbn=None, amazon=None)
+        note_path=None,
+        title="The Anatomy of Fascism",
+        authors=["Robert O. Paxton"],
+        isbn=None,
+        amazon=None,
+    )
     cands = covers.apple_books_candidates(book, lambda url: ITUNES_RESULTS_NO_ISBN)
     assert len(cands) == 1
     assert cands[0].label == "The Anatomy of Fascism — Robert O. Paxton"
@@ -184,8 +198,12 @@ def test_apple_books_uses_collection_name_and_no_isbn_for_opaque_art():
 
 def test_apple_books_normalizes_author():
     book = covers.MissingBook(
-        note_path=None, title="The Republic",
-        authors=["Plato and Benjamin Jowett"], isbn=None, amazon=None)
+        note_path=None,
+        title="The Republic",
+        authors=["Plato and Benjamin Jowett"],
+        isbn=None,
+        amazon=None,
+    )
     captured = {}
 
     def fake_fetch(url):
@@ -194,19 +212,17 @@ def test_apple_books_normalizes_author():
 
     covers.apple_books_candidates(book, fake_fetch)
     assert "Plato" in captured["url"]
-    assert "Benjamin" not in captured["url"]   # co-author tail dropped
+    assert "Benjamin" not in captured["url"]  # co-author tail dropped
 
 
 def test_apple_books_no_results_returns_empty():
-    book = covers.MissingBook(
-        note_path=None, title="X", authors=[], isbn=None, amazon=None)
+    book = covers.MissingBook(note_path=None, title="X", authors=[], isbn=None, amazon=None)
     assert covers.apple_books_candidates(book, lambda url: {"results": []}) == []
 
 
 def test_apple_books_skips_results_without_artwork():
-    book = covers.MissingBook(
-        note_path=None, title="X", authors=["Y"], isbn=None, amazon=None)
-    data = {"results": [{"trackName": "X", "artistName": "Y"}]}   # no artworkUrl100
+    book = covers.MissingBook(note_path=None, title="X", authors=["Y"], isbn=None, amazon=None)
+    data = {"results": [{"trackName": "X", "artistName": "Y"}]}  # no artworkUrl100
     assert covers.apple_books_candidates(book, lambda url: data) == []
 ```
 
@@ -232,8 +248,7 @@ def apple_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
     if book.authors:
         parts.append(normalize_author(book.authors[0]))
     term = " ".join(p for p in parts if p)
-    url = (f"{ITUNES_API}?term={quote(term)}"
-           f"&entity={ITUNES_ENTITY}&country={ITUNES_COUNTRY}&limit=5")
+    url = f"{ITUNES_API}?term={quote(term)}&entity={ITUNES_ENTITY}&country={ITUNES_COUNTRY}&limit=5"
     data = fetch_json(url) or {}
     out: list[Candidate] = []
     for result in data.get("results", []):
@@ -242,13 +257,15 @@ def apple_books_candidates(book: MissingBook, fetch_json) -> list[Candidate]:
             continue
         name = result.get("trackName") or result.get("collectionName") or book.title
         artist = result.get("artistName")
-        out.append(Candidate(
-            source="apple",
-            label=_label(name, [artist] if artist else []),
-            image_url=_itunes_artwork(artwork),
-            fmt=None,
-            isbn=_itunes_isbn(artwork),
-        ))
+        out.append(
+            Candidate(
+                source="apple",
+                label=_label(name, [artist] if artist else []),
+                image_url=_itunes_artwork(artwork),
+                fmt=None,
+                isbn=_itunes_isbn(artwork),
+            )
+        )
     return out
 ```
 
@@ -282,8 +299,8 @@ Append to `tests/test_covers.py`:
 ```python
 def test_gather_candidates_apple_first():
     book = covers.MissingBook(
-        note_path=None, title="The Deluge", authors=["Adam Tooze"],
-        isbn=None, amazon="B00ABCDEFG")
+        note_path=None, title="The Deluge", authors=["Adam Tooze"], isbn=None, amazon="B00ABCDEFG"
+    )
 
     def fake_fetch(url):
         if "itunes.apple.com" in url:
@@ -299,8 +316,12 @@ def test_gather_candidates_apple_first():
     assert sources[0] == "apple"
     assert sources[-1] == "amazon"
     # apple before google before openlibrary before amazon
-    assert (sources.index("apple") < sources.index("google")
-            < sources.index("openlibrary") < sources.index("amazon"))
+    assert (
+        sources.index("apple")
+        < sources.index("google")
+        < sources.index("openlibrary")
+        < sources.index("amazon")
+    )
 ```
 
 - [ ] **Step 2: Run it to verify it fails**
