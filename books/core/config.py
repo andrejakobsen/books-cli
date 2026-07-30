@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import os
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from books.core.paths import resolve_path
@@ -18,13 +18,83 @@ DEFAULT_OBSIDIAN_PATH = "~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian
 DEFAULT_VAULT = "History"
 DEFAULT_IMPORTS = "Data/Imports"
 
+DEFAULT_CALIBRE_LIBRARY = "~/Calibre Library"
+_TRANSCRIBERS = ("local", "openai", "google")
+_SELECT_MODES = ("interactive", "all")
+# Every importer name (validates [import].default). Kept in sync with import_cmd.
+VALID_IMPORTERS = ("calibre", "goodreads", "kobo", "highlighted", "readwise", "audible", "covers")
+# The importers that run when `books import` gets no flags (out-of-the-box default).
+DEFAULT_IMPORTERS = ("calibre", "goodreads", "kobo", "highlighted", "readwise")
+
 _DEFAULT_FILE = (
     "# books configuration\n"
     f'obsidian_path = "{DEFAULT_OBSIDIAN_PATH}"\n'
     f'vault = "{DEFAULT_VAULT}"\n'
     "# Folder (inside the vault) holding raw import sources.\n"
     f'imports = "{DEFAULT_IMPORTS}"\n'
+    "\n"
+    "# Importers run by `books import` when given no flags (add covers/audible to include them).\n"
+    "# [import]\n"
+    f"# default = {list(DEFAULT_IMPORTERS)!r}\n"
+    "\n"
+    "# Per-importer settings (uncomment to override the defaults shown).\n"
+    "# [calibre]\n"
+    f'# library = "{DEFAULT_CALIBRE_LIBRARY}"\n'
+    "# [kobo]\n"
+    '# db = "/path/to/KoboReader.sqlite"  # default: mounted device / imports folder\n'
+    "# [audible]\n"
+    '# transcriber = "local"   # local | openai | google\n'
+    '# select = "interactive"  # interactive | all\n'
+    "# [covers]\n"
+    "# interactive = false\n"
+    "# limit = 0                # 0 = no limit\n"
 )
+
+# A fully-uncommented copy used only by tests to assert the sections parse.
+_DEFAULT_FILE_PARSEABLE = (
+    f'obsidian_path = "{DEFAULT_OBSIDIAN_PATH}"\n'
+    f'vault = "{DEFAULT_VAULT}"\n'
+    f'imports = "{DEFAULT_IMPORTS}"\n'
+    "[import]\n"
+    f"default = {list(DEFAULT_IMPORTERS)!r}\n"
+    "[calibre]\n"
+    f'library = "{DEFAULT_CALIBRE_LIBRARY}"\n'
+    "[kobo]\n"
+    'db = ""\n'
+    "[audible]\n"
+    'transcriber = "local"\n'
+    'select = "interactive"\n'
+    "[covers]\n"
+    "interactive = false\n"
+    "limit = 0\n"
+)
+
+
+@dataclass
+class ImportConfig:
+    default: tuple[str, ...] = DEFAULT_IMPORTERS  # importers run when no flags given
+
+
+@dataclass
+class CalibreConfig:
+    library: str = DEFAULT_CALIBRE_LIBRARY
+
+
+@dataclass
+class KoboConfig:
+    db: str = ""  # empty = auto-detect (mounted device / canonical folder)
+
+
+@dataclass
+class AudibleConfig:
+    transcriber: str = "local"  # local | openai | google
+    select: str = "interactive"  # interactive | all
+
+
+@dataclass
+class CoversConfig:
+    interactive: bool = False
+    limit: int = 0  # 0 = no limit
 
 
 @dataclass
@@ -34,6 +104,11 @@ class Config:
     obsidian_path: str = DEFAULT_OBSIDIAN_PATH
     vault: str = DEFAULT_VAULT
     imports: str = DEFAULT_IMPORTS
+    import_: ImportConfig = field(default_factory=ImportConfig)
+    calibre: CalibreConfig = field(default_factory=CalibreConfig)
+    kobo: KoboConfig = field(default_factory=KoboConfig)
+    audible: AudibleConfig = field(default_factory=AudibleConfig)
+    covers: CoversConfig = field(default_factory=CoversConfig)
 
 
 def config_path() -> Path:
@@ -41,6 +116,68 @@ def config_path() -> Path:
     base = os.environ.get("XDG_CONFIG_HOME")
     root = Path(base).expanduser() if base else Path.home() / ".config"
     return root / "books" / "config.toml"
+
+
+def _table(data: dict, name: str) -> dict:
+    """Return the ``[name]`` sub-table, or ``{}`` when absent/not a table."""
+    t = data.get(name)
+    return t if isinstance(t, dict) else {}
+
+
+def _str_or(t: dict, key: str, default: str) -> str:
+    v = t.get(key)
+    return v if isinstance(v, str) else default
+
+
+def _nonempty_str_or(t: dict, key: str, default: str) -> str:
+    v = t.get(key)
+    return v if isinstance(v, str) and v else default
+
+
+def _bool_or(t: dict, key: str, default: bool) -> bool:
+    v = t.get(key)
+    return v if isinstance(v, bool) else default
+
+
+def _int_or(t: dict, key: str, default: int) -> int:
+    v = t.get(key)
+    return v if isinstance(v, int) and not isinstance(v, bool) else default
+
+
+def _choice_or(t: dict, key: str, choices: tuple[str, ...], default: str) -> str:
+    v = t.get(key)
+    return v if isinstance(v, str) and v in choices else default
+
+
+def _importer_list_or(t: dict, key: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    """Parse a list of importer names, dropping unknowns; fall back when empty."""
+    v = t.get(key)
+    if not isinstance(v, list):
+        return default
+    names = tuple(x for x in v if isinstance(x, str) and x in VALID_IMPORTERS)
+    return names or default
+
+
+def _parse_sections(data: dict) -> dict:
+    """Build the importer sub-configs from parsed TOML *data*."""
+    imp = _table(data, "import")
+    cal = _table(data, "calibre")
+    kob = _table(data, "kobo")
+    aud = _table(data, "audible")
+    cov = _table(data, "covers")
+    return {
+        "import_": ImportConfig(default=_importer_list_or(imp, "default", DEFAULT_IMPORTERS)),
+        "calibre": CalibreConfig(library=_nonempty_str_or(cal, "library", DEFAULT_CALIBRE_LIBRARY)),
+        "kobo": KoboConfig(db=_str_or(kob, "db", "")),
+        "audible": AudibleConfig(
+            transcriber=_choice_or(aud, "transcriber", _TRANSCRIBERS, "local"),
+            select=_choice_or(aud, "select", _SELECT_MODES, "interactive"),
+        ),
+        "covers": CoversConfig(
+            interactive=_bool_or(cov, "interactive", False),
+            limit=_int_or(cov, "limit", 0),
+        ),
+    }
 
 
 def load_config(path: Path | None = None) -> Config:
@@ -70,7 +207,12 @@ def load_config(path: Path | None = None) -> Config:
     imports = data.get("imports")
     if not isinstance(imports, str) or not imports:
         imports = DEFAULT_IMPORTS
-    return Config(obsidian_path=obsidian_path, vault=vault, imports=imports)
+    return Config(
+        obsidian_path=obsidian_path,
+        vault=vault,
+        imports=imports,
+        **_parse_sections(data),
+    )
 
 
 def _expand_user(raw: str) -> Path:

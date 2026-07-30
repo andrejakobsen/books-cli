@@ -246,3 +246,89 @@ def test_importer_writes_to_configured_vault_without_output(monkeypatch, tmp_pat
 
     assert result.exit_code == 0, result.output
     assert (vault / "Books" / "Stalin - Stephen Kotkin.md").exists()
+
+
+def _write(tmp_path, text):
+    p = tmp_path / "config.toml"
+    p.write_text(text)
+    return p
+
+
+def test_config_defaults_when_sections_absent(tmp_path):
+    cfg = config.load_config(_write(tmp_path, 'vault = "V"\n'))
+    assert cfg.calibre.library == config.DEFAULT_CALIBRE_LIBRARY
+    assert cfg.kobo.db == ""
+    assert cfg.audible.transcriber == "local"
+    assert cfg.audible.select == "interactive"
+    assert cfg.covers.interactive is False
+    assert cfg.covers.limit == 0
+
+
+def test_config_reads_importer_sections(tmp_path):
+    text = (
+        'vault = "V"\n'
+        '[calibre]\nlibrary = "~/Books"\n'
+        '[kobo]\ndb = "/tmp/K.sqlite"\n'
+        '[audible]\ntranscriber = "openai"\nselect = "all"\n'
+        "[covers]\ninteractive = true\nlimit = 5\n"
+    )
+    cfg = config.load_config(_write(tmp_path, text))
+    assert cfg.calibre.library == "~/Books"
+    assert cfg.kobo.db == "/tmp/K.sqlite"
+    assert cfg.audible.transcriber == "openai"
+    assert cfg.audible.select == "all"
+    assert cfg.covers.interactive is True
+    assert cfg.covers.limit == 5
+
+
+def test_config_default_importers_default_is_sync_set(tmp_path):
+    cfg = config.load_config(_write(tmp_path, 'vault = "V"\n'))
+    assert cfg.import_.default == config.DEFAULT_IMPORTERS
+
+
+def test_config_reads_default_importers(tmp_path):
+    text = 'vault = "V"\n[import]\ndefault = ["calibre", "covers", "audible"]\n'
+    cfg = config.load_config(_write(tmp_path, text))
+    assert cfg.import_.default == ("calibre", "covers", "audible")
+
+
+def test_config_default_importers_drops_unknown_and_falls_back(tmp_path):
+    # Unknown names are dropped; a list with none valid falls back to the sync-set.
+    text = 'vault = "V"\n[import]\ndefault = ["calibre", "bogus"]\n'
+    cfg = config.load_config(_write(tmp_path, text))
+    assert cfg.import_.default == ("calibre",)
+
+    text2 = 'vault = "V"\n[import]\ndefault = ["nope", 3]\n'
+    cfg2 = config.load_config(_write(tmp_path, text2))
+    assert cfg2.import_.default == config.DEFAULT_IMPORTERS
+
+    text3 = 'vault = "V"\n[import]\ndefault = "calibre"\n'  # wrong type
+    cfg3 = config.load_config(_write(tmp_path, text3))
+    assert cfg3.import_.default == config.DEFAULT_IMPORTERS
+
+
+def test_config_rejects_bad_values_per_key(tmp_path):
+    text = (
+        'vault = "V"\n'
+        '[audible]\ntranscriber = "bogus"\nselect = 3\n'
+        '[covers]\ninteractive = "yes"\nlimit = "lots"\n'
+    )
+    cfg = config.load_config(_write(tmp_path, text))
+    assert cfg.audible.transcriber == "local"  # invalid choice → default
+    assert cfg.audible.select == "interactive"  # wrong type → default
+    assert cfg.covers.interactive is False  # wrong type → default
+    assert cfg.covers.limit == 0  # wrong type → default
+
+
+def test_config_malformed_toml_falls_back(tmp_path):
+    cfg = config.load_config(_write(tmp_path, "this = = not toml"))
+    assert cfg.calibre.library == config.DEFAULT_CALIBRE_LIBRARY
+    assert cfg.audible.transcriber == "local"
+
+
+def test_default_file_parses_and_has_sections():
+    import tomllib
+
+    data = tomllib.loads(config._DEFAULT_FILE_PARSEABLE)
+    assert "calibre" in data and "audible" in data and "covers" in data
+    assert data["import"]["default"] == list(config.DEFAULT_IMPORTERS)
