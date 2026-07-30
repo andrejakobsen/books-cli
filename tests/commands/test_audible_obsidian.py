@@ -325,6 +325,33 @@ def _catalog_and_library(tmp_path):
     return out, book, anns
 
 
+def test_build_candidates_tags_match_clip_count_and_cache(tmp_path):
+    out, book, anns = _catalog_and_library(tmp_path)
+    new_book = models.LibraryBook(asin="B0NEW", title="Audio Only", authors=["A. Narrator"])
+    library = [book, new_book]
+    annotations = {**anns, "B0NEW": [models.Annotation(id="n1", start_ms=0, end_ms=10)]}
+    client = FakeClient(library, annotations)
+    cache_dir = out / "Data" / "Imports" / "audible" / "cache"
+    # Pre-seed a cache file for the matched book so `cached` flips to True.
+    ao.save_book_cache(cache_dir, "B0STALIN", {"title": "Stalin", "clips": {}})
+
+    cands = ao.build_candidates(client, store.Catalog(out), cache_dir)
+
+    by_asin = {c.book.asin: c for c in cands}
+    assert by_asin["B0STALIN"].book_id == "Stalin - Stephen Kotkin"
+    assert by_asin["B0STALIN"].clip_count == 1 and by_asin["B0STALIN"].cached is True
+    assert by_asin["B0NEW"].book_id is None  # audiobook-only, no catalog match
+    assert by_asin["B0NEW"].cached is False
+
+
+def test_build_candidates_honors_asin_filter(tmp_path):
+    out, book, anns = _catalog_and_library(tmp_path)
+    other = models.LibraryBook(asin="B0OTHER", title="Other", authors=["X"])
+    client = FakeClient([book, other], {**anns, "B0OTHER": []})
+    cands = ao.build_candidates(client, store.Catalog(out), out / "cache", asin="B0STALIN")
+    assert [c.book.asin for c in cands] == ["B0STALIN"]
+
+
 def test_run_writes_highlights_and_audible_layer(tmp_path):
     out, book, anns = _catalog_and_library(tmp_path)
     client = FakeClient([book], anns)

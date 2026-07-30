@@ -33,7 +33,8 @@ from pathlib import Path
 
 import typer
 
-from books.commands.audible.models import Annotation, Chapter
+from books.commands.audible.models import Annotation, Candidate, Chapter
+from books.commands.audible.select import select_books
 from books.core import config, store, ui
 from books.core.highlights import Highlight, parse_markers
 from books.core.matching import BookRef
@@ -242,6 +243,34 @@ def _clip_seconds(anns, clip_window: int) -> float:
 
 # Transcription price estimate (dry-run only): OpenAI-style per-audio-second.
 COST_PER_SECOND = 0.00028
+
+
+def build_candidates(client, catalog, cache_dir, asin=None, describe=lambda _s: None):
+    """Fetch every library book's annotations once and tag it for selection.
+
+    Returns one :class:`Candidate` per library book (filtered to *asin* when given),
+    each carrying its fetched annotations, resolved catalog ``book_id`` (None for an
+    audiobook-only book) and a ``cached`` flag. The annotations are reused by
+    :func:`run`, so no book is fetched from the network twice. *describe* is called
+    with a short status string per book for progress display.
+    """
+    library = client.library()
+    if asin:
+        library = [b for b in library if b.asin == asin]
+    candidates: list[Candidate] = []
+    for book in library:
+        describe(f"Fetching annotations · {book.title}")
+        annotations = client.annotations(book.asin)
+        ref = BookRef(title=book.title, authors=book.authors, amazon=book.asin)
+        candidates.append(
+            Candidate(
+                book=book,
+                annotations=annotations,
+                book_id=catalog.find(ref),
+                cached=book_cache_path(cache_dir, book.asin).exists(),
+            )
+        )
+    return candidates
 
 
 def run(
