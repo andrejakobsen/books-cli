@@ -176,7 +176,37 @@ def _materialize_cover(row: BookRow, note_path: Path) -> None:
         shutil.copy2(src, dest)
 
 
-def render_note(vault: Path, row: BookRow, highlights: list) -> Path:
+# User-owned frontmatter keys that live only in the note (never in the store).
+# Cached before a --refresh delete and restored for books still in the catalog.
+_PRESERVED_KEYS = ("topics", *PRESERVED_EXTRA_KEYS)
+
+
+def _collect_preserved(vault: Path) -> dict[str, dict]:
+    """Map each existing book note's stem -> its user-owned frontmatter keys.
+
+    Reads every ``Books/*.md`` and keeps only :data:`_PRESERVED_KEYS` that are
+    present (``topics`` + the preserved extras). Used before a ``--refresh``
+    delete so surviving books get their hand-curated properties restored. A note
+    with unreadable frontmatter is skipped.
+    """
+    books_dir = vault / BOOKS_DIRNAME
+    cache: dict[str, dict] = {}
+    if not books_dir.is_dir():
+        return cache
+    for note_path in sorted(books_dir.glob("*.md")):
+        try:
+            meta, _ = load_note(note_path)
+        except Exception:  # skip a note whose frontmatter cannot be parsed
+            continue
+        kept = {k: meta[k] for k in _PRESERVED_KEYS if k in meta}
+        if kept:
+            cache[note_path.stem] = kept
+    return cache
+
+
+def render_note(
+    vault: Path, row: BookRow, highlights: list, *, preserved: dict | None = None
+) -> Path:
     """Write/update the flat book note for *row* under ``Books/<book_id>.md``.
 
     Frontmatter is rebuilt authoritatively (topics preserved from the existing
@@ -185,7 +215,8 @@ def render_note(vault: Path, row: BookRow, highlights: list) -> Path:
     """
     note_path = vault / BOOKS_DIRNAME / f"{row.book_id}.md"
     _materialize_cover(row, note_path)
-    existing_meta, existing_body = load_note(note_path)
+    disk_meta, existing_body = load_note(note_path)
+    existing_meta = preserved if preserved is not None else disk_meta
     meta = book_frontmatter(row, note_path, existing_meta, bool(highlights))
     body = render_body(existing_body, row, note_path, highlights).strip("\n")
     front = "---\n" + dump_frontmatter(meta) + "---\n"

@@ -392,3 +392,41 @@ def test_render_creates_author_stubs(tmp_path):
     assert stub.is_file()
     assert "type: author" in stub.read_text(encoding="utf-8")
     assert not (vault / "Topics").exists()  # topics stubs are never created
+
+
+def test_collect_preserved_extracts_user_owned_keys(tmp_path):
+    vault = tmp_path / "vault"
+    books = vault / "Books"
+    books.mkdir(parents=True)
+    (books / "X - A.md").write_text(
+        '---\ntype: book\ntitle: X\ntopics:\n- "[[History]]"\n'
+        "aliases:\n- Alt\ncssclasses:\n- book\n---\n\nManual.\n",
+        encoding="utf-8",
+    )
+    (books / "Plain - B.md").write_text(
+        "---\ntype: book\ntitle: Plain\ntopics: []\n---\n\n", encoding="utf-8"
+    )
+    cache = R._collect_preserved(vault)
+    assert cache["X - A"] == {
+        "topics": ["[[History]]"],
+        "aliases": ["Alt"],
+        "cssclasses": ["book"],
+    }
+    # empty topics list is falsy-but-present: kept as-is
+    assert cache["Plain - B"] == {"topics": []}
+
+
+def test_collect_preserved_empty_when_no_books_dir(tmp_path):
+    assert R._collect_preserved(tmp_path / "vault") == {}
+
+
+def test_render_note_uses_preserved_override(tmp_path):
+    # No note on disk; the preserved override seeds topics/aliases as if an
+    # existing note carried them.
+    vault = tmp_path / "vault"
+    row = store.BookRow(book_id="X - A", title="X", authors=["A"], format="ebook")
+    path = R.render_note(vault, row, [], preserved={"topics": ["[[History]]"], "aliases": ["Alt"]})
+    post = frontmatter.loads(path.read_text(encoding="utf-8"))
+    assert post["topics"] == ["[[History]]"]
+    assert post["aliases"] == ["Alt"]
+    assert post["format"] == "ebook"  # still authoritative from the row
