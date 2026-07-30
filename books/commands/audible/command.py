@@ -30,9 +30,10 @@ import tempfile
 from pathlib import Path
 
 import typer
+from rich.markup import escape
 
 from books.commands.audible.models import Annotation, Chapter
-from books.core import config, store
+from books.core import config, store, ui
 from books.core.highlights import Highlight, parse_markers
 from books.core.matching import BookRef
 
@@ -231,75 +232,81 @@ def run(
         library = [b for b in library if b.asin == asin]
 
     matched = 0
-    for book in library:
-        # Isolate each book: a single failure (an unpublished/undownloadable
-        # title, a license/voucher error, a network hiccup, a bad transcribe)
-        # is counted and skipped so it never aborts the whole run.
-        try:
-            ref = BookRef(title=book.title, authors=book.authors, amazon=book.asin)
-            book_id = catalog.find(ref)
-            if book_id is None:
-                stats["skipped"] += 1
+    with ui.progress("Processing audiobooks", total=len(library)) as prog:
+        for book in library:
+            prog.advance(0)
+            prog.update(0, description=f"Processing {escape(book.title)}")
+            # Isolate each book: a single failure (an unpublished/undownloadable
+            # title, a license/voucher error, a network hiccup, a bad transcribe)
+            # is counted and skipped so it never aborts the whole run.
+            try:
+                ref = BookRef(title=book.title, authors=book.authors, amazon=book.asin)
+                book_id = catalog.find(ref)
+                if book_id is None:
+                    stats["skipped"] += 1
+                    if dry_run:
+                        authors = ", ".join(book.authors) or "?"
+                        anns = client.annotations(book.asin)
+                        secs = _clip_seconds(anns, clip_window)
+                        stats["est_seconds"] += secs
+                        echo(
+                            f"[dry-run] SKIP (no book): {book.title} — {authors} "
+                            f"[asin {book.asin}] — {len(anns)} clip(s), "
+                            f"~{secs / 60:.1f} min, ~${secs * COST_PER_SECOND:.2f}"
+                        )
+                    continue
+                if limit is not None and matched >= limit:
+                    break
+                matched += 1
+
+                annotations = client.annotations(book.asin)
+                if not annotations:
+                    continue
+
+                book_cache = cache.setdefault(book.asin, {"title": book.title, "clips": {}})
+                clips = book_cache.setdefault("clips", {})
+                new = uncached(annotations, clips)
+
                 if dry_run:
-                    authors = ", ".join(book.authors) or "?"
-                    anns = client.annotations(book.asin)
-                    secs = _clip_seconds(anns, clip_window)
+                    secs = _clip_seconds(new, clip_window)
                     stats["est_seconds"] += secs
                     echo(
-                        f"[dry-run] SKIP (no book): {book.title} — {authors} "
-                        f"[asin {book.asin}] — {len(anns)} clip(s), "
-                        f"~{secs / 60:.1f} min, ~${secs * COST_PER_SECOND:.2f}"
+                        f"[dry-run] {book.title}: {len(annotations)} annotations, "
+                        f"{len(new)} new to transcribe — ~{secs / 60:.1f} min, "
+                        f"~${secs * COST_PER_SECOND:.2f}"
                     )
-                continue
-            if limit is not None and matched >= limit:
-                break
-            matched += 1
+                    continue
 
-            annotations = client.annotations(book.asin)
-            if not annotations:
-                continue
+                if new:
+                    chapters = client.chapters(book.asin)
+                    with tempfile.TemporaryDirectory() as td:
+                        tmp = Path(td)
+                        audio = downloader.download(book.asin, tmp)
+                        stats["downloaded"] += 1
+                        for ann in new:
+                            start, end = _clip_bounds(ann, clip_window)
+                            clip_path = cutter.cut(audio, start, end, tmp / f"{ann.id}.wav")
+                            text = transcriber(clip_path)
+                            clips[ann.id] = annotation_to_record(ann, text, chapters)
+                            stats["transcribed"] += 1
+                    save_cache(cache_path, cache)
 
-            book_cache = cache.setdefault(book.asin, {"title": book.title, "clips": {}})
-            clips = book_cache.setdefault("clips", {})
-            new = uncached(annotations, clips)
-
-            if dry_run:
-                secs = _clip_seconds(new, clip_window)
-                stats["est_seconds"] += secs
-                echo(
-                    f"[dry-run] {book.title}: {len(annotations)} annotations, "
-                    f"{len(new)} new to transcribe — ~{secs / 60:.1f} min, "
-                    f"~${secs * COST_PER_SECOND:.2f}"
+                rows = book_highlight_rows(clips)
+                if not rows:
+                    continue
+                store.write_highlights(vault, book_id, "audible", rows)
+                layer[book.asin] = store.BookRow(
+                    title=book.title,
+                    authors=list(book.authors),
+                    amazon=book.asin,
+                    format="audiobook",
                 )
+                stats["books"] += 1
+                stats["entries"] += len(rows)
+            except Exception as exc:  # noqa: BLE001 — continue-on-error per book
+                stats["failed"] += 1
+                echo(f"[skip] {book.title} [asin {book.asin}]: {exc}")
                 continue
-
-            if new:
-                chapters = client.chapters(book.asin)
-                with tempfile.TemporaryDirectory() as td:
-                    tmp = Path(td)
-                    audio = downloader.download(book.asin, tmp)
-                    stats["downloaded"] += 1
-                    for ann in new:
-                        start, end = _clip_bounds(ann, clip_window)
-                        clip_path = cutter.cut(audio, start, end, tmp / f"{ann.id}.wav")
-                        text = transcriber(clip_path)
-                        clips[ann.id] = annotation_to_record(ann, text, chapters)
-                        stats["transcribed"] += 1
-                save_cache(cache_path, cache)
-
-            rows = book_highlight_rows(clips)
-            if not rows:
-                continue
-            store.write_highlights(vault, book_id, "audible", rows)
-            layer[book.asin] = store.BookRow(
-                title=book.title, authors=list(book.authors), amazon=book.asin, format="audiobook"
-            )
-            stats["books"] += 1
-            stats["entries"] += len(rows)
-        except Exception as exc:  # noqa: BLE001 — continue-on-error per book
-            stats["failed"] += 1
-            echo(f"[skip] {book.title} [asin {book.asin}]: {exc}")
-            continue
 
     if not dry_run:
         store.write_layer(vault, "audible", list(layer.values()))
@@ -424,12 +431,12 @@ def audible_command(
         limit=limit,
         asin=asin,
         dry_run=dry_run,
-        echo=typer.echo,
+        echo=ui.info,
     )
 
     if dry_run:
         secs = stats["est_seconds"]
-        typer.echo(
+        ui.info(
             f"Dry run: {stats['skipped']} book(s) skipped — no book match. "
             f"Estimated transcription: ~{secs / 60:.1f} min "
             f"(~${secs * COST_PER_SECOND:.2f} @ ${COST_PER_SECOND:.5f}/sec) "
@@ -439,7 +446,7 @@ def audible_command(
     books_word = "book" if stats["books"] == 1 else "books"
     skip = store.skipped_note(stats["skipped"])
     fail = f", {stats['failed']} failed" if stats.get("failed") else ""
-    typer.echo(
+    ui.info(
         f"Done. {stats['books']} {books_word}{skip}, {stats['entries']} clips, "
         f"{stats['downloaded']} downloaded, {stats['transcribed']} transcribed"
         f"{fail}.\n"
