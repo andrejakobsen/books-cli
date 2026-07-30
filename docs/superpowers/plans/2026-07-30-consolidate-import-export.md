@@ -78,6 +78,32 @@ def test_config_reads_importer_sections(tmp_path):
     assert cfg.covers.limit == 5
 
 
+def test_config_default_importers_default_is_sync_set(tmp_path):
+    cfg = config.load_config(_write(tmp_path, 'vault = "V"\n'))
+    assert cfg.import_.default == config.DEFAULT_IMPORTERS
+
+
+def test_config_reads_default_importers(tmp_path):
+    text = 'vault = "V"\n[import]\ndefault = ["calibre", "covers", "audible"]\n'
+    cfg = config.load_config(_write(tmp_path, text))
+    assert cfg.import_.default == ("calibre", "covers", "audible")
+
+
+def test_config_default_importers_drops_unknown_and_falls_back(tmp_path):
+    # Unknown names are dropped; a list with none valid falls back to the sync-set.
+    text = 'vault = "V"\n[import]\ndefault = ["calibre", "bogus"]\n'
+    cfg = config.load_config(_write(tmp_path, text))
+    assert cfg.import_.default == ("calibre",)
+
+    text2 = 'vault = "V"\n[import]\ndefault = ["nope", 3]\n'
+    cfg2 = config.load_config(_write(tmp_path, text2))
+    assert cfg2.import_.default == config.DEFAULT_IMPORTERS
+
+    text3 = 'vault = "V"\n[import]\ndefault = "calibre"\n'  # wrong type
+    cfg3 = config.load_config(_write(tmp_path, text3))
+    assert cfg3.import_.default == config.DEFAULT_IMPORTERS
+
+
 def test_config_rejects_bad_values_per_key(tmp_path):
     text = (
         'vault = "V"\n'
@@ -102,12 +128,13 @@ def test_default_file_parses_and_has_sections():
 
     data = tomllib.loads(config._DEFAULT_FILE_PARSEABLE)
     assert "calibre" in data and "audible" in data and "covers" in data
+    assert data["import"]["default"] == list(config.DEFAULT_IMPORTERS)
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
 
-Run: `uv run pytest tests/core/test_config.py -k "importer_sections or defaults_when_sections or bad_values or malformed_toml or default_file_parses" -v`
-Expected: FAIL with `AttributeError: ... has no attribute 'calibre'` / `DEFAULT_CALIBRE_LIBRARY` / `_DEFAULT_FILE_PARSEABLE`.
+Run: `uv run pytest tests/core/test_config.py -k "importer_sections or defaults_when_sections or bad_values or malformed_toml or default_file_parses or default_importers" -v`
+Expected: FAIL with `AttributeError: ... has no attribute 'calibre'` / `DEFAULT_CALIBRE_LIBRARY` / `DEFAULT_IMPORTERS` / `_DEFAULT_FILE_PARSEABLE`.
 
 - [ ] **Step 3: Add the dataclasses and defaults**
 
@@ -117,11 +144,20 @@ In `books/core/config.py`, after the existing `DEFAULT_IMPORTS = "Data/Imports"`
 DEFAULT_CALIBRE_LIBRARY = "~/Calibre Library"
 _TRANSCRIBERS = ("local", "openai", "google")
 _SELECT_MODES = ("interactive", "all")
+# Every importer name (validates [import].default). Kept in sync with import_cmd.
+VALID_IMPORTERS = ("calibre", "goodreads", "kobo", "highlighted", "readwise", "audible", "covers")
+# The importers that run when `books import` gets no flags (out-of-the-box default).
+DEFAULT_IMPORTERS = ("calibre", "goodreads", "kobo", "highlighted", "readwise")
 ```
 
 Add these dataclasses immediately before the existing `@dataclass class Config:` block:
 
 ```python
+@dataclass
+class ImportConfig:
+    default: tuple[str, ...] = DEFAULT_IMPORTERS  # importers run when no flags given
+
+
 @dataclass
 class CalibreConfig:
     library: str = DEFAULT_CALIBRE_LIBRARY
@@ -156,6 +192,7 @@ class Config:
     obsidian_path: str = DEFAULT_OBSIDIAN_PATH
     vault: str = DEFAULT_VAULT
     imports: str = DEFAULT_IMPORTS
+    import_: ImportConfig = field(default_factory=ImportConfig)
     calibre: CalibreConfig = field(default_factory=CalibreConfig)
     kobo: KoboConfig = field(default_factory=KoboConfig)
     audible: AudibleConfig = field(default_factory=AudibleConfig)
@@ -204,13 +241,26 @@ def _choice_or(t: dict, key: str, choices: tuple[str, ...], default: str) -> str
     return v if isinstance(v, str) and v in choices else default
 
 
+def _importer_list_or(t: dict, key: str, default: tuple[str, ...]) -> tuple[str, ...]:
+    """Parse a list of importer names, dropping unknowns; fall back when empty."""
+    v = t.get(key)
+    if not isinstance(v, list):
+        return default
+    names = tuple(x for x in v if isinstance(x, str) and x in VALID_IMPORTERS)
+    return names or default
+
+
 def _parse_sections(data: dict) -> dict:
-    """Build the four importer sub-configs from parsed TOML *data*."""
+    """Build the importer sub-configs from parsed TOML *data*."""
+    imp = _table(data, "import")
     cal = _table(data, "calibre")
     kob = _table(data, "kobo")
     aud = _table(data, "audible")
     cov = _table(data, "covers")
     return {
+        "import_": ImportConfig(
+            default=_importer_list_or(imp, "default", DEFAULT_IMPORTERS)
+        ),
         "calibre": CalibreConfig(
             library=_nonempty_str_or(cal, "library", DEFAULT_CALIBRE_LIBRARY)
         ),
@@ -255,6 +305,10 @@ _DEFAULT_FILE = (
     "# Folder (inside the vault) holding raw import sources.\n"
     f'imports = "{DEFAULT_IMPORTS}"\n'
     "\n"
+    "# Importers run by `books import` when given no flags (add covers/audible to include them).\n"
+    "# [import]\n"
+    f"# default = {list(DEFAULT_IMPORTERS)!r}\n"
+    "\n"
     "# Per-importer settings (uncomment to override the defaults shown).\n"
     "# [calibre]\n"
     f'# library = "{DEFAULT_CALIBRE_LIBRARY}"\n'
@@ -273,6 +327,8 @@ _DEFAULT_FILE_PARSEABLE = (
     f'obsidian_path = "{DEFAULT_OBSIDIAN_PATH}"\n'
     f'vault = "{DEFAULT_VAULT}"\n'
     f'imports = "{DEFAULT_IMPORTS}"\n'
+    "[import]\n"
+    f"default = {list(DEFAULT_IMPORTERS)!r}\n"
     "[calibre]\n"
     f'library = "{DEFAULT_CALIBRE_LIBRARY}"\n'
     "[kobo]\n"
@@ -604,8 +660,8 @@ from books.commands.audible import command as audible_cmd
 from books.commands.covers import command as covers_cmd
 from books.core import config, store, ui
 
-# The importers run with no flags.
-SYNC_SET = ("calibre", "goodreads", "kobo", "highlighted", "readwise")
+# The out-of-the-box importers run with no flags (overridable via [import].default).
+SYNC_SET = config.DEFAULT_IMPORTERS
 # Importers that resolve against Data/books.csv (need a current catalog first).
 _CONSUMERS = ("audible", "covers", "kobo", "highlighted", "readwise")
 # Importers that write a Data/Sources/<name>.csv layer after the phase-A merge.
@@ -928,10 +984,10 @@ def run_import(
     return results
 
 
-def _selection_from_flags(flags: dict[str, bool]) -> set[str]:
-    """Chosen importers, or the sync-set when no flag is set."""
+def _selection_from_flags(flags: dict[str, bool], default: set[str]) -> set[str]:
+    """Chosen importers, or the configured *default* set when no flag is set."""
     chosen = {name for name, on in flags.items() if on}
-    return chosen or set(SYNC_SET)
+    return chosen or set(default)
 
 
 def import_command(
@@ -963,11 +1019,13 @@ def import_command(
 ) -> None:
     """Ingest raw sources into the CSV store.
 
-    With no flag the sync-set runs (calibre, goodreads, kobo, highlighted,
-    readwise); flags select an exact subset. `--audible`/`--covers` run only when
-    named. `merge` runs automatically. Rendering notes is a separate command
-    (`books export`).
+    With no flag the configured default set runs (out of the box: calibre,
+    goodreads, kobo, highlighted, readwise — set `[import].default` in your
+    config to change it); flags select an exact subset. `--audible`/`--covers`
+    run only when named or added to the default. `merge` runs automatically.
+    Rendering notes is a separate command (`books export`).
     """
+    cfg = config.load_config()
     selection = _selection_from_flags(
         {
             "calibre": calibre_,
@@ -977,7 +1035,8 @@ def import_command(
             "readwise": readwise_,
             "audible": audible_,
             "covers": covers_,
-        }
+        },
+        default=set(cfg.import_.default),
     )
     vault = config.resolve_vault(output)
     run_import(vault, selection=selection, dry_run=dry_run)
@@ -1075,9 +1134,12 @@ def test_enricher_gets_merge_before_and_after():
     assert _names(imp.build_steps({"covers"})) == ["merge", "covers", "merge"]
 
 
-def test_selection_from_flags_defaults_to_sync_set():
-    assert imp._selection_from_flags({"calibre": False, "kobo": False}) == set(imp.SYNC_SET)
-    assert imp._selection_from_flags({"calibre": True, "kobo": True}) == {"calibre", "kobo"}
+def test_selection_from_flags_uses_default_when_empty():
+    default = {"calibre", "covers"}
+    assert imp._selection_from_flags({"calibre": False}, default) == default
+    assert imp._selection_from_flags(
+        {"calibre": True, "kobo": True}, default
+    ) == {"calibre", "kobo"}
 
 
 # --- orchestration ----------------------------------------------------------
@@ -1347,9 +1409,11 @@ Replace the eleven `- books/commands/<x>.py → <x>` bullets with three bullets 
 
 ```markdown
 - `books/commands/import_cmd.py` → `import` — the single ingest command. With no
-  flags it runs the sync-set (`calibre`, `goodreads`, `kobo`, `highlighted`,
-  `readwise`); importer flags (`--calibre` … `--readwise`, plus opt-in
-  `--audible`/`--covers`) select an exact subset. `merge` is injected
+  flags it runs the configured default set (out of the box the sync-set:
+  `calibre`, `goodreads`, `kobo`, `highlighted`, `readwise`; change it via
+  `[import].default` in the config, e.g. to add `covers`/`audible`); importer
+  flags (`--calibre` … `--readwise`, plus opt-in `--audible`/`--covers`) select
+  an exact subset. `merge` is injected
   automatically (before catalog consumers, after layer writers). Each importer
   detects its own source and is skipped/reported when absent; a failing step
   never stops the others. Reads per-importer settings from the `[calibre]`,
@@ -1375,6 +1439,9 @@ Replace the eleven `- books/commands/<x>.py → <x>` bullets with three bullets 
 In the "Configuration" section of `CLAUDE.md`, add a sentence after the `imports` paragraph documenting the new sections:
 
 ```markdown
+The `[import].default` list names the importers `books import` runs when given no
+flags (default: the sync-set; add `"covers"`/`"audible"` to include them). Unknown
+names are dropped and an empty/invalid list falls back to the sync-set.
 Per-importer settings live in optional `[calibre]`, `[kobo]`, `[audible]`, and
 `[covers]` config sections: `[calibre].library` (default `~/Calibre Library`),
 `[kobo].db` (default: auto-detect a mounted device / the imports folder),
@@ -1484,7 +1551,7 @@ Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>"
 
 - **Spec coverage:**
   - Command surface (`import`/`export`/`reset`, others removed) → Tasks 2, 4, 5.
-  - No-flag = sync-set; flags = exact subset; audible/covers opt-in → Task 4 (`_selection_from_flags`, `build_steps`, tests).
+  - No-flag = configurable default set (out-of-box sync-set); flags = exact subset; audible/covers opt-in → Task 1 (`ImportConfig`/`[import].default` + tests) + Task 4 (`_selection_from_flags` takes the config default, `build_steps`, tests).
   - Automatic merge injection (before consumers / after writers) → Task 4 (`build_steps` + tests for each selection shape).
   - `render` → `export` rename, behavior unchanged → Task 2.
   - Per-importer settings in `config.toml` → Task 1 (dataclasses + parsing + default file) + Task 3 (audible/covers read cfg) + Task 4 (calibre/kobo runners read cfg).

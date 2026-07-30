@@ -39,9 +39,12 @@ Selection flags (one per importer): `--calibre`, `--goodreads`, `--kobo`,
 
 Semantics:
 
-- **No selection flag** → run the *sync-set*: `calibre`, `goodreads`, `kobo`,
-  `highlighted`, `readwise`. (Same set `sync` runs today; `audible`/`covers`
-  excluded because they need cloud auth / network and interactive selection.)
+- **No selection flag** → run the *configured default set*. Out of the box this
+  is the sync-set: `calibre`, `goodreads`, `kobo`, `highlighted`, `readwise`
+  (same set `sync` runs today; `audible`/`covers` excluded because they need
+  cloud auth / network and interactive selection). The default set is
+  configurable via `[import].default` in `config.toml`, so a user who wants
+  covers or audible in every no-flag run can add them there.
 - **One or more flags** → run exactly those importers, nothing else. E.g.
   `books import --calibre --kobo` runs just those two; `books import --audible`
   runs just audible.
@@ -99,6 +102,11 @@ obsidian_path = "~/Library/Mobile Documents/com~apple~CloudDocs/Obsidian"
 vault = "History"
 imports = "Data/Imports"
 
+[import]
+# Importers that run when `books import` is given no flags.
+# Defaults to the sync-set; add "covers"/"audible" to include them by default.
+default = ["calibre", "goodreads", "kobo", "highlighted", "readwise"]
+
 [calibre]
 library = "~/Calibre Library"
 
@@ -116,9 +124,11 @@ limit = 0               # 0 = no limit
 
 Design of the config layer:
 
-- `config.py` gains one small frozen dataclass per importer section
-  (`CalibreConfig`, `KoboConfig`, `AudibleConfig`, `CoversConfig`), each with
-  built-in defaults matching today's CLI defaults.
+- `config.py` gains one small dataclass per importer section (`CalibreConfig`,
+  `KoboConfig`, `AudibleConfig`, `CoversConfig`) plus an `ImportConfig` holding
+  the `[import].default` list, each with built-in defaults matching today's CLI
+  defaults. `ImportConfig.default` falls back to the sync-set and drops any
+  unknown importer name.
 - The main `Config` dataclass gains fields holding those sub-configs.
 - `load_config` parses each `[section]` table defensively (same per-key
   fallback used for the top-level keys): a missing section, missing key, or wrong
