@@ -579,3 +579,45 @@ def test_run_asin_preserves_other_audible_layer_rows(tmp_path):
 
     asins = sorted(r.amazon for r in store.read_layer(out, "audible"))
     assert asins == ["B0PEACE", "B0STALIN"]  # prior row preserved + new one added
+
+
+class RecordingStep:
+    def __init__(self):
+        self.statuses = []
+        self.advances = 0
+        self.total = None
+
+    def status(self, text):
+        self.statuses.append(text)
+
+    def advance(self, n=1):
+        self.advances += n
+
+
+def test_run_reports_per_clip_progress(monkeypatch, tmp_path):
+    from contextlib import contextmanager
+
+    out, book, anns = _catalog_and_library(tmp_path)
+    rec = RecordingStep()
+
+    @contextmanager
+    def fake_nested(description, total):
+        rec.total = total
+        yield rec
+
+    monkeypatch.setattr(ao.ui, "nested_progress", fake_nested)
+
+    ao.run(
+        out,
+        client=FakeClient([book], anns),
+        downloader=FakeDownloader(),
+        cutter=FakeCutter(),
+        transcriber=_fake_transcriber,
+        cache_path=out / "c.json",
+        clip_window=30,
+    )
+
+    assert rec.total == 1  # one matched book
+    assert rec.advances == 1  # advanced once for the book
+    assert any("downloading" in s for s in rec.statuses)
+    assert any("transcribing clip 1/1" in s for s in rec.statuses)
