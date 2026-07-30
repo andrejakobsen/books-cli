@@ -3,8 +3,9 @@
 
 Removes ``Data/books.csv`` and the ``Data/Highlights/`` folder (the only store
 that accumulates orphaned per-``book_id`` files). Source layers under
-``Data/Sources/`` and the notes are kept. Run ``sync`` afterward (plus the manual
-``audible``/``covers`` steps) to rebuild.
+``Data/Sources/`` and the notes are kept. Run ``books import`` then
+``books export`` afterward (plus the opt-in ``import --audible``/``--covers``
+steps) to rebuild.
 """
 
 from __future__ import annotations
@@ -87,7 +88,10 @@ def reset_command(
         removed.append("books.csv")
     if result["highlight_files"]:
         removed.append(f"{result['highlight_files']} highlight file(s)")
-    ui.success(f"Reset: removed {' and '.join(removed)}. Run `books sync` to rebuild.")
+    ui.success(
+        f"Reset: removed {' and '.join(removed)}. "
+        f"Run `books import` then `books export` to rebuild."
+    )
 
 
 def register(app: typer.Typer) -> None:

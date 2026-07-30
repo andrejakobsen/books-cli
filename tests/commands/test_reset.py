@@ -36,7 +36,7 @@ def test_reset_yes_deletes(tmp_path):
     flat = " ".join(result.output.split())
     assert "removed books.csv and 1 highlight file(s)" in flat
     assert "Run" in flat
-    assert "sync" in flat
+    assert "import" in flat
 
 
 def test_reset_non_tty_without_yes_errors(tmp_path):
