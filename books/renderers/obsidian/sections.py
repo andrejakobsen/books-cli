@@ -23,7 +23,9 @@ def render_marked_section(note_text: str, heading: str, marker: str, content: st
     appended. Idempotent for a given *content*.
     """
     start, end = _marker_pair(marker)
-    block = f"{start}\n{content.rstrip(chr(10))}\n{end}"
+    # A blank line before the end marker keeps a trailing ``^anchor`` block id on
+    # the last highlight from rendering as literal text in Obsidian.
+    block = f"{start}\n{content.rstrip(chr(10))}\n\n{end}"
     pattern = re.compile(rf"{re.escape(start)}.*?{re.escape(end)}", re.DOTALL)
     if pattern.search(note_text):
         return pattern.sub(lambda _m: block, note_text)
