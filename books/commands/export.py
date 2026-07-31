@@ -72,7 +72,12 @@ def export_command(
         )
     vault.mkdir(parents=True, exist_ok=True)
     cfg = config.load_config()
-    stats = renderer.render(vault, refresh=refresh, timezone=cfg.export.timezone)
+    stats = renderer.render(
+        vault,
+        refresh=refresh,
+        timezone=cfg.export.timezone,
+        highlights_template=cfg.export.obsidian.highlights_template,
+    )
     suffix = f" ({stats['failed']} failed)" if stats.get("failed") else ""
     ui.info(
         f"Done. {stats['notes']} notes, {stats['highlights']} highlights, "

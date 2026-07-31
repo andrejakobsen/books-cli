@@ -26,5 +26,10 @@ class Renderer(Protocol):
     name: str
 
     def render(
-        self, vault: Path, *, refresh: bool = False, timezone: str = DEFAULT_TIMEZONE
+        self,
+        vault: Path,
+        *,
+        refresh: bool = False,
+        timezone: str = DEFAULT_TIMEZONE,
+        highlights_template: str = "",
     ) -> dict: ...

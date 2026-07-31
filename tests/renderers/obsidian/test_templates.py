@@ -158,3 +158,44 @@ def test_scaffold_tolerates_readonly(monkeypatch, tmp_path):
     blocker.write_text("")  # a FILE where a dir is expected -> mkdir raises
     monkeypatch.setattr(T.config, "templates_dir", lambda: blocker)
     T.scaffold_templates()  # must not raise
+
+
+def _seed_store(vault):
+    """Create a minimal books.csv + one highlight so render() has work to do."""
+    from books.core import store
+
+    vault.mkdir(parents=True, exist_ok=True)
+    row = store.BookRow(book_id="Book - Author", title="Book", authors=["Author"])
+    store.write_books_csv(vault, [row])
+    h = store.HighlightRow(source="kobo", text="hello world", location="4", location_kind="page")
+    # write_highlights(vault, book_id, source, rows)
+    store.write_highlights(vault, "Book - Author", "kobo", [h])
+    return row
+
+
+def test_render_uses_custom_template_from_config_path(tmp_path, monkeypatch):
+    from books.renderers.obsidian import note
+
+    vault = tmp_path / "V"
+    _seed_store(vault)
+    custom = tmp_path / "custom.jinja"
+    custom.write_text("CUSTOM {{ h.text }} ^{{ h.anchor }}")
+    # keep scaffold from touching the real config dir
+    monkeypatch.setattr(note, "scaffold_templates", lambda: None)
+    note.render(vault, highlights_template=str(custom))
+    text = (vault / "Books" / "Book - Author.md").read_text()
+    assert "CUSTOM hello world" in text
+    assert "> [!quote]" not in text
+
+
+def test_obsidian_renderer_runs_scaffold(tmp_path, monkeypatch):
+    from books.renderers.obsidian import note
+
+    vault = tmp_path / "V"
+    _seed_store(vault)
+    called = {"n": 0}
+    monkeypatch.setattr(
+        note, "scaffold_templates", lambda: called.__setitem__("n", called["n"] + 1)
+    )
+    note.ObsidianRenderer().render(vault)
+    assert called["n"] == 1

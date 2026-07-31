@@ -37,6 +37,7 @@ from books.renderers.obsidian.sections import (
     ensure_top_embed,
     render_marked_section,
 )
+from books.renderers.obsidian.templates import resolve_template, scaffold_templates
 
 
 def compose_review(review: str, private_notes: str) -> str:
@@ -141,6 +142,7 @@ def render_body(
     note_path: Path,
     highlights: list,
     timezone: str = DEFAULT_TIMEZONE,
+    template=None,
 ) -> str:
     """Return the note body: cover embed, write-once ``## Review``, ``## Highlights``.
 
@@ -156,7 +158,9 @@ def render_body(
     if review:
         body = ensure_section(body, "Review", review + "\n")
     if highlights:
-        rendered = render_highlights([row_to_highlight(h) for h in highlights], timezone=timezone)
+        rendered = render_highlights(
+            [row_to_highlight(h) for h in highlights], timezone=timezone, template=template
+        )
         body = render_marked_section(body, "Highlights", "highlights", rendered)
     return body
 
@@ -226,6 +230,7 @@ def render_note(
     *,
     preserved: dict | None = None,
     timezone: str = DEFAULT_TIMEZONE,
+    template=None,
 ) -> Path:
     """Write/update the flat book note for *row* under ``Books/<book_id>.md``.
 
@@ -240,7 +245,9 @@ def render_note(
     disk_meta, existing_body = load_note(note_path)
     existing_meta = preserved if preserved is not None else disk_meta
     meta = book_frontmatter(row, note_path, existing_meta, bool(highlights))
-    body = render_body(existing_body, row, note_path, highlights, timezone=timezone).strip("\n")
+    body = render_body(
+        existing_body, row, note_path, highlights, timezone=timezone, template=template
+    ).strip("\n")
     front = "---\n" + dump_frontmatter(meta) + "---\n"
     content = f"{front}\n{body}\n" if body else f"{front}\n"
     note_path.parent.mkdir(parents=True, exist_ok=True)
@@ -248,7 +255,13 @@ def render_note(
     return note_path
 
 
-def render(vault: Path, *, refresh: bool = False, timezone: str = DEFAULT_TIMEZONE) -> dict:
+def render(
+    vault: Path,
+    *,
+    refresh: bool = False,
+    timezone: str = DEFAULT_TIMEZONE,
+    highlights_template: str = "",
+) -> dict:
     """Render every book in ``books.csv`` (+ its highlights) into ``Books/``.
 
     Also creates an ``Authors/<name>.md`` stub for each distinct author (the
@@ -265,6 +278,7 @@ def render(vault: Path, *, refresh: bool = False, timezone: str = DEFAULT_TIMEZO
     """
     stats = {"notes": 0, "highlights": 0, "reviews": 0, "failed": 0, "authors": 0}
     cache = _collect_preserved(vault) if refresh else {}
+    template = resolve_template(highlights_template)
     if refresh:
         _clear_note_dirs(vault)
     authors_dir = vault / AUTHORS_DIRNAME
@@ -279,7 +293,12 @@ def render(vault: Path, *, refresh: bool = False, timezone: str = DEFAULT_TIMEZO
                 highlights = store.read_highlights(vault, row.book_id)
                 try:
                     render_note(
-                        vault, row, highlights, preserved=cache.get(row.book_id), timezone=timezone
+                        vault,
+                        row,
+                        highlights,
+                        preserved=cache.get(row.book_id),
+                        timezone=timezone,
+                        template=template,
                     )
                 except Exception as exc:  # continue-on-error per book
                     stats["failed"] += 1
@@ -305,9 +324,17 @@ class ObsidianRenderer:
     name = "obsidian"
 
     def render(
-        self, vault: Path, *, refresh: bool = False, timezone: str = DEFAULT_TIMEZONE
+        self,
+        vault: Path,
+        *,
+        refresh: bool = False,
+        timezone: str = DEFAULT_TIMEZONE,
+        highlights_template: str = "",
     ) -> dict:
-        return render(vault, refresh=refresh, timezone=timezone)
+        scaffold_templates()
+        return render(
+            vault, refresh=refresh, timezone=timezone, highlights_template=highlights_template
+        )
 
 
 # Re-export the schema constant expected by callers/tests via this module.
