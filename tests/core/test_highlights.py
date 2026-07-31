@@ -35,6 +35,10 @@ def test_normalize_date_unparseable_returns_none():
     assert normalize_date("not a date") is None
 
 
+def test_normalize_date_is_idempotent():
+    assert normalize_date("2024-03-15T14:30:00Z") == "2024-03-15T14:30:00Z"
+
+
 def test_sanitize_tag_whitespace_to_hyphen():
     assert hl.sanitize_tag("Cold War") == "cold-war"
 
