@@ -367,3 +367,51 @@ def test_render_highlights_multi_source_keeps_unsourced_highlights():
     assert "orphan hl" in out
     # it renders in the headerless leading group, before the first ### header
     assert out.index("orphan hl") < out.index("### Kobo")
+
+
+def test_render_date_line_shows_local_time():
+    hs = [Highlight(text="A", chapter_index=1, progress=0.1, date="2024-07-15T12:30:00Z")]
+    out = render_highlights(hs, timezone="Europe/Oslo")
+    # July -> Oslo UTC+2 -> 14:30
+    assert "> [[2024-07-15]] · 14:30" in out
+
+
+def test_render_date_line_day_shift():
+    hs = [Highlight(text="A", chapter_index=1, progress=0.1, date="2024-01-15T23:30:00Z")]
+    out = render_highlights(hs, timezone="Europe/Oslo")
+    assert "> [[2024-01-16]] · 00:30" in out
+
+
+def test_render_no_date_emits_no_line():
+    hs = [Highlight(text="A", chapter_index=1, progress=0.1)]
+    out = render_highlights(hs)
+    assert "[[" not in out
+
+
+def test_render_all_midnight_source_is_link_only():
+    hs = [
+        Highlight(text="A", page="10", date="2024-03-15T00:00:00Z", source="kindle"),
+        Highlight(text="B", page="20", date="2024-03-16T00:00:00Z", source="kindle"),
+    ]
+    out = render_highlights(hs, timezone="Europe/Oslo")
+    assert "> [[2024-03-15]]" in out
+    assert "> [[2024-03-16]]" in out
+    assert "·" not in out.split("[[2024-03-15]]")[1].split("\n")[0]  # no time on that line
+
+
+def test_render_real_midnight_shown_when_group_has_other_times():
+    hs = [
+        Highlight(text="A", page="10", date="2024-03-15T00:00:00Z", source="readwise"),
+        Highlight(text="B", page="20", date="2024-03-15T12:00:00Z", source="readwise"),
+    ]
+    out = render_highlights(hs, timezone="Europe/Oslo")
+    # midnight UTC -> Oslo 01:00 (winter, UTC+1); real time is shown
+    assert "> [[2024-03-15]] · 01:00" in out
+    assert "> [[2024-03-15]] · 13:00" in out
+
+
+def test_render_invalid_timezone_falls_back(capsys):
+    hs = [Highlight(text="A", chapter_index=1, progress=0.1, date="2024-07-15T12:30:00Z")]
+    out = render_highlights(hs, timezone="Not/AZone")
+    # falls back to Europe/Oslo -> 14:30
+    assert "> [[2024-07-15]] · 14:30" in out
