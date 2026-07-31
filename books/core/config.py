@@ -22,9 +22,18 @@ DEFAULT_CALIBRE_LIBRARY = "~/Calibre Library"
 _TRANSCRIBERS = ("local", "openai", "google")
 _SELECT_MODES = ("interactive", "all")
 # Every importer name (validates [import].default). Kept in sync with import_cmd.
-VALID_IMPORTERS = ("calibre", "goodreads", "kobo", "highlighted", "readwise", "audible", "covers")
+VALID_IMPORTERS = (
+    "calibre",
+    "goodreads",
+    "kobo",
+    "highlighted",
+    "readwise",
+    "audible",
+    "covers",
+    "kindle",
+)
 # The importers that run when `books import` gets no flags (out-of-the-box default).
-DEFAULT_IMPORTERS = ("calibre", "goodreads", "kobo", "highlighted", "readwise")
+DEFAULT_IMPORTERS = ("calibre", "goodreads", "kobo", "highlighted", "readwise", "kindle")
 
 _DEFAULT_FILE = (
     "# books configuration\n"
@@ -48,6 +57,8 @@ _DEFAULT_FILE = (
     "# [covers]\n"
     "# interactive = false\n"
     "# limit = 0                # 0 = no limit\n"
+    "# [kindle]\n"
+    '# clippings = "/path/to/My Clippings.txt"  # default: mounted Kindle / imports folder\n'
 )
 
 # A fully-uncommented copy used only by tests to assert the sections parse.
@@ -67,6 +78,8 @@ _DEFAULT_FILE_PARSEABLE = (
     "[covers]\n"
     "interactive = false\n"
     "limit = 0\n"
+    "[kindle]\n"
+    'clippings = ""\n'
 )
 
 
@@ -98,6 +111,11 @@ class CoversConfig:
 
 
 @dataclass
+class KindleConfig:
+    clippings: str = ""  # empty = auto-detect (mounted device / canonical folder)
+
+
+@dataclass
 class Config:
     """Resolved config values (built-in defaults when unset)."""
 
@@ -109,6 +127,7 @@ class Config:
     kobo: KoboConfig = field(default_factory=KoboConfig)
     audible: AudibleConfig = field(default_factory=AudibleConfig)
     covers: CoversConfig = field(default_factory=CoversConfig)
+    kindle: KindleConfig = field(default_factory=KindleConfig)
 
 
 def config_path() -> Path:
@@ -165,6 +184,7 @@ def _parse_sections(data: dict) -> dict:
     kob = _table(data, "kobo")
     aud = _table(data, "audible")
     cov = _table(data, "covers")
+    kin = _table(data, "kindle")
     return {
         "import_": ImportConfig(default=_importer_list_or(imp, "default", DEFAULT_IMPORTERS)),
         "calibre": CalibreConfig(library=_nonempty_str_or(cal, "library", DEFAULT_CALIBRE_LIBRARY)),
@@ -177,6 +197,7 @@ def _parse_sections(data: dict) -> dict:
             interactive=_bool_or(cov, "interactive", False),
             limit=_int_or(cov, "limit", 0),
         ),
+        "kindle": KindleConfig(clippings=_str_or(kin, "clippings", "")),
     }
 
 

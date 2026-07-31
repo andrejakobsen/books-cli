@@ -332,3 +332,31 @@ def test_default_file_parses_and_has_sections():
     data = tomllib.loads(config._DEFAULT_FILE_PARSEABLE)
     assert "calibre" in data and "audible" in data and "covers" in data
     assert data["import"]["default"] == list(config.DEFAULT_IMPORTERS)
+
+
+def test_kindle_in_default_and_valid_importers():
+    assert "kindle" in config.DEFAULT_IMPORTERS
+    assert "kindle" in config.VALID_IMPORTERS
+
+
+def test_kindle_config_parsed(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        'obsidian_path = "/tmp/o"\nvault = "V"\n[kindle]\nclippings = "/tmp/My Clippings.txt"\n'
+    )
+    cfg = config.load_config(cfg_file)
+    assert cfg.kindle.clippings == "/tmp/My Clippings.txt"
+
+
+def test_kindle_config_defaults_empty(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('vault = "V"\n')
+    cfg = config.load_config(cfg_file)
+    assert cfg.kindle.clippings == ""
+
+
+def test_parseable_default_file_includes_kindle():
+    import tomllib
+
+    data = tomllib.loads(config._DEFAULT_FILE_PARSEABLE)
+    assert "kindle" in data
