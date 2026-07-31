@@ -415,3 +415,18 @@ def test_render_invalid_timezone_falls_back(capsys):
     out = render_highlights(hs, timezone="Not/AZone")
     # falls back to Europe/Oslo -> 14:30
     assert "> [[2024-07-15]] · 14:30" in out
+
+
+def test_render_mixed_sources_suppress_per_group():
+    hs = [
+        Highlight(text="K", page="10", date="2024-03-15T00:00:00Z", source="kindle"),
+        Highlight(text="R", page="20", date="2024-03-15T12:00:00Z", source="readwise"),
+    ]
+    out = render_highlights(hs, timezone="Europe/Oslo")
+    # kindle group is all-midnight -> link only (no time)
+    kindle_part = out.split("### Kindle")[1].split("### Readwise")[0]
+    assert "[[2024-03-15]]" in kindle_part
+    assert "·" not in kindle_part.split("[[2024-03-15]]")[1].split("\n")[0]
+    # readwise group has a real time -> show it (12:00Z -> Oslo 13:00 winter)
+    readwise_part = out.split("### Readwise")[1]
+    assert "[[2024-03-15]] · 13:00" in readwise_part
