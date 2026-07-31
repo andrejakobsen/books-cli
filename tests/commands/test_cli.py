@@ -18,7 +18,7 @@ runner = CliRunner()
 def test_all_capabilities_registered():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
-    for command in ("import", "export", "reset"):
+    for command in ("import", "export", "reset", "config"):
         assert command in result.output
 
 

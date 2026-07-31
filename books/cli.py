@@ -14,6 +14,7 @@ from __future__ import annotations
 import typer
 
 from books.commands import (
+    config_cmd,
     export,
     import_cmd,
     reset,
@@ -21,6 +22,7 @@ from books.commands import (
 
 # Modules that expose a register(app) function. Add new capabilities here.
 CAPABILITIES = (
+    config_cmd,
     export,
     import_cmd,
     reset,
