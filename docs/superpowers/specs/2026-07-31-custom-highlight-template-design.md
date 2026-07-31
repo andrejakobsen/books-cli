@@ -38,10 +38,49 @@ New key **`[export].highlights_template`** in `~/.config/books/config.toml`:
 - Parsed like the other export keys: added to `ExportConfig`
   (`highlights_template: str = ""`) and read in `_parse_sections` with the
   same tolerant string handling. The commented default file gains a line
-  documenting the key.
+  documenting the key and pointing at `~/.config/books/templates/`.
 
 `export_command` already loads `cfg`; it passes
 `cfg.export.highlights_template` into the renderer alongside `timezone`.
+
+## Example templates in the config dir
+
+On first run — the same moment `config.toml` is auto-created — the packaged
+example templates are copied into **`~/.config/books/templates/`** (respecting
+`$XDG_CONFIG_HOME`, next to `config.toml`). This is a **create-missing-only**
+scaffold: a user's edited file is never overwritten; only absent files are
+written (so the set self-heals if a file is deleted, but hand edits survive).
+This gives users a browsable, tweakable starting set without a separate command.
+
+The scaffold lives in `config.py` (e.g. a `scaffold_templates()` helper called
+from `load_config` right after the config-file auto-create, guarded so it runs
+create-missing-only). Failures are swallowed like the config auto-create
+(`OSError` → skip), so a read-only config dir never crashes a command.
+
+**Where the templates live vs. where the backup lives.** All templates —
+including the default `callout.md.jinja` — live in `~/.config/books/templates/`
+and are the files actually read at render time. The packaged copies inside the
+`books` package are a **backup only**: they seed the scaffold (create-missing)
+and are the last-resort fallback when the corresponding `.config` file is
+missing or fails to load. Normal operation reads from `.config`; the package is
+never the primary source.
+
+The five shipped examples (all consume the same `h` context + `quote`/`tag`
+filters; Python still owns grouping/headers/anchors regardless of choice):
+
+1. **`callout.md.jinja`** — the default `> [!quote]+` callout, byte-for-byte
+   identical to current output (locator + links on the title line, note nested
+   as `>>`, tags line, date line, anchor). This is also the packaged renderer
+   default.
+2. **`callout-plain-note.md.jinja`** — the same `[!quote]` callout for the
+   quote, but the author's note rendered as plain *italic* text right below the
+   callout instead of nested inside it.
+3. **`blockquote.md.jinja`** — a plain Markdown `>` blockquote (no `[!quote]`
+   type / fold), note as plain text below, minimal metadata.
+4. **`plain.md.jinja`** — the highlight as plain text (no blockquote), a small
+   `— label · [[date]]` attribution line under it, note in italics.
+5. **`minimal.md.jinja`** — only the highlight text and the `^anchor`; no
+   locator, date, tags, or note. The barest option.
 
 ## Engine and dependency
 
@@ -77,15 +116,27 @@ Two Jinja **filters** are registered on the environment:
 The template output is used verbatim as one block (trailing whitespace
 trimmed) and slotted where `_callout`'s return value goes today.
 
-## Built-in default template
+## Template resolution order
 
-Shipped as a packaged file: `books/renderers/obsidian/templates/callout.md.jinja`,
-loaded at runtime (via `importlib.resources` / package path). It doubles as a
-copy-paste starting point a user can point `highlights_template` at.
+When `render_highlights` needs a template it resolves in this order:
+
+1. **`[export].highlights_template`** if set — the explicit user path.
+2. **`~/.config/books/templates/callout.md.jinja`** — the scaffolded default,
+   the normal source.
+3. **Packaged backup** `books/renderers/obsidian/templates/callout.md.jinja` —
+   last resort, used only when the `.config` file is missing or fails to load.
+
+At each step a load/compile failure warns (`ui.warn`) and falls through to the
+next step, so a broken custom template falls back to the scaffolded default,
+and a deleted/broken scaffolded default falls back to the packaged backup. The
+packaged backup is authored to always compile.
+
+## Default template body
 
 **Hard requirement:** the default template's output equals the current
 `_callout` output **byte-for-byte**. The existing tests pin exact strings, so
-the default is authored to match them. The default template body:
+the default is authored to match them. The default template body (shipped both
+as the scaffolded `callout.md.jinja` and the packaged backup):
 
 ```jinja
 > [!quote]+{% if h.label or h.links %} {{ [h.label, h.links | join(', ')] | select | join(' · ') }}{% endif %}
@@ -127,9 +178,11 @@ through (parallel to the existing `timezone` threading).
 ## Error handling
 
 Mirrors the existing timezone fallback (`_resolve_zone`: unknown zone warns and
-falls back to the default). A missing file, a Jinja compile error, or a render
-error → `ui.warn(...)` naming the problem, then fall back to the built-in
-default template. A broken custom template never aborts the export.
+falls back to the default). At each step of the resolution order above, a
+missing file, a Jinja compile error, or a render error → `ui.warn(...)` naming
+the problem, then fall through to the next step. The packaged backup is the
+terminal fallback and is authored to always compile, so the export never
+aborts on a template problem.
 
 Template compilation/resolution happens once per `render_highlights` call, so a
 bad template warns once, not per highlight.
@@ -141,21 +194,31 @@ bad template warns once, not per highlight.
    including notes, tags, links, date lines, and suppressed-time cases.
 2. **Custom override:** a custom template file changes the callout shape while
    grouping/headers/anchors (owned by Python) stay intact.
-3. **Fallback:** a missing file and an invalid template each warn and fall back
-   to the default (export still succeeds).
+3. **Resolution order + fallback:** explicit path wins; unset falls to the
+   scaffolded `.config` default; a missing/broken `.config` default falls to the
+   packaged backup; a broken explicit path warns and falls through. Each step
+   warns and export still succeeds.
 4. **Filters:** `quote` (default and custom prefix, blank-line handling) and
    `tag` behave as specified.
 5. **Config:** `[export].highlights_template` parses (set / unset / non-string)
    and reaches the renderer.
+6. **Scaffolding:** first run creates `~/.config/books/templates/` with the five
+   examples; a hand-edited file is not overwritten; a deleted file is
+   re-created; a read-only config dir is tolerated (no crash).
+7. **Example templates compile:** every packaged example compiles and renders
+   against a sample highlight without error.
 
 ## Dependencies touched
 
 - `pyproject.toml` — add `jinja2` to runtime deps.
 - `books/core/config.py` — `ExportConfig.highlights_template`, parsing, default
-  file comment.
+  file comment, and the `scaffold_templates()` create-missing helper (called
+  from `load_config`).
 - `books/commands/export.py` — thread the template path into the renderer.
-- `books/renderers/obsidian/highlights.py` — template loading + rendering,
-  filters, `render_highlights` signature.
+- `books/renderers/obsidian/highlights.py` — template resolution (config path →
+  `.config` default → packaged backup) + rendering, filters,
+  `render_highlights` signature.
 - `books/renderers/obsidian/note.py` — thread the template through.
-- `books/renderers/obsidian/templates/callout.md.jinja` — new default template.
+- `books/renderers/obsidian/templates/*.md.jinja` — the five packaged example
+  templates (backup + scaffold source), incl. the default `callout.md.jinja`.
 ```
