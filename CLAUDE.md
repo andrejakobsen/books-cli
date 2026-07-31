@@ -135,6 +135,17 @@ The `[export].timezone` key (default `Europe/Oslo`, an IANA zone name) sets the 
 to render highlight dates/times in exported notes (`export` reads it and threads it into the
 renderer). An unknown/invalid zone warns and falls back to `Europe/Oslo` at render time.
 
+The `[export.obsidian].highlights_template` key (default empty) points at a Jinja2
+template that controls how a single highlight's `> [!quote]` callout renders; unset
+uses the built-in default. Templates are format-namespaced under
+`~/.config/books/templates/<format>/`; the five Obsidian examples
+(`callout`, `callout-plain-note`, `blockquote`, `plain`, `minimal`) are scaffolded
+into `~/.config/books/templates/obsidian/` on first `export` (create-missing only,
+never clobbering edits). Resolution order: the configured path → the scaffolded
+`templates/obsidian/callout.md.jinja` → the packaged backup, warning and falling
+through on any load/compile error. The template only shapes one callout — Python
+still owns sorting, source/chapter headers, anchors, and time-suppression.
+
 The `imports` key (default `Data/Imports`) names a folder **inside** the vault
 that holds raw import sources (grouped under `Data/` with the CSV store); `resolve_imports(name, output)` returns
 `<vault>/<imports>/<name>` (an absolute `imports` value is honored as-is, a relative one
@@ -181,7 +192,7 @@ ends with a trailing date line — a daily-note wikilink plus the local time
 dated highlight from a source sits at UTC midnight (`00:00:00Z`, i.e. a date-only source) the
 time is suppressed and only the link renders (`[[2024-03-15]]`); a source with any non-midnight
 time shows the time on every callout, including a genuine midnight. Highlights with no date emit
-no line. The store's date format is unchanged (still ISO 8601 UTC).
+no line. The store's date format is unchanged (still ISO 8601 UTC). The exact callout markdown is produced by a Jinja template (see templates.py); the default reproduces the layout described here.
 
 **Chapter subheaders** (in `books/renderers/obsidian/highlights.py`, `render_highlights`): when a source
 knows chapter titles, highlights group under `### Chapter Title` markdown headers (level 3,
@@ -273,6 +284,11 @@ and `highlights.py` (`render_highlights`). It owns:
   topics become `[[wikilinks]]` for Obsidian's graph). `export` handles its own YAML
   round-tripping via python-frontmatter + ruamel.yaml, so the old string-level
   `yaml_quote`/`link_list`/`html_to_markdown`/frontmatter-reader helpers are gone.
+- **Highlight templates** (`books/renderers/obsidian/templates.py` + the packaged
+  `templates/*.md.jinja`): the Jinja env with `quote`/`tag` filters,
+  `resolve_template` (config → `.config` default → packaged backup), and the
+  create-missing `scaffold_templates`. `render_highlights` builds a per-highlight
+  context and renders it through the resolved template.
 
 The core runtime deps are deliberately lean — `typer` (CLI), `pydantic` (the store's
 `BookRow`/`HighlightRow` models), `isbnlib` + `rapidfuzz` (ISBN/title matching in

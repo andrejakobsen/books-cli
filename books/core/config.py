@@ -62,6 +62,11 @@ _DEFAULT_FILE = (
     '# clippings = "/path/to/My Clippings.txt"  # default: mounted Kindle / imports folder\n'
     "# [export]\n"
     f'# timezone = "{DEFAULT_TIMEZONE}"  # IANA zone for highlight date/time rendering\n'
+    "# Obsidian-specific export settings (a custom highlight callout template).\n"
+    "# Examples are scaffolded to ~/.config/books/templates/obsidian/ — copy one and\n"
+    "# point highlights_template at it, or edit it in place.\n"
+    "# [export.obsidian]\n"
+    '# highlights_template = "~/.config/books/templates/obsidian/callout.md.jinja"\n'
 )
 
 # A fully-uncommented copy used only by tests to assert the sections parse.
@@ -85,6 +90,8 @@ _DEFAULT_FILE_PARSEABLE = (
     'clippings = ""\n'
     "[export]\n"
     f'timezone = "{DEFAULT_TIMEZONE}"\n'
+    "[export.obsidian]\n"
+    'highlights_template = ""\n'
 )
 
 

@@ -406,3 +406,18 @@ def test_export_timezone_still_parses_alongside_obsidian_table(tmp_path):
     cfg = config.load_config(cfg_file)
     assert cfg.export.timezone == "America/New_York"
     assert cfg.export.obsidian.highlights_template == "/t.jinja"
+
+
+def test_default_file_documents_obsidian_template(tmp_path):
+    cfg_file = tmp_path / "books" / "config.toml"
+    config.load_config(cfg_file)
+    text = cfg_file.read_text()
+    assert "[export.obsidian]" in text
+    assert "highlights_template" in text
+
+
+def test_default_parseable_has_export_obsidian(tmp_path):
+    import tomllib
+
+    data = tomllib.loads(config._DEFAULT_FILE_PARSEABLE)
+    assert data["export"]["obsidian"]["highlights_template"] == ""

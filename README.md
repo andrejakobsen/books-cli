@@ -91,6 +91,26 @@ Optional `[import].default`, `[calibre]`, `[kobo]`, `[audible]`, `[covers]`, and
 `[kindle]` sections tune individual sources. Any missing/invalid key falls back to
 its default.
 
+## 🖋️ Highlight templates
+
+Set `[export.obsidian].highlights_template` to a [Jinja2](https://jinja.palletsprojects.com)
+template to control how a single highlight's `> [!quote]` callout renders:
+
+```toml
+[export.obsidian]
+highlights_template = "~/.config/books/templates/obsidian/callout.md.jinja"
+```
+
+On first `export`, five examples are scaffolded to
+`~/.config/books/templates/obsidian/` (create-missing only, so your edits are never
+clobbered): `callout`, `callout-plain-note`, `blockquote`, `plain`, and `minimal`.
+Copy one and point the key at it, or edit it in place. Resolution order: the
+configured path → the scaffolded `callout.md.jinja` → the packaged backup, warning
+and falling through on any error.
+
+The template only shapes one callout — `books` still owns sorting, source/chapter
+headers, anchors, and date/time suppression.
+
 ## 🎧 Audible
 
 `books import --audible` turns your Audible **bookmarks and clips** into
