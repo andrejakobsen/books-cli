@@ -68,12 +68,15 @@ them touch the Obsidian notes:
   per-source metadata layer (`Data/Sources/<source>.csv`) via `store.write_layer`; `import`
   then clusters the layers into the single merged catalog `Data/books.csv` via `store.merge`
   (the merge step is injected automatically, so callers never sequence it).
-- **Phase B — highlights → notes.** The three highlight importers (`kobo`, `highlighted`,
-  `readwise`) resolve each book to a `book_id` against the merged catalog
+- **Phase B — highlights → notes.** The four highlight importers (`kobo`, `highlighted`,
+  `readwise`, `kindle`) resolve each book to a `book_id` against the merged catalog
   (`store.Catalog(vault).find(BookRef)` — match-only, never creates) and write its
   highlights into `Data/Highlights/<book_id>.csv` via `store.write_highlights` (a book
   with no catalog match is skipped and counted, so the merge runs first). `export`
-  then turns the catalog + highlights into the actual `Books/*.md` notes.
+  then turns the catalog + highlights into the actual `Books/*.md` notes. Kindle
+  clippings are an append-only event log, so the importer deduplicates adjusted
+  highlights (keeps the latest by timestamp, matching on location overlap) and attaches
+  notes to their highlights.
 
 `import` orchestrates both phases end to end (running the configured default set of
 importers with `merge` injected automatically). `audible` and `covers` are two more CSV
@@ -85,18 +88,20 @@ them automatically. `export` is the sole producer of Obsidian notes; note creati
 solely to it.
 - `books/commands/import_cmd.py` → `import` — the single ingest command. With no
   flags it runs the configured default set (out of the box the sync-set:
-  `calibre`, `goodreads`, `kobo`, `highlighted`, `readwise`; change it via
+  `calibre`, `goodreads`, `kobo`, `highlighted`, `readwise`, `kindle`; change it via
   `[import].default` in the config, e.g. to add `covers`/`audible`); importer
-  flags (`--calibre` … `--readwise`, plus opt-in `--audible`/`--covers`) select
+  flags (`--calibre` … `--readwise`, `--kindle`, plus opt-in `--audible`/`--covers`) select
   an exact subset. `merge` is injected
   automatically (before catalog consumers, after layer writers). Each importer
   detects its own source and is skipped/reported when absent; a failing step
-  never stops the others. Reads per-importer settings from the `[calibre]`,
-  `[kobo]`, `[audible]`, `[covers]` config sections. Stops at the store — run
+  never stops the others. Kindle reads `Data/Imports/kindle/My Clippings.txt` (or a
+  mounted Kindle's `documents/My Clippings.txt`, auto-detected). Reads per-importer
+  settings from the `[calibre]`, `[kobo]`, `[audible]`, `[covers]`, `[kindle]` config
+  sections. Stops at the store — run
   `export` to write notes. `--output` overrides the vault; `--dry-run` prints the
   plan. The importer cores live in their own modules
   (`books/commands/{calibre,goodreads,kobo,highlighted,readwise}.py` and the
-  `audible`/`covers` packages, whose `run_import(vault, cfg)` entry points read
+  `audible`/`covers`/`kindle` packages, whose `run_import(vault, cfg)` entry points read
   config); `store.merge` clusters the layers.
 - `books/commands/export.py` → `export` — the CSV-store renderer (formerly
   `render`). Reads the merged catalog + per-book highlights and writes one flat
@@ -124,7 +129,8 @@ that holds raw import sources (grouped under `Data/` with the CSV store); `resol
 `<vault>/<imports>/<name>` (an absolute `imports` value is honored as-is, a relative one
 joins onto the resolved vault). Most importers default their input to a canonical
 subfolder — `Data/Imports/goodreads`, `Data/Imports/highlighted`,
-`Data/Imports/readwise`, `Data/Imports/kobo`, and `Data/Imports/audible` (which holds the
+`Data/Imports/readwise`, `Data/Imports/kobo`, `Data/Imports/kindle` (which holds
+`My Clippings.txt`, not raw CSVs), and `Data/Imports/audible` (which holds the
 transcription cache under `cache/`, not raw CSVs) — so most commands need no input flag.
 (`calibre` is the exception: `--library` defaults to `~/Calibre Library`.) For the
 single-file CSV importers (goodreads/readwise), `newest_csv(folder)` picks the
@@ -134,11 +140,12 @@ an unset/folder/file `--csv` to one CSV (unset → newest in the canonical subfo
 The `[import].default` list names the importers `books import` runs when given no
 flags (default: the sync-set; add `"covers"`/`"audible"` to include them). Unknown
 names are dropped and an empty/invalid list falls back to the sync-set.
-Per-importer settings live in optional `[calibre]`, `[kobo]`, `[audible]`, and
-`[covers]` config sections: `[calibre].library` (default `~/Calibre Library`),
+Per-importer settings live in optional `[calibre]`, `[kobo]`, `[audible]`,
+`[covers]`, and `[kindle]` config sections: `[calibre].library` (default `~/Calibre Library`),
 `[kobo].db` (default: auto-detect a mounted device / the imports folder),
 `[audible].transcriber` (`local`/`openai`/`google`) + `[audible].select`
-(`interactive`/`all`), and `[covers].interactive` + `[covers].limit`. Each key
+(`interactive`/`all`), `[covers].interactive` + `[covers].limit`, and
+`[kindle].clippings` (default: auto-detect a mounted Kindle / the imports folder). Each key
 falls back to its built-in default when absent or malformed. With
 `[audible].select = "interactive"` (the default) the arrow-key picker chooses
 which audiobooks to transcribe; run off-tty (no terminal) the audible step is
