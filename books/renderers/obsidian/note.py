@@ -134,7 +134,13 @@ def book_frontmatter(row: BookRow, note_path: Path, existing: dict, has_highligh
     return {k: meta[k] for k in RENDER_KEY_ORDER if k in meta}
 
 
-def render_body(existing_body: str, row: BookRow, note_path: Path, highlights: list) -> str:
+def render_body(
+    existing_body: str,
+    row: BookRow,
+    note_path: Path,
+    highlights: list,
+    timezone: str = "Europe/Oslo",
+) -> str:
     """Return the note body: cover embed, write-once ``## Review``, ``## Highlights``.
 
     Operates on the body only (no frontmatter). Idempotent: the cover embed is
@@ -149,7 +155,7 @@ def render_body(existing_body: str, row: BookRow, note_path: Path, highlights: l
     if review:
         body = ensure_section(body, "Review", review + "\n")
     if highlights:
-        rendered = render_highlights([row_to_highlight(h) for h in highlights])
+        rendered = render_highlights([row_to_highlight(h) for h in highlights], timezone=timezone)
         body = render_marked_section(body, "Highlights", "highlights", rendered)
     return body
 
@@ -213,7 +219,12 @@ def _clear_note_dirs(vault: Path) -> None:
 
 
 def render_note(
-    vault: Path, row: BookRow, highlights: list, *, preserved: dict | None = None
+    vault: Path,
+    row: BookRow,
+    highlights: list,
+    *,
+    preserved: dict | None = None,
+    timezone: str = "Europe/Oslo",
 ) -> Path:
     """Write/update the flat book note for *row* under ``Books/<book_id>.md``.
 
@@ -228,7 +239,7 @@ def render_note(
     disk_meta, existing_body = load_note(note_path)
     existing_meta = preserved if preserved is not None else disk_meta
     meta = book_frontmatter(row, note_path, existing_meta, bool(highlights))
-    body = render_body(existing_body, row, note_path, highlights).strip("\n")
+    body = render_body(existing_body, row, note_path, highlights, timezone=timezone).strip("\n")
     front = "---\n" + dump_frontmatter(meta) + "---\n"
     content = f"{front}\n{body}\n" if body else f"{front}\n"
     note_path.parent.mkdir(parents=True, exist_ok=True)
@@ -236,7 +247,7 @@ def render_note(
     return note_path
 
 
-def render(vault: Path, *, refresh: bool = False) -> dict:
+def render(vault: Path, *, refresh: bool = False, timezone: str = "Europe/Oslo") -> dict:
     """Render every book in ``books.csv`` (+ its highlights) into ``Books/``.
 
     Also creates an ``Authors/<name>.md`` stub for each distinct author (the
@@ -266,7 +277,9 @@ def render(vault: Path, *, refresh: bool = False) -> dict:
                     continue
                 highlights = store.read_highlights(vault, row.book_id)
                 try:
-                    render_note(vault, row, highlights, preserved=cache.get(row.book_id))
+                    render_note(
+                        vault, row, highlights, preserved=cache.get(row.book_id), timezone=timezone
+                    )
                 except Exception as exc:  # continue-on-error per book
                     stats["failed"] += 1
                     ui.warn(f"{row.book_id}: {exc}")
@@ -290,8 +303,8 @@ class ObsidianRenderer:
 
     name = "obsidian"
 
-    def render(self, vault: Path, *, refresh: bool = False) -> dict:
-        return render(vault, refresh=refresh)
+    def render(self, vault: Path, *, refresh: bool = False, timezone: str = "Europe/Oslo") -> dict:
+        return render(vault, refresh=refresh, timezone=timezone)
 
 
 # Re-export the schema constant expected by callers/tests via this module.

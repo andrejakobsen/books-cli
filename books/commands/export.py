@@ -71,7 +71,8 @@ def export_command(
             param_hint="--output",
         )
     vault.mkdir(parents=True, exist_ok=True)
-    stats = renderer.render(vault, refresh=refresh)
+    cfg = config.load_config()
+    stats = renderer.render(vault, refresh=refresh, timezone=cfg.export.timezone)
     suffix = f" ({stats['failed']} failed)" if stats.get("failed") else ""
     ui.info(
         f"Done. {stats['notes']} notes, {stats['highlights']} highlights, "

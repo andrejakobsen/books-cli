@@ -105,3 +105,33 @@ def test_property_order_includes_flags_after_status():
     assert "reviewed" in order
     assert order.index("highlighted") == order.index("status") + 1
     assert order.index("reviewed") == order.index("status") + 2
+
+
+def test_render_passes_timezone_into_note(tmp_path):
+    from books.core import store
+    from books.core.store import BookRow, HighlightRow
+    from books.renderers.obsidian.note import render
+
+    vault = tmp_path / "vault"
+    (vault / "Data").mkdir(parents=True)
+    row = BookRow(book_id="Book - Author", title="Book", authors=["Author"])
+    store.write_books_csv(vault, [row])
+    store.write_highlights(
+        vault,
+        "Book - Author",
+        "readwise",
+        [
+            HighlightRow(
+                source="readwise",
+                text="A",
+                location="10",
+                location_kind="page",
+                date="2024-07-15T12:30:00Z",
+            )
+        ],
+    )
+
+    render(vault, timezone="Europe/Oslo")
+
+    note = (vault / "Books" / "Book - Author.md").read_text()
+    assert "[[2024-07-15]] · 14:30" in note
