@@ -601,7 +601,7 @@ def write_highlights(vault: Path, book_id: str, source: str, rows: list[Highligh
     The incoming rows' ``date`` is normalized to ISO 8601 UTC; a non-empty date that
     cannot be parsed is blanked and reported.
     """
-    normalized_rows = []
+    normalized_rows: list[HighlightRow] = []
     for r in rows:
         canonical = normalize_date(r.date)
         if r.date and canonical is None:

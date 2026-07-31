@@ -558,3 +558,23 @@ def test_write_highlights_leaves_empty_date_empty_without_warning(tmp_path, caps
     back = store.read_highlights(vault, "b1")
     assert [r.date for r in back] == [""]
     assert "could not parse" not in capsys.readouterr().err
+
+
+def test_write_highlights_normalizes_mixed_batch(tmp_path, capsys):
+    vault = tmp_path / "vault"
+    good = store.highlight_to_row(Highlight(text="a", date="2026-07-24 11:15:47"), "kobo", "0")
+    bad = store.highlight_to_row(Highlight(text="b", date="garbage"), "kobo", "1")
+    store.write_highlights(vault, "b1", "kobo", [good, bad])
+    back = store.read_highlights(vault, "b1")
+    assert [r.date for r in back] == ["2026-07-24T11:15:47Z", ""]
+    assert capsys.readouterr().err.count("could not parse highlight date") == 1
+
+
+def test_write_highlights_leaves_other_sources_unchanged(tmp_path):
+    vault = tmp_path / "vault"
+    a = store.highlight_to_row(Highlight(text="a", date="2026-07-24 11:15:47"), "kobo", "0")
+    store.write_highlights(vault, "b1", "kobo", [a])
+    b = store.highlight_to_row(Highlight(text="b", date="2026-07-25 09:00:00"), "readwise", "0")
+    store.write_highlights(vault, "b1", "readwise", [b])
+    back = {r.source: r.date for r in store.read_highlights(vault, "b1")}
+    assert back == {"kobo": "2026-07-24T11:15:47Z", "readwise": "2026-07-25T09:00:00Z"}
