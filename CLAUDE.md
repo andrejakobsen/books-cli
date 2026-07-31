@@ -131,6 +131,10 @@ the single helper every command calls — explicit `--output` wins, otherwise th
 configured vault is used. This is why most commands need no `--output`. Reads use
 stdlib `tomllib` (Python 3.11+); malformed/partial config falls back per key.
 
+The `[export].timezone` key (default `Europe/Oslo`, an IANA zone name) sets the timezone used
+to render highlight dates/times in exported notes (`export` reads it and threads it into the
+renderer). An unknown/invalid zone warns and falls back to `Europe/Oslo` at render time.
+
 The `imports` key (default `Data/Imports`) names a folder **inside** the vault
 that holds raw import sources (grouped under `Data/` with the CSV store); `resolve_imports(name, output)` returns
 `<vault>/<imports>/<name>` (an absolute `imports` value is honored as-is, a relative one
@@ -168,6 +172,16 @@ turned into spaces (`@battle-of-warsaw` → `[[Battle of Warsaw]]`); tags are lo
 Links render on the `[!quote]` callout **title line** (middot-joined after the locator, e.g.
 `ch. 2 · 42% · [[Trotsky]]`) so people/events scan from the header; tags render on a trailing
 line inside the callout body. The author's note sits between them as a nested blockquote (`>>`).
+
+**Highlight date line** (in `books/renderers/obsidian/highlights.py`, `_date_line`): each callout
+ends with a trailing date line — a daily-note wikilink plus the local time
+(`[[2024-03-15]] · 15:30`), converted from the highlight's stored UTC timestamp to the
+`[export].timezone` (default `Europe/Oslo`, via `local_datetime`/`is_utc_midnight` in
+`books/core/highlights.py`). The decision is made **per source group, per book**: when every
+dated highlight from a source sits at UTC midnight (`00:00:00Z`, i.e. a date-only source) the
+time is suppressed and only the link renders (`[[2024-03-15]]`); a source with any non-midnight
+time shows the time on every callout, including a genuine midnight. Highlights with no date emit
+no line. The store's date format is unchanged (still ISO 8601 UTC).
 
 **Chapter subheaders** (in `books/renderers/obsidian/highlights.py`, `render_highlights`): when a source
 knows chapter titles, highlights group under `### Chapter Title` markdown headers (level 3,
