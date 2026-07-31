@@ -6,6 +6,7 @@ import math
 import re
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
+from zoneinfo import ZoneInfo
 
 
 @dataclass
@@ -50,6 +51,35 @@ def normalize_date(raw: str | None) -> str | None:
     else:
         dt = dt.astimezone(UTC)
     return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def local_datetime(iso: str | None, tz: ZoneInfo) -> datetime | None:
+    """Parse a stored ISO-8601 timestamp and convert it to *tz*.
+
+    Naive input is assumed UTC; aware input is converted. Returns None for
+    empty/None/unparseable input. ``normalize_date`` guarantees stored values
+    are ISO-8601-parseable, so failures here mean legacy/hand-edited data.
+    """
+    if iso is None:
+        return None
+    text = iso.strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(tz)
+
+
+def is_utc_midnight(iso: str | None) -> bool:
+    """True when *iso* is exactly 00:00:00 in UTC (a date-only stored value)."""
+    dt = local_datetime(iso, ZoneInfo("UTC"))
+    if dt is None:
+        return False
+    return dt.hour == 0 and dt.minute == 0 and dt.second == 0
 
 
 def sanitize_tag(raw: str | None) -> str | None:

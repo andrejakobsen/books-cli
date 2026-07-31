@@ -1,9 +1,11 @@
 """Unit tests for the source-agnostic highlights layer."""
 
+from zoneinfo import ZoneInfo
+
 import pytest
 
 from books.core import highlights as hl
-from books.core.highlights import normalize_date
+from books.core.highlights import is_utc_midnight, local_datetime, normalize_date
 
 
 @pytest.mark.parametrize(
@@ -181,3 +183,45 @@ def test_split_tag_column_dedupes_first_seen():
 def test_split_tag_column_dashed_link_title_cased():
     links, _ = hl.split_tag_column("@battle-of-warsaw")
     assert links == ["Battle of Warsaw"]
+
+
+# --- local_datetime ----------------------------------------------------------
+
+
+def test_local_datetime_converts_utc_to_oslo_winter():
+    dt = local_datetime("2024-01-15T12:30:00Z", ZoneInfo("Europe/Oslo"))
+    assert (dt.year, dt.month, dt.day, dt.hour, dt.minute) == (2024, 1, 15, 13, 30)
+
+
+def test_local_datetime_converts_utc_to_oslo_dst():
+    # July -> Oslo is UTC+2
+    dt = local_datetime("2024-07-15T12:30:00Z", ZoneInfo("Europe/Oslo"))
+    assert (dt.hour, dt.minute) == (14, 30)
+
+
+def test_local_datetime_day_shift_across_midnight():
+    # 23:30Z on the 15th -> 00:30 local on the 16th (UTC+1)
+    dt = local_datetime("2024-01-15T23:30:00Z", ZoneInfo("Europe/Oslo"))
+    assert (dt.day, dt.hour, dt.minute) == (16, 0, 30)
+
+
+def test_local_datetime_naive_is_assumed_utc():
+    dt = local_datetime("2024-01-15T12:30:00", ZoneInfo("Europe/Oslo"))
+    assert (dt.hour, dt.minute) == (13, 30)
+
+
+def test_local_datetime_none_and_empty_and_unparseable():
+    tz = ZoneInfo("Europe/Oslo")
+    assert local_datetime(None, tz) is None
+    assert local_datetime("   ", tz) is None
+    assert local_datetime("not a date", tz) is None
+
+
+# --- is_utc_midnight ---------------------------------------------------------
+
+
+def test_is_utc_midnight():
+    assert is_utc_midnight("2024-03-15T00:00:00Z") is True
+    assert is_utc_midnight("2024-03-15T12:00:00Z") is False
+    assert is_utc_midnight(None) is False
+    assert is_utc_midnight("garbage") is False
