@@ -70,7 +70,7 @@ def test_convert_skips_unmatched_book(tmp_path):
     _seed_malcolm(vault)
     stats = command.convert(_clippings(tmp_path, MALCOLM + UNMATCHED), vault)
     assert stats["books"] == 1
-    assert stats["skipped"] == 1
+    assert stats["pending"] == 1
 
 
 def test_default_clippings_path_uses_override(tmp_path):
@@ -78,3 +78,34 @@ def test_default_clippings_path_uses_override(tmp_path):
     override.write_text("x", encoding="utf-8")
     result = command.default_clippings_path(tmp_path / "vault", str(override))
     assert result == override
+
+
+def test_convert_caches_and_resolves_from_cache_without_device(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    # First pass: device present, but no catalog yet -> nothing written, all pending.
+    stats = command.convert(_clippings(tmp_path, MALCOLM), vault)
+    assert stats == {"books": 0, "entries": 0, "pending": 1}
+    from books.commands.kindle import cache
+
+    assert list(cache.cache_dir(vault).glob("*.json"))  # cache written
+    # Later: catalog appears, and we resolve WITHOUT the device (clippings=None).
+    _seed_malcolm(vault)
+    stats = command.convert(None, vault)
+    assert stats == {"books": 1, "entries": 1, "pending": 0}
+    rows = store.read_highlights(vault, "The Autobiography of Malcolm X - Malcolm X")
+    assert rows[0].text == "new version"
+    assert rows[0].note == "a thought"
+
+
+def test_convert_wholesale_overwrite_on_reparse(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _seed_malcolm(vault)
+    command.convert(_clippings(tmp_path, MALCOLM), vault)
+    # Re-parse with an edited highlight; the cache file is replaced, not appended.
+    edited = MALCOLM.replace("new version", "edited version")
+    stats = command.convert(_clippings(tmp_path, edited), vault)
+    assert stats["entries"] == 1
+    rows = store.read_highlights(vault, "The Autobiography of Malcolm X - Malcolm X")
+    assert rows[0].text == "edited version"

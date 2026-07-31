@@ -8,6 +8,7 @@ from pathlib import Path
 
 import typer
 
+from books.commands.kindle import cache
 from books.commands.kindle.dedup import to_highlights
 from books.commands.kindle.parser import parse_clippings
 from books.core import config, store, ui
@@ -36,42 +37,52 @@ def default_clippings_path(vault: Path, override: str = "") -> Path:
     return config.resolve_imports("kindle", vault) / CLIPPINGS_NAME
 
 
-def convert(clippings_path: Path, output: Path) -> dict:
-    """Parse *clippings_path*, dedup per book, and write the per-book store.
+def convert(clippings_path: Path | None, output: Path) -> dict:
+    """Refresh the cache from the device (if present) and resolve it to the store.
 
-    Books are grouped by ``(norm_title, author_key)`` and resolved to a book_id
-    via ``store.Catalog``; a book with no match is skipped and counted. Returns
-    ``{"books": int, "entries": int, "skipped": int}``.
+    *Extract* (only when *clippings_path* is a real file): parse, group by
+    ``(norm_title, author_key)``, dedup per book, and wholesale-overwrite each
+    book's cache file. *Resolve* (always): load the whole cache and resolve every
+    book to a book_id via ``store.import_highlights`` (match-only); unmatched books
+    stay cached. Returns ``{"books": int, "entries": int, "pending": int}``.
     """
     output.mkdir(parents=True, exist_ok=True)
-    text = clippings_path.read_text(encoding="utf-8-sig")
-    entries = parse_clippings(text)
+    cdir = cache.cache_dir(output)
 
-    groups: dict[tuple, list] = {}
-    order: list[tuple] = []
-    for entry in entries:
-        if not entry.title:
-            continue
-        key = (norm_title(entry.title), author_key(entry.author))
-        if key not in groups:
-            groups[key] = []
-            order.append(key)
-        groups[key].append(entry)
+    if clippings_path is not None and clippings_path.is_file():
+        entries = parse_clippings(clippings_path.read_text(encoding="utf-8-sig"))
+        groups: dict[tuple, list] = {}
+        order: list[tuple] = []
+        for entry in entries:
+            if not entry.title:
+                continue
+            key = (norm_title(entry.title), author_key(entry.author))
+            if key not in groups:
+                groups[key] = []
+                order.append(key)
+            groups[key].append(entry)
+        used: set[str] = set()
+        for key in sorted(order):
+            group = groups[key]
+            highlights = to_highlights(group)
+            if not highlights:
+                continue
+            first = group[0]
+            stem = cache.book_stem(first.title, first.author, used)
+            cache.save_book(cdir, stem, first.title, first.author, highlights)
 
     resolved: list[tuple[BookRef, list[Highlight]]] = []
-    for key in order:
-        group = groups[key]
-        highlights = to_highlights(group)
-        if not highlights:
+    for record in cache.load_all(cdir):
+        if not record["highlights"]:
             continue
-        first = group[0]
         ref = BookRef(
-            title=first.title,
-            authors=[first.author] if first.author else [],
+            title=record["title"],
+            authors=[record["author"]] if record["author"] else [],
         )
-        resolved.append((ref, highlights))
+        resolved.append((ref, record["highlights"]))
 
-    return store.import_highlights(output, "kindle", resolved)
+    stats = store.import_highlights(output, "kindle", resolved)
+    return {"books": stats["books"], "entries": stats["entries"], "pending": stats["skipped"]}
 
 
 def run_import(vault: Path, cfg: config.KindleConfig) -> dict:
