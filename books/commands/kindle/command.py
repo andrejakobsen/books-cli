@@ -88,13 +88,17 @@ def convert(clippings_path: Path | None, output: Path) -> dict:
 def run_import(vault: Path, cfg: config.KindleConfig) -> dict:
     """Import entry point used by ``books import`` (returns store stats).
 
-    Resolves the clippings path (device / canonical / override); a missing file
-    yields empty stats so the pipeline reports "skipped" rather than failing.
+    Runs when a clippings file is available (device / canonical / override) *or* a
+    non-empty cache already exists — so highlights resolve even with the Kindle
+    unplugged. Empty stats only when neither is present.
     """
     path = default_clippings_path(vault, cfg.clippings)
-    if not path.is_file():
-        return {"books": 0, "entries": 0, "skipped": 0}
-    return convert(path, vault)
+    clip = path if path.is_file() else None
+    cdir = cache.cache_dir(vault)
+    has_cache = cdir.is_dir() and any(cdir.glob("*.json"))
+    if clip is None and not has_cache:
+        return {"books": 0, "entries": 0, "pending": 0}
+    return convert(clip, vault)
 
 
 def kindle_import(
@@ -120,20 +124,31 @@ def kindle_import(
     turns into notes; this command never creates book notes itself. Adjusted
     highlights are deduplicated (latest kept) and notes are attached to their
     highlights. Books are resolved to a book_id via the merged catalog
-    (Data/books.csv) by a strict Author/Title comparison; a book with no match is
-    skipped and counted, so run ``import``/``merge`` first.
+    (Data/books.csv) by a strict Author/Title comparison. A book with no catalog
+    match stays cached and is reported as pending, so import order does not
+    matter — run ``import``/``merge`` whenever.
     """
     vault = config.resolve_vault(output)
-    path = clippings if clippings is not None else default_clippings_path(vault)
-    path = resolve_path(path, Path.cwd())
-    if not path.is_file():
-        raise typer.BadParameter(f"clippings file not found: {path}", param_hint="--clippings")
+    if clippings is not None:
+        clip = resolve_path(clippings, Path.cwd())
+        if not clip.is_file():
+            raise typer.BadParameter(f"clippings file not found: {clip}", param_hint="--clippings")
+    else:
+        auto = default_clippings_path(vault)
+        clip = auto if auto.is_file() else None
+
+    cdir = cache.cache_dir(vault)
+    has_cache = cdir.is_dir() and any(cdir.glob("*.json"))
+    if clip is None and not has_cache:
+        raise typer.BadParameter(
+            "no Kindle clippings file or cache found", param_hint="--clippings"
+        )
 
     vault.mkdir(parents=True, exist_ok=True)
-    stats = convert(path, vault)
-    no_note = store.skipped_note(stats["skipped"])
+    stats = convert(clip, vault)
+    pending = f", {stats['pending']} pending" if stats["pending"] else ""
     ui.info(
-        f"Done. {stats['books']} books{no_note}, {stats['entries']} highlights.\nOutput: {vault}"
+        f"Done. {stats['books']} books{pending}, {stats['entries']} highlights.\nOutput: {vault}"
     )
 
 

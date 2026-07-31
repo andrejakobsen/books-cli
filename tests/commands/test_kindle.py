@@ -3,7 +3,7 @@
 from pathlib import Path
 
 from books.commands.kindle import command
-from books.core import store
+from books.core import config, store
 
 MALCOLM = (
     "﻿The Autobiography of Malcolm X (X, Malcolm)\n"
@@ -109,3 +109,24 @@ def test_convert_wholesale_overwrite_on_reparse(tmp_path):
     assert stats["entries"] == 1
     rows = store.read_highlights(vault, "The Autobiography of Malcolm X - Malcolm X")
     assert rows[0].text == "edited version"
+
+
+def test_run_import_uses_cache_when_device_absent(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    _seed_malcolm(vault)
+    # Seed the cache via a device pass using an explicit config path.
+    clip = _clippings(tmp_path, MALCOLM)
+    command.convert(clip, vault)
+    # Now the device is gone; run_import resolves from cache alone.
+    cfg = config.KindleConfig(clippings="")
+    stats = command.run_import(vault, cfg)
+    assert stats["books"] == 1
+    assert stats["pending"] == 0
+
+
+def test_run_import_empty_when_no_source_and_no_cache(tmp_path):
+    vault = tmp_path / "vault"
+    vault.mkdir()
+    cfg = config.KindleConfig(clippings="")
+    assert command.run_import(vault, cfg) == {"books": 0, "entries": 0, "pending": 0}
