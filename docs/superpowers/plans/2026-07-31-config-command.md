@@ -557,9 +557,7 @@ def _run_tui(templates: list[Path], current: str | None) -> Path | None:
     left = Window(FormattedTextControl(_list_text), width=D(preferred=28))
     right = Window(FormattedTextControl(_right_text), wrap_lines=True)
     header = Window(FormattedTextControl(_title_text), height=1)
-    footer = Window(
-        FormattedTextControl("  ↑↓ move · ↵ select · ← back · q quit"), height=1
-    )
+    footer = Window(FormattedTextControl("  ↑↓ move · ↵ select · ← back · q quit"), height=1)
     body = VSplit([left, Window(width=1, char="│"), right])
     layout = Layout(HSplit([header, body, footer]))
 
@@ -672,16 +670,18 @@ Expected: a full-screen view opens with `obsidian` under "Exporters"; Enter adva
 In `books/core/config.py`, the `_DEFAULT_FILE` string documents `highlights_template`. Update that comment block to mention the command. Change:
 
 ```python
-    "# Examples are scaffolded to ~/.config/books/templates/obsidian/ — copy one and\n"
-    "# point highlights_template at it, or edit it in place.\n"
+"# Examples are scaffolded to ~/.config/books/templates/obsidian/ — copy one and\n"
+
+"# point highlights_template at it, or edit it in place.\n"
 ```
 
 to:
 
 ```python
-    "# Examples are scaffolded to ~/.config/books/templates/obsidian/ — copy one and\n"
-    "# point highlights_template at it, or run `books config export` to pick one\n"
-    "# interactively with a live preview.\n"
+"# Examples are scaffolded to ~/.config/books/templates/obsidian/ — copy one and\n"
+
+"# point highlights_template at it, or run `books config export` to pick one\n"
+"# interactively with a live preview.\n"
 ```
 
 - [ ] **Step 3: Update CLAUDE.md**

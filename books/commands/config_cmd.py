@@ -158,9 +158,7 @@ def _run_tui(templates: list[Path], current: str | None) -> Path | None:
     left = Window(FormattedTextControl(_list_text), width=D(preferred=28))
     right = Window(FormattedTextControl(_right_text), wrap_lines=True)
     header = Window(FormattedTextControl(_title_text), height=1)
-    footer = Window(
-        FormattedTextControl("  ↑↓ move · ↵ select · ← back · q quit"), height=1
-    )
+    footer = Window(FormattedTextControl("  ↑↓ move · ↵ select · ← back · q quit"), height=1)
     body = VSplit([left, Window(width=1, char="│"), right])
     layout = Layout(HSplit([header, body, footer]))
 

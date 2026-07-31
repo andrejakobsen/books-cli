@@ -53,9 +53,10 @@ The package is organized in three layers with a one-way dependency direction
   import X`.
 - **`books/commands/`** — the CLI capabilities, each exposing `register(app)`.
 
-Three commands exist today: **`import`** (ingest raw sources into the CSV store),
-**`export`** (render the store into notes), and **`reset`** (wipe the derived
-store). The former per-source importers (`calibre`, `goodreads`, `kobo`,
+Four commands exist today: **`import`** (ingest raw sources into the CSV store),
+**`export`** (render the store into notes), **`reset`** (wipe the derived
+store), and **`config`** (interactively configure the exporter — e.g. pick a
+highlight template with a live preview). The former per-source importers (`calibre`, `goodreads`, `kobo`,
 `highlighted`, `readwise`, `audible`, `covers`) and `merge` are now internal
 modules driven by `import` rather than standalone commands; `render` was renamed
 to `export` and `sync` was absorbed into `import`.
@@ -119,6 +120,14 @@ solely to it.
   (`Data/books.csv` + `Data/Highlights/`) so a later `import` rebuilds it.
   `--dry-run` previews; `--yes`/`-y` skips the confirm. Recovery flow:
   `reset` → `import` → `export` (plus `import --audible`/`--covers` as needed).
+- `books/commands/config_cmd.py` → `config` — a Typer sub-app for configuring the
+  CLI (attached via `app.add_typer(..., name="config")`). Its first subcommand,
+  `config export`, is a prompt_toolkit TUI: pick an exporter (only `obsidian`
+  today), then browse its highlight templates with a live rendered-markdown
+  preview and save the choice into `[export.obsidian].highlights_template`. The
+  pure helpers (sample data, template discovery, preview rendering) live in
+  `books/commands/config_preview.py`; the config write is `config.set_highlights_template`
+  (tomlkit, comment-preserving). Off-tty it falls back to a numbered picker.
 
 ### Configuration
 
@@ -144,7 +153,9 @@ into `~/.config/books/templates/obsidian/` on first `export` (create-missing onl
 never clobbering edits). Resolution order: the configured path → the scaffolded
 `templates/obsidian/callout.md.jinja` → the packaged backup, warning and falling
 through on any load/compile error. The template only shapes one callout — Python
-still owns sorting, source/chapter headers, anchors, and time-suppression.
+still owns sorting, source/chapter headers, anchors, and time-suppression. Run
+`books config export` to browse the templates with a live markdown preview and
+save the choice (writes this key via `config.set_highlights_template`).
 
 The `imports` key (default `Data/Imports`) names a folder **inside** the vault
 that holds raw import sources (grouped under `Data/` with the CSV store); `resolve_imports(name, output)` returns

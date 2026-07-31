@@ -9,10 +9,10 @@ from __future__ import annotations
 
 import os
 import tomllib
-
-import tomlkit
 from dataclasses import dataclass, field
 from pathlib import Path
+
+import tomlkit
 
 from books.core.paths import resolve_path
 
@@ -66,7 +66,8 @@ _DEFAULT_FILE = (
     f'# timezone = "{DEFAULT_TIMEZONE}"  # IANA zone for highlight date/time rendering\n'
     "# Obsidian-specific export settings (a custom highlight callout template).\n"
     "# Examples are scaffolded to ~/.config/books/templates/obsidian/ — copy one and\n"
-    "# point highlights_template at it, or edit it in place.\n"
+    "# point highlights_template at it, or run `books config export` to pick one\n"
+    "# interactively with a live preview.\n"
     "# [export.obsidian]\n"
     '# highlights_template = "~/.config/books/templates/obsidian/callout.md.jinja"\n'
 )
