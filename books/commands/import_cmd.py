@@ -108,7 +108,12 @@ def _detect_readwise(vault: Path, cfg: config.Config) -> str | None:
 
 def _detect_kindle(vault: Path, cfg: config.Config) -> str | None:
     path = kindle.default_clippings_path(vault, cfg.kindle.clippings)
-    return str(path) if path.is_file() else None
+    if path.is_file():
+        return str(path)
+    cdir = kindle.cache_dir(vault)
+    if cdir.is_dir() and any(cdir.glob("*.json")):
+        return str(cdir)
+    return None
 
 
 def _detect_merge(vault: Path, cfg: config.Config) -> str | None:
@@ -197,6 +202,11 @@ def _summ_highlights(s: dict) -> str:
     return f"{s.get('books', 0)} books, {s.get('entries', 0)} highlights{skipped}"
 
 
+def _summ_kindle(s: dict) -> str:
+    pending = f", {s['pending']} pending" if s.get("pending") else ""
+    return f"{s.get('books', 0)} books, {s.get('entries', 0)} highlights{pending}"
+
+
 def _summ_merge(s: dict) -> str:
     return f"{s.get('books', 0)} books in catalog"
 
@@ -264,7 +274,7 @@ def _all_steps(cfg: config.Config) -> dict[str, Step]:
             "kindle",
             _detect_kindle,
             _run_kindle,
-            _summ_highlights,
+            _summ_kindle,
             _imports_label("kindle", cfg),
         ),
     }

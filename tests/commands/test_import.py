@@ -173,3 +173,17 @@ def test_kindle_flag_selects_only_kindle():
         {"calibre": False, "kindle": True}, default={"calibre"}
     )
     assert selection == {"kindle"}
+
+
+def test_detect_kindle_true_with_cache_only(tmp_path):
+    from books.commands.kindle import cache
+    from books.core.highlights import Highlight
+
+    cdir = cache.cache_dir(tmp_path)
+    cache.save_book(cdir, "T - A", "T", "A", [Highlight(text="x")])
+    assert import_cmd._detect_kindle(tmp_path, config.Config()) == str(cdir)
+
+
+def test_summ_kindle_reports_pending():
+    assert "3 pending" in import_cmd._summ_kindle({"books": 1, "entries": 5, "pending": 3})
+    assert "pending" not in import_cmd._summ_kindle({"books": 1, "entries": 5, "pending": 0})
