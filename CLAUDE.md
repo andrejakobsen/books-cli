@@ -76,7 +76,12 @@ them touch the Obsidian notes:
   then turns the catalog + highlights into the actual `Books/*.md` notes. Kindle
   clippings are an append-only event log, so the importer deduplicates adjusted
   highlights (keeps the latest by timestamp, matching on location overlap) and attaches
-  notes to their highlights.
+  notes to their highlights. Because `My Clippings.txt` lives only on the device, kindle
+  also caches each book's deduplicated highlights one JSON file per book under
+  `Data/Imports/kindle/cache/` (mirroring the Audible cache). Every `books import`
+  re-resolves the whole cache against the catalog, so highlights attach whenever their
+  catalog entry exists — import order does not matter and the Kindle need not be attached.
+  Books with no catalog match stay cached and are reported as **pending** (not discarded).
 
 `import` orchestrates both phases end to end (running the configured default set of
 importers with `merge` injected automatically). `audible` and `covers` are two more CSV
@@ -95,7 +100,9 @@ solely to it.
   automatically (before catalog consumers, after layer writers). Each importer
   detects its own source and is skipped/reported when absent; a failing step
   never stops the others. Kindle reads `Data/Imports/kindle/My Clippings.txt` (or a
-  mounted Kindle's `documents/My Clippings.txt`, auto-detected). Reads per-importer
+  mounted Kindle's `documents/My Clippings.txt`, auto-detected) and caches highlights
+  under `Data/Imports/kindle/cache/`; the step also runs from that cache alone (no
+  device needed) and reports unmatched books as pending. Reads per-importer
   settings from the `[calibre]`, `[kobo]`, `[audible]`, `[covers]`, `[kindle]` config
   sections. Stops at the store — run
   `export` to write notes. `--output` overrides the vault; `--dry-run` prints the
