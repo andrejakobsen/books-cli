@@ -1,0 +1,9 @@
+> [!quote]+{% if h.label or h.links %} {{ [h.label, h.links | join(', ')] | select | join(' · ') }}{% endif %}
+{{ h.text | quote }}{% if h.tags %}
+>
+> {{ h.tags | map('tag') | join(' ') }}{% endif %}{% if h.date %}
+> [[{{ h.date }}]]{% if h.time %} · {{ h.time }}{% endif %}{% endif %}
+^{{ h.anchor }}
+{% if h.note %}
+*{{ h.note }}*
+{% endif %}

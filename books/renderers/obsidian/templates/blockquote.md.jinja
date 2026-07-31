@@ -1,0 +1,6 @@
+{{ h.text | quote }}
+{% if h.note %}
+{{ h.note }}
+{% endif %}
+{% if h.label %}— {{ h.label }}{% endif %}{% if h.date %} · [[{{ h.date }}]]{% if h.time %} {{ h.time }}{% endif %}{% endif %}
+^{{ h.anchor }}

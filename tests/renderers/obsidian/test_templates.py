@@ -103,3 +103,58 @@ def test_resolve_template_uses_config_default_when_present(monkeypatch, tmp_path
     monkeypatch.setattr(T.config, "templates_dir", lambda: tmp_path)
     tmpl = T.resolve_template(None)
     assert tmpl.render(h={"text": "hi"}) == "CFG:hi"
+
+
+SAMPLE_CTX = {
+    "text": "A line\nsecond line",
+    "note": "my thought",
+    "tags": ["stalin"],
+    "links": ["[[Trotsky]]"],
+    "label": "ch. 2 · 42%",
+    "date": "2024-07-15",
+    "time": "14:30",
+    "anchor": "ch2-42",
+}
+
+
+def test_all_example_templates_compile_and_render():
+    for name in T.EXAMPLE_TEMPLATES:
+        source = T._packaged_source(name)
+        tmpl = T._ENV.from_string(source)
+        out = tmpl.render(h=SAMPLE_CTX)
+        assert "A line" in out  # every template prints the text
+        assert out.strip()  # non-empty
+
+
+def test_scaffold_creates_all_examples(monkeypatch, tmp_path):
+    monkeypatch.setattr(T.config, "templates_dir", lambda: tmp_path)
+    T.scaffold_templates()
+    obs = tmp_path / "obsidian"
+    for name in T.EXAMPLE_TEMPLATES:
+        assert (obs / name).is_file()
+
+
+def test_scaffold_does_not_overwrite_edits(monkeypatch, tmp_path):
+    monkeypatch.setattr(T.config, "templates_dir", lambda: tmp_path)
+    obs = tmp_path / "obsidian"
+    obs.mkdir()
+    edited = obs / "callout.md.jinja"
+    edited.write_text("MY EDIT")
+    T.scaffold_templates()
+    assert edited.read_text() == "MY EDIT"  # untouched
+    assert (obs / "minimal.md.jinja").is_file()  # missing one still created
+
+
+def test_scaffold_recreates_deleted_file(monkeypatch, tmp_path):
+    monkeypatch.setattr(T.config, "templates_dir", lambda: tmp_path)
+    T.scaffold_templates()
+    (tmp_path / "obsidian" / "minimal.md.jinja").unlink()
+    T.scaffold_templates()
+    assert (tmp_path / "obsidian" / "minimal.md.jinja").is_file()
+
+
+def test_scaffold_tolerates_readonly(monkeypatch, tmp_path):
+    blocker = tmp_path / "blocker"
+    blocker.write_text("")  # a FILE where a dir is expected -> mkdir raises
+    monkeypatch.setattr(T.config, "templates_dir", lambda: blocker)
+    T.scaffold_templates()  # must not raise

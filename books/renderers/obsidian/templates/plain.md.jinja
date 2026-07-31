@@ -1,0 +1,7 @@
+{{ h.text }}
+
+{% if h.label or h.date %}— {{ [h.label, h.date and ('[[' ~ h.date ~ ']]')] | select | join(' · ') }}{% endif %}
+{% if h.note %}
+*{{ h.note }}*
+{% endif %}
+^{{ h.anchor }}
