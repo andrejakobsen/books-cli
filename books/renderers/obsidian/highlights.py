@@ -9,6 +9,7 @@ from books.core import ui
 from books.core.config import DEFAULT_TIMEZONE
 from books.core.highlights import Highlight, is_utc_midnight, local_datetime, sort_key
 from books.renderers.obsidian.format import wikilink
+from books.renderers.obsidian.templates import resolve_template
 
 
 def _resolve_zone(timezone: str) -> ZoneInfo:
@@ -89,49 +90,36 @@ def _chapter_header(h: Highlight) -> str | None:
     return None
 
 
-def _quote_lines(text: str, prefix: str) -> list[str]:
-    """Prefix each line of *text* for a callout body; blank lines keep the bare marker."""
-    return [f"{prefix} {ln}" if ln.strip() else prefix.rstrip() for ln in text.split("\n")]
-
-
-def _date_line(h: Highlight, zone: ZoneInfo, suppress_time: bool) -> str | None:
-    """Trailing callout line: ``[[date]] · HH:MM`` (local), or ``[[date]]`` when
-    the source is date-only (all-midnight group). None when the highlight has no
-    parseable date."""
-    if not h.date:
-        return None
-    if suppress_time:
-        dt = local_datetime(h.date, ZoneInfo("UTC"))
-        return f"> [[{dt:%Y-%m-%d}]]" if dt else None
-    dt = local_datetime(h.date, zone)
-    return f"> [[{dt:%Y-%m-%d}]] · {dt:%H:%M}" if dt else None
-
-
-def _callout(
+def _callout_context(
     h: Highlight, anchor: str, chapter_prefix: str, zone: ZoneInfo, suppress_time: bool
-) -> str:
-    """Render one highlight as a single expanded ``[!quote]+`` callout block."""
-    title_parts = [p for p in (_label(h, chapter_prefix),) if p]
-    if h.links:
-        title_parts.append(", ".join(wikilink(name) for name in h.links))
-    title = " · ".join(title_parts)
-    lines = ["> [!quote]+" + (f" {title}" if title else "")]
-    lines += _quote_lines(h.text, ">")
-    if h.note and h.note.strip():
-        lines.append(">")
-        lines += _quote_lines(h.note, ">>")
-    if h.tags:
-        lines.append(">")
-        lines.append("> " + " ".join(f"#{t}" for t in h.tags))
-    date_line = _date_line(h, zone, suppress_time)
-    if date_line:
-        lines.append(date_line)
-    lines.append(f"^{anchor}")
-    return "\n".join(lines)
+) -> dict:
+    """Build the template context for one highlight (ready-to-print display fields)."""
+    note = h.note if (h.note and h.note.strip()) else ""
+    date = ""
+    time = ""
+    if h.date:
+        z = ZoneInfo("UTC") if suppress_time else zone
+        dt = local_datetime(h.date, z)
+        if dt:
+            date = f"{dt:%Y-%m-%d}"
+            time = "" if suppress_time else f"{dt:%H:%M}"
+    return {
+        "text": h.text,
+        "note": note,
+        "tags": list(h.tags),
+        "links": [wikilink(name) for name in h.links],
+        "label": _label(h, chapter_prefix),
+        "date": date,
+        "time": time,
+        "anchor": anchor,
+    }
 
 
 def render_highlights(
-    highlights: list[Highlight], chapter_label: str | None = None, timezone: str = DEFAULT_TIMEZONE
+    highlights: list[Highlight],
+    chapter_label: str | None = None,
+    timezone: str = DEFAULT_TIMEZONE,
+    template=None,
 ) -> str:
     """Render a list of highlights as an Obsidian ``## Highlights`` body.
 
@@ -156,10 +144,13 @@ def render_highlights(
     callout line ``> [[YYYY-MM-DD]] · HH:MM`` in local time (timezone configurable).
     Per-source group, if *every* dated highlight is at UTC midnight (a date-only
     source like Kindle), the time is suppressed and the line becomes ``> [[date]]``
-    only. A highlight with no date emits no line.
+    only. A highlight with no date emits no line. The exact callout markdown is
+    produced by the resolved Jinja template (default reproduces this layout).
     """
     chapter_prefix = chapter_label or "ch."
     zone = _resolve_zone(timezone)
+    if template is None:
+        template = resolve_template(None)
     sources_in_use = {h.source for h in highlights}
     distinct_sources = sorted(s for s in sources_in_use if s is not None)
     if len(distinct_sources) > 1:
@@ -193,5 +184,6 @@ def render_highlights(
                     if header:
                         blocks.append(header)
                     prev_key = key
-            blocks.append(_callout(h, anchor_by_id[id(h)], chapter_prefix, zone, suppress_time))
+            ctx = _callout_context(h, anchor_by_id[id(h)], chapter_prefix, zone, suppress_time)
+            blocks.append(template.render(h=ctx).strip("\n"))
     return "\n\n".join(blocks) + "\n"

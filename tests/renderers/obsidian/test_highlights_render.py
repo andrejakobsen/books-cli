@@ -430,3 +430,38 @@ def test_render_mixed_sources_suppress_per_group():
     # readwise group has a real time -> show it (12:00Z -> Oslo 13:00 winter)
     readwise_part = out.split("### Readwise")[1]
     assert "[[2024-03-15]] · 13:00" in readwise_part
+
+
+def test_default_template_full_block_byte_for_byte():
+    hs = [
+        Highlight(
+            text="A line",
+            note="my thought",
+            chapter_index=2,
+            progress=0.42,
+            block="17",
+            segment="5",
+            links=["Trotsky"],
+            tags=["Stalin"],
+            date="2024-07-15T12:30:00Z",
+        )
+    ]
+    out = render_highlights(hs, timezone="Europe/Oslo")
+    expected = (
+        "> [!quote]+ ch. 2 · 42% · [[Trotsky]]\n"
+        "> A line\n"
+        ">\n"
+        ">> my thought\n"
+        ">\n"
+        "> #Stalin\n"
+        "> [[2024-07-15]] · 14:30\n"
+        "^ch2-42"
+    )
+    assert expected in out
+
+
+def test_default_template_multiline_note_prefixes_each_line():
+    hs = [Highlight(text="A", note="one\ntwo", chapter_index=1, block="1")]
+    out = render_highlights(hs)
+    assert ">> one" in out
+    assert ">> two" in out

@@ -33,6 +33,7 @@ from books.renderers.obsidian.sections import (
     ensure_top_embed,
     render_marked_section,
 )
+from books.renderers.obsidian.templates import resolve_template, scaffold_templates
 
 __all__ = [
     "AUTHORS_DIRNAME",
@@ -59,6 +60,8 @@ __all__ = [
     "render_marked_section",
     "render_note",
     "render_rating",
+    "resolve_template",
+    "scaffold_templates",
     "split_frontmatter",
     "wikilink",
     "write_stub",
