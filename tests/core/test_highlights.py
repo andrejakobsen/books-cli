@@ -30,11 +30,6 @@ def test_sanitize_tag_none_returns_none():
     assert hl.sanitize_tag(None) is None
 
 
-def test_highlight_tags_defaults_to_empty_list():
-    h = hl.Highlight(text="x")
-    assert h.tags == []
-
-
 # --- sanitize_link -----------------------------------------------------------
 
 
@@ -78,14 +73,6 @@ def test_sanitize_link_stopword_first_word_capitalized():
 
 def test_sanitize_link_stopword_last_word_capitalized():
     assert hl.sanitize_link("day-of") == "Day Of"
-
-
-# --- Highlight.links ---------------------------------------------------------
-
-
-def test_highlight_links_defaults_to_empty_list():
-    h = hl.Highlight(text="x")
-    assert h.links == []
 
 
 # --- parse_markers -----------------------------------------------------------

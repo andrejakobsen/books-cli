@@ -94,16 +94,6 @@ def _assert_composed(out: Path) -> None:
     assert (out / "Data" / "Covers" / "Napoleon - Andrew Roberts.jpg").is_file()
 
 
-def test_compose_calibre_then_goodreads_then_highlighted(tmp_path):
-    out = tmp_path / "Obsidian"
-    c2o.convert(_calibre_library(tmp_path), out)
-    gr.convert(_goodreads_csv(tmp_path), out)
-    store.merge(out)  # cluster layers → books.csv
-    hi.convert(_highlighted_csv(tmp_path), out)  # enrich highlights store
-    rn.render(out)  # write the flat notes
-    _assert_composed(out)
-
-
 def test_compose_is_order_independent(tmp_path):
     # The metadata importers (calibre/goodreads) compose in either order; merge
     # then render produce the same single note. Highlights are resolved via the

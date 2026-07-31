@@ -13,11 +13,6 @@ def test_check_ffmpeg_raises_when_missing(monkeypatch):
         at.check_ffmpeg()
 
 
-def test_check_ffmpeg_ok_when_present(monkeypatch):
-    monkeypatch.setattr(at.shutil, "which", lambda name: "/usr/bin/ffmpeg")
-    at.check_ffmpeg()  # no raise
-
-
 def test_cut_clip_builds_plain_ffmpeg_command(monkeypatch, tmp_path):
     calls = {}
 

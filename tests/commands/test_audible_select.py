@@ -9,13 +9,6 @@ def _cand(title="Stalin", authors=("Stephen Kotkin",), asin="B0", book_id=None, 
     return models.Candidate(book=book, book_id=book_id, annotations=anns, cached=cached)
 
 
-def test_candidate_derived_properties():
-    matched = _cand(book_id="Stalin - Stephen Kotkin", n=3)
-    new = _cand(book_id=None, n=0)
-    assert matched.in_library is True and matched.clip_count == 3
-    assert new.in_library is False and new.clip_count == 0
-
-
 def test_candidate_label_matched_with_clips_and_cache():
     cand = _cand(book_id="Stalin - Stephen Kotkin", n=2, cached=True)
     label = select.candidate_label(cand)

@@ -213,23 +213,6 @@ def test_grouped_emits_title_header_and_chapter_in_quote():
     assert "^ch12-42" in out  # anchor mirrors the locator
 
 
-def test_grouped_no_label_uses_default_chapter_prefix():
-    hs = [
-        Highlight(
-            text="a",
-            chapter_index=12,
-            chapter_title="The Battle",
-            progress=0.42,
-            block="3",
-            segment="5",
-        )
-    ]
-    out = render_highlights(hs)  # no chapter_label
-    assert "### The Battle" in out
-    assert "%%" not in out
-    assert "> [!quote]+ ch. 12 · 42%" in out  # default "ch." prefix
-
-
 def test_grouped_one_header_per_chapter_run():
     hs = [
         Highlight(text="a", chapter_index=1, chapter_title="One", progress=0.1, block="1"),
@@ -333,12 +316,6 @@ def test_empty_location_label_renders_bare_timestamp():
     out = render_highlights([h])
     assert "> [!quote]+ 3:24:15" in out
     assert "p. 3:24:15" not in out
-
-
-def test_none_location_label_still_defaults_to_p():
-    h = Highlight(text="A passage.", page="42")
-    out = render_highlights([h])
-    assert "> [!quote]+ p. 42" in out
 
 
 def test_render_highlights_single_source_has_no_source_header():

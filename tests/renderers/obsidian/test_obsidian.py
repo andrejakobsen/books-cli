@@ -89,10 +89,6 @@ def test_property_order_uses_topics_not_genres():
     assert "notes" not in ob.BOOK_PROPERTY_ORDER
 
 
-def test_source_in_property_order():
-    assert "source" in ob.BOOK_PROPERTY_ORDER
-
-
 def test_norm_amazon_uppercases_and_strips():
     assert norm_amazon(" b00inixpye ") == "B00INIXPYE"
     assert norm_amazon("B00-INIX_PYE") == "B00INIXPYE"

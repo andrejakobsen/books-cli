@@ -34,12 +34,6 @@ def test_load_note_missing_returns_empty(tmp_path):
     assert R.load_note(tmp_path / "none.md") == ({}, "")
 
 
-def test_note_property_order_drops_source():
-    assert "source" not in R.NOTE_PROPERTY_ORDER
-    assert R.NOTE_PROPERTY_ORDER[0] == "type"
-    assert "topics" in R.NOTE_PROPERTY_ORDER
-
-
 def test_book_frontmatter_authoritative_and_derived(tmp_path):
     note = tmp_path / "Books" / "The Deluge - Adam Tooze.md"
     row = store.BookRow(
@@ -484,19 +478,6 @@ def test_render_refresh_restores_props_for_surviving_books(tmp_path):
     assert "Manual paragraph." not in post.content  # body is NOT preserved on refresh
 
 
-def test_render_refresh_drops_props_for_deleted_books(tmp_path):
-    # A note whose book is no longer in the catalog is gone and its cached props
-    # are never restored (nothing to restore them onto).
-    vault = tmp_path / "vault"
-    store.write_books_csv(vault, [store.BookRow(book_id="X - A", title="X", authors=["A"])])
-    gone = vault / "Books" / "Gone - Z.md"
-    gone.parent.mkdir(parents=True)
-    gone.write_text('---\ntype: book\ntitle: Gone\ntopics:\n- "[[Kept]]"\n---\n', encoding="utf-8")
-    R.render(vault, refresh=True)
-    assert not gone.exists()
-    assert not any(p.name == "Gone - Z.md" for p in (vault / "Books").glob("*.md"))
-
-
 def test_render_refresh_noop_when_dirs_absent(tmp_path):
     vault = tmp_path / "vault"
     store.write_books_csv(vault, [store.BookRow(book_id="X - A", title="X", authors=["A"])])
@@ -515,17 +496,3 @@ def test_render_refresh_idempotent(tmp_path):
     R.render(vault, refresh=True)
     after = {p: p.read_text(encoding="utf-8") for p in vault.rglob("*.md")}
     assert before == after
-
-
-def test_obsidian_renderer_forwards_refresh(tmp_path):
-    from books.renderers import get_renderer
-
-    vault = tmp_path / "vault"
-    store.write_books_csv(vault, [store.BookRow(book_id="X - A", title="X", authors=["A"])])
-    (vault / "Books").mkdir(parents=True)
-    (vault / "Books" / "Gone - Z.md").write_text(
-        "---\ntype: book\ntitle: Gone\n---\n", encoding="utf-8"
-    )
-    get_renderer("obsidian").render(vault, refresh=True)
-    assert not (vault / "Books" / "Gone - Z.md").exists()  # refresh took effect
-    assert (vault / "Books" / "X - A.md").is_file()

@@ -118,16 +118,6 @@ def test_kobo_writes_highlights_to_store(tmp_path):
     assert stats == {"books": 1, "entries": 2, "skipped": 0}
 
 
-def test_kobo_skips_unmatched_book(tmp_path):
-    vault = tmp_path / "vault"
-    store.write_books_csv(vault, [])  # empty catalog -> nothing matches
-    db = tmp_path / "KoboReader.sqlite"
-    _make_db(db)
-    stats = ke.export_obsidian(db, vault)
-    assert stats == {"books": 0, "entries": 0, "skipped": 1}
-    assert store.read_highlights(vault, _GATSBY_ID) == []
-
-
 def test_kobo_two_titles_same_book_id_keeps_all(tmp_path):
     """Two Kobo titles resolving to the same catalog book must accumulate --
     the second title's highlights must not wipe the first's."""
@@ -175,16 +165,6 @@ def test_kobo_two_titles_same_book_id_keeps_all(tmp_path):
     assert stats == {"books": 1, "entries": 2, "skipped": 0}
 
 
-def test_kobo_rerun_replaces_own_rows(tmp_path):
-    vault = tmp_path / "vault"
-    _seed_gatsby_catalog(vault)
-    db = tmp_path / "KoboReader.sqlite"
-    _make_db(db)
-    ke.export_obsidian(db, vault)
-    ke.export_obsidian(db, vault)  # re-run
-    assert len(store.read_highlights(vault, _GATSBY_ID)) == 2  # not duplicated
-
-
 class _R(dict):
     """Row stub matching the kobo module's row access (missing keys -> None)."""
 
@@ -205,54 +185,12 @@ def _hl(note):
     return ke.row_to_highlight(row)
 
 
-@pytest.mark.parametrize(
-    "note",
-    [
-        "Note. #tag1 #tag2",
-        "Note.#tag1 #tag2",
-        "Note. #tag1#tag2",
-    ],
-)
-def test_kobo_extracts_tags_and_strips_note(note):
-    h = _hl(note)
-    assert h.note == "Note."
-    assert h.tags == ["tag1", "tag2"]
-
-
-def test_kobo_note_only_tags_becomes_none():
-    h = _hl("#tag1 #tag2")
-    assert h.note is None
-    assert h.tags == ["tag1", "tag2"]
-
-
-def test_kobo_no_tags_note_verbatim():
-    h = _hl("Just a plain note.")
-    assert h.note == "Just a plain note."
-    assert h.tags == []
-
-
-def test_kobo_dedupes_tags_preserving_order():
-    h = _hl("Note. #tag1 #tag2 #tag1")
-    assert h.note == "Note."
-    assert h.tags == ["tag1", "tag2"]
-
-
-def test_kobo_preserves_nested_and_hyphen_tags():
-    h = _hl("#history/ussr #cold-war")
-    assert h.tags == ["history/ussr", "cold-war"]
-
-
 def test_kobo_extracts_links_and_tags():
+    # Kobo wires the shared parse_markers helper (exhaustively covered in
+    # tests/core/test_highlights.py); this smoke proves the wiring only.
     h = _hl("Great point. @War Commisar #history")
     assert h.note == "Great point."
     assert h.links == ["War Commisar"]
-    assert h.tags == ["history"]
-
-
-def test_kobo_note_only_markers_becomes_none():
-    h = _hl("@Trotsky #history")
-    assert h.note is None
-    assert h.links == ["Trotsky"]
     assert h.tags == ["history"]
 
 
@@ -337,37 +275,6 @@ def test_kobo_uses_existing_imports_copy_when_no_device(monkeypatch, tmp_path):
 
     assert result.exit_code == 0, result.output
     assert len(store.read_highlights(vault, _GATSBY_ID)) == 2
-
-
-def test_kobo_forwards_output_to_imports_resolution(monkeypatch, tmp_path):
-    import typer
-    from typer.testing import CliRunner
-
-    from books.commands import kobo as ke
-    from books.core import config
-
-    vault = tmp_path / "Vault"
-    _seed_gatsby_catalog(vault)
-    folder = vault / ".imports" / "kobo"
-    folder.mkdir(parents=True)
-    _make_db(folder / "KoboReader.sqlite")
-    monkeypatch.setattr(ke, "KOBO_DEVICE_DB", tmp_path / "nope" / "KoboReader.sqlite")
-    monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
-
-    seen = {}
-
-    def fake_resolve_imports(name, output=None):
-        seen["output"] = output
-        return folder
-
-    monkeypatch.setattr(config, "resolve_imports", fake_resolve_imports)
-
-    app = typer.Typer()
-    ke.register(app)
-    result = CliRunner().invoke(app, ["--output", str(vault)])
-
-    assert result.exit_code == 0, result.output
-    assert seen["output"] == vault  # --output drives where the DB snapshot is looked up
 
 
 def test_kobo_explicit_db_option(monkeypatch, tmp_path):

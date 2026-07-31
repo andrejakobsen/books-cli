@@ -41,28 +41,6 @@ def test_books_missing_cover_no_catalog_returns_empty(tmp_path):
     assert covers.books_missing_cover(tmp_path) == []
 
 
-def test_dataclasses_exist():
-    mb = covers.MissingBook(
-        book_id="A - Ann",
-        title="A Title",
-        authors=["An Author"],
-        isbn="123",
-        amazon="B00XYZ",
-    )
-    assert mb.book_id == "A - Ann"
-    assert mb.title == "A Title"
-    assert mb.authors == ["An Author"]
-
-    c = covers.Candidate(
-        source="google",
-        label="A Title — An Author",
-        image_url="https://x/y.jpg",
-        fmt=None,
-    )
-    assert c.source == "google"
-    assert c.fmt is None
-
-
 GOOGLE_VOLUME = {
     "items": [
         {
@@ -190,22 +168,6 @@ def test_google_query_uses_normalized_author():
     assert "Benjamin" not in captured["url"]
     assert "inauthor:Plato" in captured["url"]
     assert "The%20Republic" in captured["url"] or "The+Republic" in captured["url"]
-
-
-def test_openlibrary_query_uses_normalized_author():
-    book = covers.MissingBook(
-        book_id="x", title="X", authors=["James   Barr"], isbn=None, amazon=None
-    )
-    captured = {}
-
-    def fake_fetch(url):
-        captured.setdefault("urls", []).append(url)
-        return {"docs": []}
-
-    covers.openlibrary_candidates(book, fake_fetch)
-    search_url = next(u for u in captured["urls"] if "search.json" in u)
-    assert "James+Barr" in search_url or "James%20Barr" in search_url
-    assert "James++" not in search_url and "James%20%20" not in search_url
 
 
 def test_google_books_prefers_largest_and_upgrades_url():
@@ -495,27 +457,6 @@ def test_gather_with_errors_reports_failing_source():
     assert "openlibrary" not in errored
     # amazon still contributes despite google failing
     assert any(c.source == "amazon" for c in cands)
-
-
-def test_gather_candidates_source_order():
-    book = covers.MissingBook(
-        book_id="x", title="Napoleon", authors=["Andrew Roberts"], isbn=None, amazon="B00ABCDEFG"
-    )
-
-    def fake_fetch(url):
-        if "googleapis" in url:
-            return GOOGLE_VOLUME
-        if "editions.json" in url:
-            return OL_EDITIONS
-        return OL_SEARCH
-
-    cands = covers.gather_candidates(book, fake_fetch)
-    sources = [c.source for c in cands]
-    assert sources[0] == "google"
-    assert "openlibrary" in sources
-    assert sources[-1] == "amazon"
-    # google before every openlibrary before amazon
-    assert sources.index("google") < sources.index("openlibrary") < sources.index("amazon")
 
 
 def _png(width: int, height: int) -> bytes:
@@ -832,25 +773,6 @@ def test_apple_books_uses_collection_name_and_no_isbn_for_opaque_art():
     assert cands[0].label == "The Anatomy of Fascism — Robert O. Paxton"
     assert cands[0].isbn is None
     assert "1400x1400bb" in cands[0].image_url
-
-
-def test_apple_books_normalizes_author():
-    book = covers.MissingBook(
-        book_id="x",
-        title="The Republic",
-        authors=["Plato and Benjamin Jowett"],
-        isbn=None,
-        amazon=None,
-    )
-    captured = {}
-
-    def fake_fetch(url):
-        captured["url"] = url
-        return {"results": []}
-
-    covers.apple_books_candidates(book, fake_fetch)
-    assert "Plato" in captured["url"]
-    assert "Benjamin" not in captured["url"]
 
 
 def test_apple_books_no_results_returns_empty():

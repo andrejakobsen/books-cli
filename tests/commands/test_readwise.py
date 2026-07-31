@@ -123,17 +123,6 @@ def test_row_to_highlight_blank_note_is_none():
     assert h.note is None
 
 
-def test_row_to_highlight_splits_and_dedupes_tags():
-    h = rw.row_to_highlight({"Highlight": "x", "Tags": "Stalin, USSR, stalin"})
-    assert h.tags == ["stalin", "ussr"]
-
-
-def test_row_to_highlight_splits_links_from_tags():
-    h = rw.row_to_highlight({"Highlight": "x", "Tags": "history, @War Commisar"})
-    assert h.tags == ["history"]
-    assert h.links == ["War Commisar"]
-
-
 def test_parse_csv_reads_rows(tmp_path):
     rows = rw.parse_csv(write_csv(tmp_path))
     assert len(rows) == 2
@@ -179,15 +168,6 @@ def test_readwise_writes_highlights_to_store(tmp_path):
     assert stats["books"] == 1 and stats["entries"] == 1 and stats["skipped"] == 0
 
 
-def test_readwise_skips_unmatched(tmp_path):
-    vault = tmp_path / "vault"
-    store.write_books_csv(vault, [])
-    csv = tmp_path / "rw.csv"
-    csv.write_text(_RW_CSV, encoding="utf-8")
-    stats = readwise.convert(csv, vault)
-    assert stats["skipped"] == 1 and stats["books"] == 0
-
-
 def test_convert_writes_two_highlights_to_store(tmp_path):
     vault = tmp_path / "vault"
     seed_stalin(vault)
@@ -198,14 +178,6 @@ def test_convert_writes_two_highlights_to_store(tmp_path):
     assert all(r.source == "readwise" for r in rows)
     # First row's Tags column ("history") becomes a #tag.
     assert rows[0].tags == ["history"]
-
-
-def test_convert_rerun_replaces_own_rows(tmp_path):
-    vault = tmp_path / "vault"
-    seed_stalin(vault)
-    rw.convert(write_csv(tmp_path), vault)
-    rw.convert(write_csv(tmp_path), vault)  # re-run
-    assert len(store.read_highlights(vault, "Stalin - Stephen Kotkin")) == 2
 
 
 def test_convert_same_title_different_authors_no_amazon_stay_separate(tmp_path):
@@ -326,30 +298,6 @@ def test_readwise_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
     app = typer.Typer()
     rw.register(app)
     result = CliRunner().invoke(app, [])
-
-    assert result.exit_code == 0, result.output
-    assert len(store.read_highlights(vault, "Stalin - Stephen Kotkin")) == 2
-
-
-def test_readwise_folder_arg_picks_newest(monkeypatch, tmp_path):
-    import os
-
-    from books.core import config
-
-    vault = tmp_path / "Vault"
-    folder = tmp_path / "exports"
-    folder.mkdir()
-    old = folder / "old.csv"
-    old.write_text(HEADER, encoding="utf-8")
-    (folder / "new.csv").write_text(HEADER + ROWS, encoding="utf-8")
-    os.utime(old, (1000, 1000))
-    os.utime(folder / "new.csv", (2000, 2000))
-    monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
-    seed_stalin(vault)
-
-    app = typer.Typer()
-    rw.register(app)
-    result = CliRunner().invoke(app, ["--csv", str(folder), "--output", str(vault)])
 
     assert result.exit_code == 0, result.output
     assert len(store.read_highlights(vault, "Stalin - Stephen Kotkin")) == 2

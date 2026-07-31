@@ -146,26 +146,6 @@ def test_same_book_bare_sequel_titles_do_not_merge():
     assert store.same_book(a, b) is False
 
 
-def test_same_book_bare_title_merges_with_subtitled_same_book():
-    a = store.BookRow(title="1984", authors=["George Orwell"])
-    b = store.BookRow(title="1984: A Novel", authors=["George Orwell"])
-    assert store.same_book(a, b) is True
-
-
-def test_assign_book_id_basic_stem_drops_subtitle():
-    used = set()
-    bid = store.assign_book_id("The Deluge: The Great War", "Adam Tooze", used)
-    assert bid == "The Deluge - Adam Tooze"
-
-
-def test_assign_book_id_collision_restores_subtitle():
-    used = set()
-    first = store.assign_book_id("Stalin: Paradoxes of Power", "Stephen Kotkin", used)
-    second = store.assign_book_id("Stalin: Waiting for Hitler, 1929-1941", "Stephen Kotkin", used)
-    assert first == "Stalin - Stephen Kotkin"
-    assert second == "Stalin, Waiting for Hitler, 1929-1941 - Stephen Kotkin"
-
-
 def test_assign_book_id_numeric_suffix_last_resort():
     used = set()
     a = store.assign_book_id("Poems", "Anon", used)

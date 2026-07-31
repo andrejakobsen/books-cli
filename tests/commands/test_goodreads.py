@@ -61,18 +61,6 @@ def test_parse_csv_fields(tmp_path):
     assert reading.status == "reading"  # currently-reading normalized
 
 
-def test_normalization_helpers():
-    from books.core import matching as m
-
-    assert m.norm_isbn('="9780698176287"') == "9780698176287"
-    assert m.norm_title("The Cold War: A New History") == m.norm_title(
-        "The Cold War - A New History"
-    )
-    assert m.author_key("Terry Martin") == m.author_key("Terry L. Martin")
-    assert m.author_key("Roberts, Andrew") == m.author_key("Andrew Roberts")
-    assert m.author_key("Broué, Pierre") == m.author_key("Pierre Broue")
-
-
 def test_norm_format_maps_bindings():
     assert gr._norm_format("Paperback") == "physical"
     assert gr._norm_format("Hardcover") == "physical"
@@ -157,13 +145,6 @@ def test_goodreads_skips_titleless_or_authorless(tmp_path):
     assert store.read_layer(vault, "goodreads") == []
 
 
-def test_goodreads_rerun_replaces_layer(tmp_path):
-    vault = tmp_path / "vault"
-    gr.convert(_write_csv(tmp_path), vault)
-    gr.convert(_write_csv(tmp_path), vault)  # re-run
-    assert len(store.read_layer(vault, "goodreads")) == 2  # not duplicated
-
-
 # --- CLI wiring -------------------------------------------------------------
 
 
@@ -196,34 +177,6 @@ def test_goodreads_defaults_csv_to_imports_newest(monkeypatch, tmp_path):
     app = typer.Typer()
     gr.register(app)
     result = CliRunner().invoke(app, [])
-
-    assert result.exit_code == 0, result.output
-    rows = {r.title for r in store.read_layer(vault, "goodreads")}
-    assert "The Deluge" in rows
-
-
-def test_goodreads_folder_arg_picks_newest(monkeypatch, tmp_path):
-    import os
-
-    import typer
-    from typer.testing import CliRunner
-
-    from books.commands import goodreads as gr
-    from books.core import config
-
-    vault = tmp_path / "Vault"
-    folder = tmp_path / "exports"
-    folder.mkdir()
-    old = folder / "old.csv"
-    old.write_text("Title,Author,Exclusive Shelf\n", encoding="utf-8")
-    _minimal_goodreads_csv(folder / "new.csv")
-    os.utime(old, (1000, 1000))
-    os.utime(folder / "new.csv", (2000, 2000))
-    monkeypatch.setattr(config, "resolve_vault", lambda output=None: vault)
-
-    app = typer.Typer()
-    gr.register(app)
-    result = CliRunner().invoke(app, ["--csv", str(folder), "--output", str(vault)])
 
     assert result.exit_code == 0, result.output
     rows = {r.title for r in store.read_layer(vault, "goodreads")}

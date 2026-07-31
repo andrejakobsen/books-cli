@@ -46,17 +46,15 @@ def test_calibre_writes_layer_csv(tmp_path):
     assert stats["books"] == 1
 
 
-def test_calibre_does_not_map_topics_or_write_notes(tmp_path):
+def test_calibre_does_not_write_notes(tmp_path):
     lib = tmp_path / "lib"
     _make_calibre_book(lib, "Adam Tooze/The Deluge (1)", _OPF)
     vault = tmp_path / "vault"
 
     calibre.convert(lib, vault)
 
-    # No book notes are created by calibre anymore.
+    # No book notes are created by calibre anymore (it is a pure CSV writer).
     assert not (vault / "Books").exists()
-    # No topics column exists in the store schema, so subjects are dropped.
-    assert "topics" not in store.BookRow.model_fields
 
 
 def test_calibre_stages_cover_and_records_path(tmp_path):

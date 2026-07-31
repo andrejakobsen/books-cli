@@ -1,8 +1,6 @@
 import io
 
-from rich.panel import Panel
 from rich.progress import Progress
-from rich.table import Table
 
 from books.core import ui
 from books.core.ui import ProgressBar
@@ -56,14 +54,6 @@ def test_warn_goes_to_stderr_not_stdout():
         ui.err_console.file = old
     assert "careful" in buf.getvalue()
     assert "⊘" in buf.getvalue()
-
-
-def test_summary_table_is_a_table():
-    assert isinstance(ui.summary_table("Sync"), Table)
-
-
-def test_panel_is_a_panel():
-    assert isinstance(ui.panel("body", title="t"), Panel)
 
 
 def test_progress_disabled_when_not_terminal():

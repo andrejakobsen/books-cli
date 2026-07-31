@@ -3,9 +3,6 @@
 Step `run` functions are monkeypatched so no real Calibre/Kobo data is needed.
 """
 
-from typer.testing import CliRunner
-
-from books.cli import app
 from books.commands import import_cmd
 from books.commands import import_cmd as imp
 from books.core import config
@@ -142,37 +139,7 @@ def test_dry_run_does_not_execute(tmp_path, monkeypatch):
     assert all(r.status == "planned" for r in results)
 
 
-# --- CLI wiring -------------------------------------------------------------
-
-
-def test_import_registered():
-    result = CliRunner().invoke(app, ["--help"])
-    assert result.exit_code == 0
-    assert "import" in result.output
-
-
-def test_import_help():
-    result = CliRunner().invoke(app, ["import", "--help"])
-    assert result.exit_code == 0
-    assert "--calibre" in result.output and "--audible" in result.output
-
-
-def test_kindle_step_registered():
-    steps = import_cmd._all_steps(config.Config())
-    assert "kindle" in steps
-
-
-def test_kindle_included_when_selected():
-    names = [s.name for s in import_cmd.build_steps({"kindle"}, config.Config())]
-    assert "kindle" in names
-    assert names.index("merge") < names.index("kindle")  # merge before the consumer
-
-
-def test_kindle_flag_selects_only_kindle():
-    selection = import_cmd._selection_from_flags(
-        {"calibre": False, "kindle": True}, default={"calibre"}
-    )
-    assert selection == {"kindle"}
+# --- kindle-specific wiring -------------------------------------------------
 
 
 def test_detect_kindle_true_with_cache_only(tmp_path):
