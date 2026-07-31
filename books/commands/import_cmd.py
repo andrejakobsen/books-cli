@@ -25,6 +25,7 @@ from books.commands import (
     calibre,
     goodreads,
     highlighted,
+    kindle,
     kobo,
     readwise,
 )
@@ -35,7 +36,7 @@ from books.core import config, store, ui
 # The out-of-the-box importers run with no flags (overridable via [import].default).
 SYNC_SET = config.DEFAULT_IMPORTERS
 # Importers that resolve against Data/books.csv (need a current catalog first).
-_CONSUMERS = ("audible", "covers", "kobo", "highlighted", "readwise")
+_CONSUMERS = ("audible", "covers", "kobo", "highlighted", "readwise", "kindle")
 # Importers that write a Data/Sources/<name>.csv layer after the phase-A merge.
 _ENRICHERS = ("audible", "covers")
 
@@ -105,6 +106,11 @@ def _detect_readwise(vault: Path, cfg: config.Config) -> str | None:
     return None
 
 
+def _detect_kindle(vault: Path, cfg: config.Config) -> str | None:
+    path = kindle.default_clippings_path(vault, cfg.kindle.clippings)
+    return str(path) if path.is_file() else None
+
+
 def _detect_merge(vault: Path, cfg: config.Config) -> str | None:
     src = store.sources_dir(vault)
     if src.is_dir() and any(src.glob("*.csv")):
@@ -152,6 +158,10 @@ def _run_highlighted(vault: Path, cfg: config.Config) -> dict:
 def _run_readwise(vault: Path, cfg: config.Config) -> dict:
     csv = config.newest_csv(_imports_folder("readwise", vault))
     return readwise.convert(csv, vault)
+
+
+def _run_kindle(vault: Path, cfg: config.Config) -> dict:
+    return kindle.run_import(vault, cfg.kindle)
 
 
 def _run_merge(vault: Path, cfg: config.Config) -> dict:
@@ -250,6 +260,13 @@ def _all_steps(cfg: config.Config) -> dict[str, Step]:
             _summ_highlights,
             _imports_label("readwise", cfg),
         ),
+        "kindle": Step(
+            "kindle",
+            _detect_kindle,
+            _run_kindle,
+            _summ_highlights,
+            _imports_label("kindle", cfg),
+        ),
     }
 
 
@@ -279,7 +296,7 @@ def build_steps(selection: set[str], cfg: config.Config | None = None) -> list[S
             out.append(steps[name])
     if selection & set(_ENRICHERS):
         out.append(_merge_step())
-    for name in ("kobo", "highlighted", "readwise"):
+    for name in ("kobo", "highlighted", "readwise", "kindle"):
         if name in selection:
             out.append(steps[name])
     return out
@@ -394,6 +411,9 @@ def import_command(
         False, "--highlighted", help="Import Highlighted app exports."
     ),
     readwise_: bool = typer.Option(False, "--readwise", help="Import the Readwise export."),
+    kindle_: bool = typer.Option(
+        False, "--kindle", help="Import Kindle My Clippings.txt highlights."
+    ),
     audible_: bool = typer.Option(
         False, "--audible", help="Import Audible clips (opt-in; needs cloud auth)."
     ),
@@ -430,6 +450,7 @@ def import_command(
             "kobo": kobo_,
             "highlighted": highlighted_,
             "readwise": readwise_,
+            "kindle": kindle_,
             "audible": audible_,
             "covers": covers_,
         },

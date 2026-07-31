@@ -6,7 +6,9 @@ Step `run` functions are monkeypatched so no real Calibre/Kobo data is needed.
 from typer.testing import CliRunner
 
 from books.cli import app
+from books.commands import import_cmd
 from books.commands import import_cmd as imp
+from books.core import config
 
 
 def test_has_csv_true_when_csv_present(tmp_path):
@@ -35,6 +37,7 @@ def test_no_flags_runs_sync_set_with_one_merge():
         "kobo",
         "highlighted",
         "readwise",
+        "kindle",
     ]
 
 
@@ -73,7 +76,7 @@ def _stub_runs(monkeypatch, order, *, failing=None):
 
         return run
 
-    for name in ("calibre", "goodreads", "kobo", "highlighted", "readwise", "merge"):
+    for name in ("calibre", "goodreads", "kobo", "highlighted", "readwise", "kindle", "merge"):
         monkeypatch.setattr(imp, f"_run_{name}", make(name))
 
 
@@ -84,6 +87,7 @@ def _detect_all(monkeypatch):
         "_detect_kobo",
         "_detect_highlighted",
         "_detect_readwise",
+        "_detect_kindle",
         "_detect_merge",
     ):
         monkeypatch.setattr(imp, name, lambda v, c: "src")
@@ -94,7 +98,15 @@ def test_runs_selected_in_dependency_order(tmp_path, monkeypatch):
     order = []
     _stub_runs(monkeypatch, order)
     imp.run_import(tmp_path, selection=set(imp.SYNC_SET))
-    assert order == ["calibre", "goodreads", "merge", "kobo", "highlighted", "readwise"]
+    assert order == [
+        "calibre",
+        "goodreads",
+        "merge",
+        "kobo",
+        "highlighted",
+        "readwise",
+        "kindle",
+    ]
 
 
 def test_skips_steps_without_sources(tmp_path, monkeypatch):
@@ -143,3 +155,21 @@ def test_import_help():
     result = CliRunner().invoke(app, ["import", "--help"])
     assert result.exit_code == 0
     assert "--calibre" in result.output and "--audible" in result.output
+
+
+def test_kindle_step_registered():
+    steps = import_cmd._all_steps(config.Config())
+    assert "kindle" in steps
+
+
+def test_kindle_included_when_selected():
+    names = [s.name for s in import_cmd.build_steps({"kindle"}, config.Config())]
+    assert "kindle" in names
+    assert names.index("merge") < names.index("kindle")  # merge before the consumer
+
+
+def test_kindle_flag_selects_only_kindle():
+    selection = import_cmd._selection_from_flags(
+        {"calibre": False, "kindle": True}, default={"calibre"}
+    )
+    assert selection == {"kindle"}
