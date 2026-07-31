@@ -179,9 +179,7 @@ def book_stem(title: str, author: str, used: set[str]) -> str:
     return stem
 
 
-def save_book(
-    cdir: Path, stem: str, title: str, author: str, highlights: list[Highlight]
-) -> None:
+def save_book(cdir: Path, stem: str, title: str, author: str, highlights: list[Highlight]) -> None:
     """Write one book's cache record (wholesale overwrite; parents created)."""
     cdir.mkdir(parents=True, exist_ok=True)
     record = {
@@ -463,30 +461,24 @@ def run_import(vault: Path, cfg: config.KindleConfig) -> dict:
 Replace the body of `kindle_import` (keep its signature/decorated options) — from `vault = config.resolve_vault(output)` to the end of the function — with:
 
 ```python
-    vault = config.resolve_vault(output)
-    if clippings is not None:
-        clip = resolve_path(clippings, Path.cwd())
-        if not clip.is_file():
-            raise typer.BadParameter(
-                f"clippings file not found: {clip}", param_hint="--clippings"
-            )
-    else:
-        auto = default_clippings_path(vault)
-        clip = auto if auto.is_file() else None
+vault = config.resolve_vault(output)
+if clippings is not None:
+    clip = resolve_path(clippings, Path.cwd())
+    if not clip.is_file():
+        raise typer.BadParameter(f"clippings file not found: {clip}", param_hint="--clippings")
+else:
+    auto = default_clippings_path(vault)
+    clip = auto if auto.is_file() else None
 
-    cdir = cache.cache_dir(vault)
-    has_cache = cdir.is_dir() and any(cdir.glob("*.json"))
-    if clip is None and not has_cache:
-        raise typer.BadParameter(
-            "no Kindle clippings file or cache found", param_hint="--clippings"
-        )
+cdir = cache.cache_dir(vault)
+has_cache = cdir.is_dir() and any(cdir.glob("*.json"))
+if clip is None and not has_cache:
+    raise typer.BadParameter("no Kindle clippings file or cache found", param_hint="--clippings")
 
-    vault.mkdir(parents=True, exist_ok=True)
-    stats = convert(clip, vault)
-    pending = f", {stats['pending']} pending" if stats["pending"] else ""
-    ui.info(
-        f"Done. {stats['books']} books{pending}, {stats['entries']} highlights.\nOutput: {vault}"
-    )
+vault.mkdir(parents=True, exist_ok=True)
+stats = convert(clip, vault)
+pending = f", {stats['pending']} pending" if stats["pending"] else ""
+ui.info(f"Done. {stats['books']} books{pending}, {stats['entries']} highlights.\nOutput: {vault}")
 ```
 
 Also update the `kindle_import` docstring's final sentence so it no longer says a skipped book is "skipped and counted" — replace that sentence with:
