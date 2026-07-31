@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 
 
 @dataclass
@@ -22,6 +23,33 @@ class Highlight:
     tags: list[str] = field(default_factory=list)
     links: list[str] = field(default_factory=list)
     source: str | None = None  # provenance (kobo | readwise | ...) for grouping
+
+
+def normalize_date(raw: str | None) -> str | None:
+    """Normalize a raw source timestamp to ISO 8601 UTC (seconds, 'Z' suffix).
+
+    Every highlight source's timestamp reduces to an ISO-8601-parseable string by
+    the time it reaches here (Kobo/Highlighted/Kindle/Audible are naive; Readwise
+    carries a numeric offset). Naive timestamps are assumed to be UTC; aware ones
+    are converted to UTC. Fractional seconds are dropped; date-only input becomes
+    ``...T00:00:00Z``.
+
+    Returns None for empty/None input or a string that cannot be parsed.
+    """
+    if raw is None:
+        return None
+    text = raw.strip()
+    if not text:
+        return None
+    try:
+        dt = datetime.fromisoformat(text)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    else:
+        dt = dt.astimezone(UTC)
+    return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 
 def sanitize_tag(raw: str | None) -> str | None:

@@ -1,6 +1,38 @@
 """Unit tests for the source-agnostic highlights layer."""
 
+import pytest
+
 from books.core import highlights as hl
+from books.core.highlights import normalize_date
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("2024-03-15T14:30:00.000", "2024-03-15T14:30:00Z"),  # kobo (real, ms)
+        ("2026-07-01", "2026-07-01T00:00:00Z"),  # kobo/highlighted date-only
+        ("2026-07-24 11:15:47", "2026-07-24T11:15:47Z"),  # highlighted (space, naive)
+        ("2026-07-17 14:00:25.470174+00:00", "2026-07-17T14:00:25Z"),  # readwise (offset)
+        ("2015-07-31T00:17:35", "2015-07-31T00:17:35Z"),  # kindle (isoformat, naive)
+        ("2026-07-28 07:38:09.0", "2026-07-28T07:38:09Z"),  # audible (.0 tenths)
+    ],
+)
+def test_normalize_date_canonicalizes_each_source_shape(raw, expected):
+    assert normalize_date(raw) == expected
+
+
+def test_normalize_date_converts_offset_to_utc():
+    # +02:00 wall clock 14:30 -> 12:30 UTC
+    assert normalize_date("2024-03-15 14:30:00+02:00") == "2024-03-15T12:30:00Z"
+
+
+@pytest.mark.parametrize("raw", [None, "", "   "])
+def test_normalize_date_empty_returns_none(raw):
+    assert normalize_date(raw) is None
+
+
+def test_normalize_date_unparseable_returns_none():
+    assert normalize_date("not a date") is None
 
 
 def test_sanitize_tag_whitespace_to_hyphen():
