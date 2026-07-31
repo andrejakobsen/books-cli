@@ -19,6 +19,7 @@ DEFAULT_VAULT = "History"
 DEFAULT_IMPORTS = "Data/Imports"
 
 DEFAULT_CALIBRE_LIBRARY = "~/Calibre Library"
+DEFAULT_TIMEZONE = "Europe/Oslo"
 _TRANSCRIBERS = ("local", "openai", "google")
 _SELECT_MODES = ("interactive", "all")
 # Every importer name (validates [import].default). Kept in sync with import_cmd.
@@ -59,6 +60,8 @@ _DEFAULT_FILE = (
     "# limit = 0                # 0 = no limit\n"
     "# [kindle]\n"
     '# clippings = "/path/to/My Clippings.txt"  # default: mounted Kindle / imports folder\n'
+    "# [export]\n"
+    f'# timezone = "{DEFAULT_TIMEZONE}"  # IANA zone for highlight date/time rendering\n'
 )
 
 # A fully-uncommented copy used only by tests to assert the sections parse.
@@ -80,6 +83,8 @@ _DEFAULT_FILE_PARSEABLE = (
     "limit = 0\n"
     "[kindle]\n"
     'clippings = ""\n'
+    "[export]\n"
+    f'timezone = "{DEFAULT_TIMEZONE}"\n'
 )
 
 
@@ -116,6 +121,11 @@ class KindleConfig:
 
 
 @dataclass
+class ExportConfig:
+    timezone: str = DEFAULT_TIMEZONE
+
+
+@dataclass
 class Config:
     """Resolved config values (built-in defaults when unset)."""
 
@@ -128,6 +138,7 @@ class Config:
     audible: AudibleConfig = field(default_factory=AudibleConfig)
     covers: CoversConfig = field(default_factory=CoversConfig)
     kindle: KindleConfig = field(default_factory=KindleConfig)
+    export: ExportConfig = field(default_factory=ExportConfig)
 
 
 def config_path() -> Path:
@@ -185,6 +196,7 @@ def _parse_sections(data: dict) -> dict:
     aud = _table(data, "audible")
     cov = _table(data, "covers")
     kin = _table(data, "kindle")
+    exp = _table(data, "export")
     return {
         "import_": ImportConfig(default=_importer_list_or(imp, "default", DEFAULT_IMPORTERS)),
         "calibre": CalibreConfig(library=_nonempty_str_or(cal, "library", DEFAULT_CALIBRE_LIBRARY)),
@@ -198,6 +210,7 @@ def _parse_sections(data: dict) -> dict:
             limit=_int_or(cov, "limit", 0),
         ),
         "kindle": KindleConfig(clippings=_str_or(kin, "clippings", "")),
+        "export": ExportConfig(timezone=_nonempty_str_or(exp, "timezone", DEFAULT_TIMEZONE)),
     }
 
 

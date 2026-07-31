@@ -348,3 +348,24 @@ def test_kindle_config_defaults_empty(tmp_path):
     cfg_file.write_text('vault = "V"\n')
     cfg = config.load_config(cfg_file)
     assert cfg.kindle.clippings == ""
+
+
+def test_load_config_reads_export_timezone(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('[export]\ntimezone = "America/New_York"\n')
+    cfg = config.load_config(cfg_file)
+    assert cfg.export.timezone == "America/New_York"
+
+
+def test_load_config_defaults_export_timezone_when_absent(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('vault = "History"\n')
+    cfg = config.load_config(cfg_file)
+    assert cfg.export.timezone == "Europe/Oslo"
+
+
+def test_load_config_defaults_export_timezone_on_non_string(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text("[export]\ntimezone = 5\n")
+    cfg = config.load_config(cfg_file)
+    assert cfg.export.timezone == "Europe/Oslo"
