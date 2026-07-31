@@ -121,8 +121,14 @@ class KindleConfig:
 
 
 @dataclass
+class ObsidianExportConfig:
+    highlights_template: str = ""  # path to a custom callout template; "" = default
+
+
+@dataclass
 class ExportConfig:
     timezone: str = DEFAULT_TIMEZONE
+    obsidian: ObsidianExportConfig = field(default_factory=ObsidianExportConfig)
 
 
 @dataclass
@@ -146,6 +152,11 @@ def config_path() -> Path:
     base = os.environ.get("XDG_CONFIG_HOME")
     root = Path(base).expanduser() if base else Path.home() / ".config"
     return root / "books" / "config.toml"
+
+
+def templates_dir() -> Path:
+    """Directory holding user-editable export templates (sibling of config.toml)."""
+    return config_path().parent / "templates"
 
 
 def _table(data: dict, name: str) -> dict:
@@ -210,7 +221,12 @@ def _parse_sections(data: dict) -> dict:
             limit=_int_or(cov, "limit", 0),
         ),
         "kindle": KindleConfig(clippings=_str_or(kin, "clippings", "")),
-        "export": ExportConfig(timezone=_nonempty_str_or(exp, "timezone", DEFAULT_TIMEZONE)),
+        "export": ExportConfig(
+            timezone=_nonempty_str_or(exp, "timezone", DEFAULT_TIMEZONE),
+            obsidian=ObsidianExportConfig(
+                highlights_template=_str_or(_table(exp, "obsidian"), "highlights_template", ""),
+            ),
+        ),
     }
 
 

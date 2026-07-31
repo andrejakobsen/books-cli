@@ -369,3 +369,40 @@ def test_load_config_defaults_export_timezone_on_non_string(tmp_path):
     cfg_file.write_text("[export]\ntimezone = 5\n")
     cfg = config.load_config(cfg_file)
     assert cfg.export.timezone == "Europe/Oslo"
+
+
+def test_templates_dir_is_sibling_of_config(monkeypatch, tmp_path):
+    monkeypatch.setenv("XDG_CONFIG_HOME", str(tmp_path / "xdg"))
+    assert config.templates_dir() == tmp_path / "xdg" / "books" / "templates"
+
+
+def test_load_config_reads_obsidian_highlights_template(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('[export.obsidian]\nhighlights_template = "~/my.jinja"\n')
+    cfg = config.load_config(cfg_file)
+    assert cfg.export.obsidian.highlights_template == "~/my.jinja"
+
+
+def test_load_config_defaults_highlights_template_when_absent(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text('vault = "History"\n')
+    cfg = config.load_config(cfg_file)
+    assert cfg.export.obsidian.highlights_template == ""
+
+
+def test_load_config_defaults_highlights_template_on_non_string(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text("[export.obsidian]\nhighlights_template = 5\n")
+    cfg = config.load_config(cfg_file)
+    assert cfg.export.obsidian.highlights_template == ""
+
+
+def test_export_timezone_still_parses_alongside_obsidian_table(tmp_path):
+    cfg_file = tmp_path / "config.toml"
+    cfg_file.write_text(
+        '[export]\ntimezone = "America/New_York"\n'
+        '[export.obsidian]\nhighlights_template = "/t.jinja"\n'
+    )
+    cfg = config.load_config(cfg_file)
+    assert cfg.export.timezone == "America/New_York"
+    assert cfg.export.obsidian.highlights_template == "/t.jinja"
