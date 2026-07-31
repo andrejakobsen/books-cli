@@ -81,7 +81,7 @@ them touch the Obsidian notes:
   `Data/Imports/kindle/cache/` (mirroring the Audible cache). Every `books import`
   re-resolves the whole cache against the catalog, so highlights attach whenever their
   catalog entry exists — import order does not matter and the Kindle need not be attached.
-  Books with no catalog match stay cached and are reported as **pending** (not discarded).
+  Books with no catalog match stay cached and are reported as **pending** (not discarded). Every highlight's timestamp is normalized to ISO 8601 UTC (seconds precision, `Z` suffix) on write to the store (`store.write_highlights` via `normalize_date` in `books/core/highlights.py`); naive source times are treated as UTC and unparseable dates are blanked with a warning.
 
 `import` orchestrates both phases end to end (running the configured default set of
 importers with `merge` injected automatically). `audible` and `covers` are two more CSV
