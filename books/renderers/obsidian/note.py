@@ -13,6 +13,7 @@ import shutil
 from pathlib import Path
 
 from books.core import store, ui
+from books.core.config import DEFAULT_TIMEZONE
 from books.core.store import BookRow, row_to_highlight
 from books.renderers.obsidian.format import format_rating, wikilink
 from books.renderers.obsidian.frontmatter import (
@@ -139,7 +140,7 @@ def render_body(
     row: BookRow,
     note_path: Path,
     highlights: list,
-    timezone: str = "Europe/Oslo",
+    timezone: str = DEFAULT_TIMEZONE,
 ) -> str:
     """Return the note body: cover embed, write-once ``## Review``, ``## Highlights``.
 
@@ -224,7 +225,7 @@ def render_note(
     highlights: list,
     *,
     preserved: dict | None = None,
-    timezone: str = "Europe/Oslo",
+    timezone: str = DEFAULT_TIMEZONE,
 ) -> Path:
     """Write/update the flat book note for *row* under ``Books/<book_id>.md``.
 
@@ -247,7 +248,7 @@ def render_note(
     return note_path
 
 
-def render(vault: Path, *, refresh: bool = False, timezone: str = "Europe/Oslo") -> dict:
+def render(vault: Path, *, refresh: bool = False, timezone: str = DEFAULT_TIMEZONE) -> dict:
     """Render every book in ``books.csv`` (+ its highlights) into ``Books/``.
 
     Also creates an ``Authors/<name>.md`` stub for each distinct author (the
@@ -303,7 +304,9 @@ class ObsidianRenderer:
 
     name = "obsidian"
 
-    def render(self, vault: Path, *, refresh: bool = False, timezone: str = "Europe/Oslo") -> dict:
+    def render(
+        self, vault: Path, *, refresh: bool = False, timezone: str = DEFAULT_TIMEZONE
+    ) -> dict:
         return render(vault, refresh=refresh, timezone=timezone)
 
 

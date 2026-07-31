@@ -11,6 +11,8 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from books.core.config import DEFAULT_TIMEZONE
+
 
 @runtime_checkable
 class Renderer(Protocol):
@@ -24,5 +26,5 @@ class Renderer(Protocol):
     name: str
 
     def render(
-        self, vault: Path, *, refresh: bool = False, timezone: str = "Europe/Oslo"
+        self, vault: Path, *, refresh: bool = False, timezone: str = DEFAULT_TIMEZONE
     ) -> dict: ...

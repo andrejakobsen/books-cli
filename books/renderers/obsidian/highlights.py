@@ -6,10 +6,9 @@ import re
 from zoneinfo import ZoneInfo
 
 from books.core import ui
+from books.core.config import DEFAULT_TIMEZONE
 from books.core.highlights import Highlight, is_utc_midnight, local_datetime, sort_key
 from books.renderers.obsidian.format import wikilink
-
-_DEFAULT_TZ = "Europe/Oslo"
 
 
 def _resolve_zone(timezone: str) -> ZoneInfo:
@@ -17,8 +16,8 @@ def _resolve_zone(timezone: str) -> ZoneInfo:
     try:
         return ZoneInfo(timezone)
     except Exception:
-        ui.warn(f"unknown timezone {timezone!r}; using {_DEFAULT_TZ}")
-        return ZoneInfo(_DEFAULT_TZ)
+        ui.warn(f"unknown timezone {timezone!r}; using {DEFAULT_TIMEZONE}")
+        return ZoneInfo(DEFAULT_TIMEZONE)
 
 
 def build_anchors(highlights: list[Highlight]) -> list[str]:
@@ -132,7 +131,7 @@ def _callout(
 
 
 def render_highlights(
-    highlights: list[Highlight], chapter_label: str | None = None, timezone: str = _DEFAULT_TZ
+    highlights: list[Highlight], chapter_label: str | None = None, timezone: str = DEFAULT_TIMEZONE
 ) -> str:
     """Render a list of highlights as an Obsidian ``## Highlights`` body.
 
