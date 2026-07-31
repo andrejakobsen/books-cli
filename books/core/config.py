@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import os
 import tomllib
+
+import tomlkit
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -270,6 +272,30 @@ def load_config(path: Path | None = None) -> Config:
         imports=imports,
         **_parse_sections(data),
     )
+
+
+def set_highlights_template(path: str, config_file: Path | None = None) -> None:
+    """Set ``[export.obsidian].highlights_template`` in the config file.
+
+    Round-trips the TOML with tomlkit so comments and unrelated keys survive.
+    Creates the file from defaults first when absent, then ensures the
+    ``[export]`` and ``[export.obsidian]`` tables exist and sets the key.
+    """
+    config_file = config_file or config_path()
+    if not config_file.exists():
+        config_file.parent.mkdir(parents=True, exist_ok=True)
+        config_file.write_text(_DEFAULT_FILE)
+    doc = tomlkit.parse(config_file.read_text())
+    export = doc.get("export")
+    if not isinstance(export, dict):
+        export = tomlkit.table()
+        doc["export"] = export
+    obsidian = export.get("obsidian")
+    if not isinstance(obsidian, dict):
+        obsidian = tomlkit.table()
+        export["obsidian"] = obsidian
+    obsidian["highlights_template"] = path
+    config_file.write_text(tomlkit.dumps(doc))
 
 
 def _expand_user(raw: str) -> Path:
