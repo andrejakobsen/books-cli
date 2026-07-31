@@ -30,32 +30,45 @@ in the template.
 
 ## Configuration
 
-New key **`[export].highlights_template`** in `~/.config/books/config.toml`:
+New key **`highlights_template`** under a new **`[export.obsidian]`** table in
+`~/.config/books/config.toml` (nested so it reads clearly as an Obsidian-specific
+setting; future formats get their own `[export.<format>]` table):
 
 - A path to a template file (`.md` / `.jinja`), resolved via
   `resolve_path` (absolute / `~` as-is; relative against cwd).
 - Unset / empty → the built-in default template.
-- Parsed like the other export keys: added to `ExportConfig`
-  (`highlights_template: str = ""`) and read in `_parse_sections` with the
-  same tolerant string handling. The commented default file gains a line
-  documenting the key and pointing at `~/.config/books/templates/`.
+- Modeled as a nested dataclass: `ExportConfig` gains
+  `obsidian: ObsidianExportConfig = field(default_factory=ObsidianExportConfig)`,
+  where `ObsidianExportConfig` has `highlights_template: str = ""`. `timezone`
+  stays directly on `[export]` (unchanged). `_parse_sections` reads the
+  `[export.obsidian]` sub-table with the same tolerant string handling.
+- The commented default config file documents it as an Obsidian template and
+  points at `~/.config/books/templates/obsidian/`.
 
 `export_command` already loads `cfg`; it passes
-`cfg.export.highlights_template` into the renderer alongside `timezone`.
+`cfg.export.obsidian.highlights_template` into the renderer alongside `timezone`.
 
 ## Example templates in the config dir
 
-On first run — the same moment `config.toml` is auto-created — the packaged
-example templates are copied into **`~/.config/books/templates/`** (respecting
-`$XDG_CONFIG_HOME`, next to `config.toml`). This is a **create-missing-only**
+The packaged example templates are copied into
+**`~/.config/books/templates/obsidian/`** (respecting `$XDG_CONFIG_HOME`, next to
+`config.toml`) automatically — no command needed. Templates are namespaced by
+format under `templates/<format>/` so a future renderer (Notion, etc.) gets its
+own `templates/notion/` without collision. This is a **create-missing-only**
 scaffold: a user's edited file is never overwritten; only absent files are
 written (so the set self-heals if a file is deleted, but hand edits survive).
-This gives users a browsable, tweakable starting set without a separate command.
+This gives users a browsable, tweakable starting set.
 
-The scaffold lives in `config.py` (e.g. a `scaffold_templates()` helper called
-from `load_config` right after the config-file auto-create, guarded so it runs
-create-missing-only). Failures are swallowed like the config auto-create
-(`OSError` → skip), so a read-only config dir never crashes a command.
+**Layering.** The example templates are Obsidian-specific, so the scaffold lives
+in the **renderer** layer (a new `books/renderers/obsidian/templates.py`), not in
+`core/config.py` — `core` must never import a renderer (`commands → renderers →
+core`). `core/config.py` owns only the format-agnostic path helper
+`templates_dir()` (returns `config_path().parent / "templates"`); the renderer
+appends the `obsidian` subfolder. The scaffold runs at the start of
+`ObsidianRenderer.render` (the first `export`), which is create-missing-only and
+idempotent, so the files "just appear" without a command. Failures are swallowed
+like the config auto-create (`OSError` → skip), so a read-only config dir never
+crashes a command.
 
 **Where the templates live vs. where the backup lives.** All templates —
 including the default `callout.md.jinja` — live in `~/.config/books/templates/`
@@ -118,11 +131,11 @@ trimmed) and slotted where `_callout`'s return value goes today.
 
 ## Template resolution order
 
-When `render_highlights` needs a template it resolves in this order:
+When the renderer needs a template it resolves in this order:
 
-1. **`[export].highlights_template`** if set — the explicit user path.
-2. **`~/.config/books/templates/callout.md.jinja`** — the scaffolded default,
-   the normal source.
+1. **`[export.obsidian].highlights_template`** if set — the explicit user path.
+2. **`~/.config/books/templates/obsidian/callout.md.jinja`** — the scaffolded
+   default, the normal source.
 3. **Packaged backup** `books/renderers/obsidian/templates/callout.md.jinja` —
    last resort, used only when the `.config` file is missing or fails to load.
 
@@ -200,25 +213,31 @@ bad template warns once, not per highlight.
    warns and export still succeeds.
 4. **Filters:** `quote` (default and custom prefix, blank-line handling) and
    `tag` behave as specified.
-5. **Config:** `[export].highlights_template` parses (set / unset / non-string)
-   and reaches the renderer.
-6. **Scaffolding:** first run creates `~/.config/books/templates/` with the five
-   examples; a hand-edited file is not overwritten; a deleted file is
-   re-created; a read-only config dir is tolerated (no crash).
+5. **Config:** `[export.obsidian].highlights_template` parses (set / unset /
+   non-string / missing sub-table) and reaches the renderer; `timezone` still
+   parses on `[export]`.
+6. **Scaffolding:** the scaffold creates `~/.config/books/templates/obsidian/`
+   with the five examples; a hand-edited file is not overwritten; a deleted file
+   is re-created; a read-only config dir is tolerated (no crash).
 7. **Example templates compile:** every packaged example compiles and renders
    against a sample highlight without error.
 
 ## Dependencies touched
 
 - `pyproject.toml` — add `jinja2` to runtime deps.
-- `books/core/config.py` — `ExportConfig.highlights_template`, parsing, default
-  file comment, and the `scaffold_templates()` create-missing helper (called
-  from `load_config`).
-- `books/commands/export.py` — thread the template path into the renderer.
-- `books/renderers/obsidian/highlights.py` — template resolution (config path →
-  `.config` default → packaged backup) + rendering, filters,
-  `render_highlights` signature.
-- `books/renderers/obsidian/note.py` — thread the template through.
+- `books/core/config.py` — `ObsidianExportConfig.highlights_template` nested
+  under `ExportConfig.obsidian`, parsing of `[export.obsidian]`, the default
+  config-file comment, and the format-agnostic `templates_dir()` path helper.
+- `books/renderers/obsidian/templates.py` — new module: `scaffold_templates()`
+  (create-missing copy of packaged examples into `templates/obsidian/`) and
+  `resolve_template()` (config path → `.config` default → packaged backup).
+- `books/commands/export.py` — thread `cfg.export.obsidian.highlights_template`
+  into the renderer.
+- `books/renderers/obsidian/highlights.py` — the `quote`/`tag` Jinja filters,
+  the callout context builder, and the `render_highlights` `template` param.
+- `books/renderers/obsidian/note.py` — thread the template through
+  `render`/`render_note`/`render_body`; `ObsidianRenderer.render` runs the
+  scaffold + resolves the template once.
 - `books/renderers/obsidian/templates/*.md.jinja` — the five packaged example
   templates (backup + scaffold source), incl. the default `callout.md.jinja`.
 ```
