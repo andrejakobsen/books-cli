@@ -211,15 +211,17 @@ and in the returned dict:
 5. Add a commented `[export]` block to `_DEFAULT_FILE` (after the `[kindle]` block):
 
 ```python
-    "# [export]\n"
-    f'# timezone = "{DEFAULT_TIMEZONE}"  # IANA zone for highlight date/time rendering\n'
+"# [export]\n"
+
+f'# timezone = "{DEFAULT_TIMEZONE}"  # IANA zone for highlight date/time rendering\n'
 ```
 
 6. Add the parseable equivalent to `_DEFAULT_FILE_PARSEABLE` (after the `[kindle]` block):
 
 ```python
-    "[export]\n"
-    f'timezone = "{DEFAULT_TIMEZONE}"\n'
+"[export]\n"
+
+f'timezone = "{DEFAULT_TIMEZONE}"\n'
 ```
 
 - [ ] **Step 4: Run tests to verify they pass**
@@ -498,9 +500,7 @@ def render_body(
 and the call:
 
 ```python
-        rendered = render_highlights(
-            [row_to_highlight(h) for h in highlights], timezone=timezone
-        )
+rendered = render_highlights([row_to_highlight(h) for h in highlights], timezone=timezone)
 ```
 
 2. `render_note` — add the keyword-only param and pass to `render_body` (line ~215/231):
@@ -531,11 +531,13 @@ def render(vault: Path, *, refresh: bool = False, timezone: str = "Europe/Oslo")
 and:
 
 ```python
-                    render_note(
-                        vault, row, highlights,
-                        preserved=cache.get(row.book_id),
-                        timezone=timezone,
-                    )
+render_note(
+    vault,
+    row,
+    highlights,
+    preserved=cache.get(row.book_id),
+    timezone=timezone,
+)
 ```
 
 4. `ObsidianRenderer.render` — pass it through (line ~293):

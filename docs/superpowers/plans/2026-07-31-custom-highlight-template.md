@@ -493,8 +493,18 @@ def test_resolve_template_falls_back_to_packaged_when_config_absent(monkeypatch,
     # point templates_dir at an empty tmp dir -> no .config default -> packaged backup
     monkeypatch.setattr(T.config, "templates_dir", lambda: tmp_path)
     tmpl = T.resolve_template(None)
-    out = tmpl.render(h={"text": "x", "note": "", "tags": [], "links": [],
-                         "label": "", "date": "", "time": "", "anchor": "a1"})
+    out = tmpl.render(
+        h={
+            "text": "x",
+            "note": "",
+            "tags": [],
+            "links": [],
+            "label": "",
+            "date": "",
+            "time": "",
+            "anchor": "a1",
+        }
+    )
     assert "> [!quote]+" in out
     assert "> x" in out
     assert "^a1" in out
@@ -504,8 +514,18 @@ def test_resolve_template_bad_explicit_path_warns_and_falls_back(monkeypatch, tm
     monkeypatch.setattr(T.config, "templates_dir", lambda: tmp_path)
     tmpl = T.resolve_template(str(tmp_path / "does-not-exist.jinja"))
     # falls back to packaged default (still compiles + renders a callout)
-    out = tmpl.render(h={"text": "x", "note": "", "tags": [], "links": [],
-                         "label": "", "date": "", "time": "", "anchor": "a1"})
+    out = tmpl.render(
+        h={
+            "text": "x",
+            "note": "",
+            "tags": [],
+            "links": [],
+            "label": "",
+            "date": "",
+            "time": "",
+            "anchor": "a1",
+        }
+    )
     assert "> [!quote]+" in out
 
 
@@ -514,8 +534,18 @@ def test_resolve_template_invalid_syntax_warns_and_falls_back(monkeypatch, tmp_p
     bad.write_text("{% if %}broken")  # invalid Jinja
     monkeypatch.setattr(T.config, "templates_dir", lambda: tmp_path)
     tmpl = T.resolve_template(str(bad))
-    out = tmpl.render(h={"text": "x", "note": "", "tags": [], "links": [],
-                         "label": "", "date": "", "time": "", "anchor": "a1"})
+    out = tmpl.render(
+        h={
+            "text": "x",
+            "note": "",
+            "tags": [],
+            "links": [],
+            "label": "",
+            "date": "",
+            "time": "",
+            "anchor": "a1",
+        }
+    )
     assert "> [!quote]+" in out
 
 
@@ -730,7 +760,9 @@ def test_obsidian_renderer_runs_scaffold(tmp_path, monkeypatch):
     vault = tmp_path / "V"
     _seed_store(vault)
     called = {"n": 0}
-    monkeypatch.setattr(note, "scaffold_templates", lambda: called.__setitem__("n", called["n"] + 1))
+    monkeypatch.setattr(
+        note, "scaffold_templates", lambda: called.__setitem__("n", called["n"] + 1)
+    )
     note.ObsidianRenderer().render(vault)
     assert called["n"] == 1
 ```
@@ -932,13 +964,14 @@ Expected: FAIL — the strings are not in the default files yet.
 In `books/core/config.py`, replace the `[export]` block at the end of `_DEFAULT_FILE` (lines 63-64):
 
 ```python
-    "# [export]\n"
-    f'# timezone = "{DEFAULT_TIMEZONE}"  # IANA zone for highlight date/time rendering\n'
-    "# Obsidian-specific export settings (a custom highlight callout template).\n"
-    "# Examples are scaffolded to ~/.config/books/templates/obsidian/ — copy one and\n"
-    "# point highlights_template at it, or edit it in place.\n"
-    "# [export.obsidian]\n"
-    '# highlights_template = "~/.config/books/templates/obsidian/callout.md.jinja"\n'
+"# [export]\n"
+
+f'# timezone = "{DEFAULT_TIMEZONE}"  # IANA zone for highlight date/time rendering\n'
+"# Obsidian-specific export settings (a custom highlight callout template).\n"
+"# Examples are scaffolded to ~/.config/books/templates/obsidian/ — copy one and\n"
+"# point highlights_template at it, or edit it in place.\n"
+"# [export.obsidian]\n"
+'# highlights_template = "~/.config/books/templates/obsidian/callout.md.jinja"\n'
 ```
 
 - [ ] **Step 4: Update `_DEFAULT_FILE_PARSEABLE`**
@@ -946,10 +979,11 @@ In `books/core/config.py`, replace the `[export]` block at the end of `_DEFAULT_
 Replace the trailing `[export]` block (lines 86-87):
 
 ```python
-    "[export]\n"
-    f'timezone = "{DEFAULT_TIMEZONE}"\n'
-    "[export.obsidian]\n"
-    'highlights_template = ""\n'
+"[export]\n"
+
+f'timezone = "{DEFAULT_TIMEZONE}"\n'
+"[export.obsidian]\n"
+'highlights_template = ""\n'
 ```
 
 - [ ] **Step 5: Run to verify they pass**
