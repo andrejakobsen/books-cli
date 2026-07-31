@@ -20,7 +20,8 @@ from typing import TypeVar
 
 from pydantic import BaseModel, Field
 
-from books.core.highlights import Highlight
+from books.core import ui
+from books.core.highlights import Highlight, normalize_date
 from books.core.matching import (
     BookRef,
     author_key,
@@ -595,9 +596,19 @@ def read_highlights(vault: Path, book_id: str) -> list[HighlightRow]:
 
 
 def write_highlights(vault: Path, book_id: str, source: str, rows: list[HighlightRow]) -> None:
-    """Replace this source's rows in the per-book file, preserving other sources."""
+    """Replace this source's rows in the per-book file, preserving other sources.
+
+    The incoming rows' ``date`` is normalized to ISO 8601 UTC; a non-empty date that
+    cannot be parsed is blanked and reported.
+    """
+    normalized_rows = []
+    for r in rows:
+        canonical = normalize_date(r.date)
+        if r.date and canonical is None:
+            ui.warn(f"could not parse highlight date {r.date!r} for {book_id} ({source})")
+        normalized_rows.append(r.model_copy(update={"date": canonical or ""}))
     existing = [r for r in read_highlights(vault, book_id) if r.source != source]
-    combined = existing + list(rows)
+    combined = existing + normalized_rows
     _write_csv(
         highlight_path(vault, book_id), HIGHLIGHT_COLUMNS, (r.to_csv_dict() for r in combined)
     )

@@ -530,3 +530,31 @@ def test_reset_store_noop_when_absent(tmp_path):
     result = store.reset_store(vault)
 
     assert result == {"books_csv": False, "highlight_files": 0}
+
+
+def test_write_highlights_normalizes_date_column(tmp_path):
+    vault = tmp_path / "vault"
+    row = store.highlight_to_row(
+        Highlight(text="hi", date="2026-07-24 11:15:47"), "highlighted", "0"
+    )
+    store.write_highlights(vault, "b1", "highlighted", [row])
+    back = store.read_highlights(vault, "b1")
+    assert [r.date for r in back] == ["2026-07-24T11:15:47Z"]
+
+
+def test_write_highlights_blanks_and_warns_on_unparseable_date(tmp_path, capsys):
+    vault = tmp_path / "vault"
+    row = store.highlight_to_row(Highlight(text="hi", date="garbage"), "kobo", "0")
+    store.write_highlights(vault, "b1", "kobo", [row])
+    back = store.read_highlights(vault, "b1")
+    assert [r.date for r in back] == [""]
+    assert "could not parse highlight date" in capsys.readouterr().err
+
+
+def test_write_highlights_leaves_empty_date_empty_without_warning(tmp_path, capsys):
+    vault = tmp_path / "vault"
+    row = store.highlight_to_row(Highlight(text="hi", date=None), "kobo", "0")
+    store.write_highlights(vault, "b1", "kobo", [row])
+    back = store.read_highlights(vault, "b1")
+    assert [r.date for r in back] == [""]
+    assert "could not parse" not in capsys.readouterr().err
